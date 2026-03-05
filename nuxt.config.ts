@@ -10,4 +10,14 @@ export default defineNuxtConfig({
     botToken: process.env.NUXT_BOT_TOKEN ?? '',
     managerChatId: process.env.NUXT_MANAGER_CHAT_ID ?? '',
   },
+  app: {
+    head: {
+      script: [
+        {
+          src: 'https://telegram.org/js/telegram-web-app.js',
+          tagPosition: 'head',
+        },
+      ],
+    },
+  },
 })
