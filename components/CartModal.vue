@@ -57,7 +57,7 @@
               />
             </ul>
           </div>
-          <!-- Итого и очистить закреплено снизу -->
+          <!-- Итого, очистить и оформить заказ закреплено снизу -->
           <div
             v-if="cartStore.items.length > 0"
             class="shrink-0 space-y-3 border-t border-gray-200 bg-white p-4 sm:px-6 sm:py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4"
@@ -71,11 +71,20 @@
                 Очистить корзину
               </button>
             </div>
-            <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <span class="font-semibold text-gray-900">Итого:</span>
-              <span class="text-xl font-bold text-[#2563eb]">
-                {{ formatPrice(cartStore.total) }}
-              </span>
+            <div class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-gray-900">Итого:</span>
+                <span class="text-xl font-bold text-[#2563eb]">
+                  {{ formatPrice(cartStore.total) }}
+                </span>
+              </div>
+              <button
+                type="button"
+                class="mt-1 w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+                @click="handleCheckout"
+              >
+                Оформить заказ
+              </button>
             </div>
           </div>
         </div>
@@ -86,6 +95,12 @@
 
 <script setup lang="ts">
 const cartStore = useCartStore()
+
+function handleCheckout() {
+  // TODO: интеграция с серверным роутом /api/order и Telegram WebApp
+  // пока просто закрываем корзину после нажатия
+  cartStore.closeCartModal()
+}
 
 function formatPrice(price: number) {
   return new Intl.NumberFormat('ru-RU', {
