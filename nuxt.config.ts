@@ -9,6 +9,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     botToken: process.env.NUXT_BOT_TOKEN ?? '',
     managerChatId: process.env.NUXT_MANAGER_CHAT_ID ?? '',
+    appUrl: process.env.NUXT_APP_URL ?? '',
   },
   app: {
     head: {

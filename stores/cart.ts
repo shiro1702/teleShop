@@ -150,6 +150,7 @@ export const useCartStore = defineStore('cart', {
   state: () => ({
     products: MOCK_PRODUCTS,
     items: [] as CartItem[],
+    isCartModalOpen: false,
   }),
   getters: {
     total: (state) =>
@@ -187,6 +188,12 @@ export const useCartStore = defineStore('cart', {
     },
     clear() {
       this.items = []
+    },
+    openCartModal() {
+      this.isCartModalOpen = true
+    },
+    closeCartModal() {
+      this.isCartModalOpen = false
     },
   },
 })
