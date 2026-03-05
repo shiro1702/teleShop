@@ -54,7 +54,6 @@
                 v-for="item in cartStore.items"
                 :key="item.id"
                 :item="item"
-                @remove="cartStore.removeItem(item.id)"
               />
             </ul>
           </div>

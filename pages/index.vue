@@ -10,7 +10,7 @@
               class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-600 transition hover:bg-gray-100 md:hidden"
               aria-label="Открыть меню"
               aria-expanded="isNavOpen"
-              @click="isNavOpen = true"
+              @click="openNav"
             >
               <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -40,7 +40,7 @@
             class="flex shrink-0 items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200 sm:gap-2 sm:px-4"
             @click="cartStore.openCartModal()"
           >
-            <span class="hidden xs:inline">Корзина</span>
+            <span class="hidden sm:inline-block">Корзина</span>
             <svg class="h-5 w-5 sm:hidden" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
@@ -69,7 +69,7 @@
         >
           <div
             class="absolute inset-0 bg-black/50"
-            @click="isNavOpen = false"
+            @click="closeNav"
           />
           <div class="absolute inset-x-0 top-0 rounded-b-2xl bg-white p-4 shadow-xl">
             <div class="flex items-center justify-between border-b border-gray-100 pb-3">
@@ -78,7 +78,7 @@
                 type="button"
                 class="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100"
                 aria-label="Закрыть меню"
-                @click="isNavOpen = false"
+                @click="closeNav"
               >
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -91,7 +91,7 @@
                 :key="section.category"
                 :href="`#${section.category}`"
                 class="rounded-lg px-3 py-3 text-left text-base font-medium text-gray-700 transition hover:bg-gray-50 active:bg-gray-100"
-                @click="isNavOpen = false"
+                @click="closeNav"
               >
                 {{ section.label }}
               </a>
@@ -125,6 +125,14 @@
 
 <script setup lang="ts">
 const cartStore = useCartStore()
+const isNavOpen = ref(false)
+
+function openNav() {
+  isNavOpen.value = true
+}
+function closeNav() {
+  isNavOpen.value = false
+}
 
 function formatPrice(price: number) {
   return new Intl.NumberFormat('ru-RU', {
