@@ -57,11 +57,20 @@
               />
             </ul>
           </div>
-          <!-- Итого закреплено снизу -->
+          <!-- Итого и очистить закреплено снизу -->
           <div
             v-if="cartStore.items.length > 0"
-            class="shrink-0 border-t border-gray-200 bg-white p-4 sm:px-6 sm:py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4"
+            class="shrink-0 space-y-3 border-t border-gray-200 bg-white p-4 sm:px-6 sm:py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4"
           >
+            <div class="flex justify-end">
+              <button
+                type="button"
+                class="text-sm text-gray-500 transition hover:text-red-600"
+                @click="cartStore.clear(); cartStore.closeCartModal()"
+              >
+                Очистить корзину
+              </button>
+            </div>
             <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-4">
               <span class="font-semibold text-gray-900">Итого:</span>
               <span class="text-xl font-bold text-[#2563eb]">

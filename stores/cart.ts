@@ -1,5 +1,40 @@
 import { defineStore } from 'pinia'
 
+const CART_STORAGE_KEY = 'teleshop-cart'
+
+function getStoredCartItems(): CartItem[] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (x): x is CartItem =>
+        x &&
+        typeof x === 'object' &&
+        typeof x.id === 'string' &&
+        typeof x.quantity === 'number' &&
+        typeof x.price === 'number' &&
+        typeof x.name === 'string' &&
+        typeof x.image === 'string' &&
+        typeof x.category === 'string' &&
+        x.quantity > 0
+    )
+  } catch {
+    return []
+  }
+}
+
+function persistCart(items: CartItem[]) {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
 export type ProductCategory = 'main' | 'закуски' | 'супы' | 'десерты'
 
 export interface Product {
@@ -149,7 +184,7 @@ const CATEGORY_LABELS: Record<ProductCategory, string> = {
 export const useCartStore = defineStore('cart', {
   state: () => ({
     products: MOCK_PRODUCTS,
-    items: [] as CartItem[],
+    items: getStoredCartItems(),
     isCartModalOpen: false,
   }),
   getters: {
@@ -175,25 +210,37 @@ export const useCartStore = defineStore('cart', {
       } else {
         this.items.push({ ...product, quantity })
       }
+      persistCart(this.items)
     },
     removeItem(id: string) {
       this.items = this.items.filter((i) => i.id !== id)
+      persistCart(this.items)
     },
     updateQuantity(id: string, quantity: number) {
       const item = this.items.find((i) => i.id === id)
       if (item) {
         if (quantity <= 0) this.removeItem(id)
-        else item.quantity = quantity
+        else {
+          item.quantity = quantity
+          persistCart(this.items)
+        }
       }
     },
     clear() {
       this.items = []
+      persistCart(this.items)
     },
     openCartModal() {
       this.isCartModalOpen = true
     },
     closeCartModal() {
       this.isCartModalOpen = false
+    },
+    /** Восстановить корзину из localStorage (вызывать на клиенте после гидрации) */
+    hydrateFromStorage() {
+      if (typeof localStorage === 'undefined') return
+      const stored = getStoredCartItems()
+      if (stored.length > 0) this.items = stored
     },
   },
 })
