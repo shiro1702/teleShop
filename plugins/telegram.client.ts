@@ -10,48 +10,53 @@ function formatPrice(value: number): string {
 
 export default defineNuxtPlugin(() => {
   const cartStore = useCartStore()
-  const WebApp = typeof window !== 'undefined' ? window.Telegram?.WebApp : null
+  const { webApp, isTelegram, showMainButton, hideMainButton, onMainButtonClick, offMainButtonClick } =
+    useTelegram()
 
-  if (!WebApp) return
+  if (!isTelegram.value || !webApp.value) return
 
-  WebApp.ready()
+  webApp.value.ready()
 
   let mainButtonClickHandler: (() => void) | null = null
 
   function updateMainButton() {
     const hasItems = cartStore.items.length > 0
     if (hasItems) {
-      WebApp!.MainButton.setText(`Оформить заказ на ${formatPrice(cartStore.total)}`)
-      WebApp!.MainButton.show()
+      showMainButton(`Оформить заказ на ${formatPrice(cartStore.total)}`)
 
       if (!mainButtonClickHandler) {
         mainButtonClickHandler = async () => {
-          WebApp!.MainButton.showProgress(true)
+          if (!webApp.value) return
+          webApp.value.MainButton.showProgress(true)
           try {
             const res = await $fetch<{ ok: boolean }>('/api/order', {
               method: 'POST',
               body: {
                 items: cartStore.items,
-                initData: WebApp!.initData,
+                initData: webApp.value.initData,
               } satisfies { items: CartItem[]; initData: string },
             })
             if (res?.ok) {
               cartStore.clear()
-              WebApp!.showAlert('Заказ оформлен!')
-              WebApp!.close()
+              webApp.value.showAlert('Заказ оформлен!')
+              webApp.value.close()
             } else {
-              WebApp!.showAlert('Не удалось оформить заказ. Попробуйте ещё раз.')
+              webApp.value.showAlert('Не удалось оформить заказ. Попробуйте ещё раз.')
             }
           } catch {
-            WebApp!.showAlert('Ошибка при отправке заказа. Проверьте соединение.')
+            webApp.value.showAlert('Ошибка при отправке заказа. Проверьте соединение.')
           } finally {
-            WebApp!.MainButton.showProgress(false)
+            webApp.value.MainButton.showProgress(false)
           }
         }
-        WebApp!.MainButton.onClick(mainButtonClickHandler)
+        onMainButtonClick(mainButtonClickHandler)
       }
     } else {
-      WebApp!.MainButton.hide()
+      hideMainButton()
+      if (mainButtonClickHandler) {
+        offMainButtonClick(mainButtonClickHandler)
+        mainButtonClickHandler = null
+      }
     }
   }
 

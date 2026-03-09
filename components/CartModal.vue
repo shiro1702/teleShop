@@ -1,4 +1,59 @@
 <template>
+  <!-- Модалка успешного заказа -->
+  <Teleport to="body">
+    <Transition name="success">
+      <div
+        v-if="showOrderSuccess"
+        class="fixed inset-0 z-[60] flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="order-success-title"
+      >
+        <div
+          class="absolute inset-0 bg-black/50"
+          @click="closeSuccessModal"
+        />
+        <div
+          class="relative flex w-full max-w-sm flex-col items-center rounded-2xl bg-white p-8 shadow-xl"
+          @click.stop
+        >
+          <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+            <svg
+              class="h-9 w-9 text-emerald-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+          </div>
+          <h2 id="order-success-title" class="text-xl font-bold text-gray-900">
+            Заказ оформлен!
+          </h2>
+          <p v-if="lastOrderId" class="mt-2 text-gray-500">
+            Номер заказа: <span class="font-semibold text-gray-700">#{{ lastOrderId }}</span>
+          </p>
+          <p class="mt-1 text-sm text-gray-500">
+            Менеджер свяжется с вами в Telegram.
+          </p>
+          <button
+            type="button"
+            class="mt-6 w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-emerald-700 active:bg-emerald-800"
+            @click="closeSuccessModal"
+          >
+            Понятно
+          </button>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
   <Teleport to="body">
     <Transition name="cart">
       <div
@@ -95,11 +150,46 @@
 
 <script setup lang="ts">
 const cartStore = useCartStore()
+const showOrderSuccess = ref(false)
+const lastOrderId = ref<string | null>(null)
 
-function handleCheckout() {
-  // TODO: интеграция с серверным роутом /api/order и Telegram WebApp
-  // пока просто закрываем корзину после нажатия
-  cartStore.closeCartModal()
+function closeSuccessModal() {
+  showOrderSuccess.value = false
+  lastOrderId.value = null
+}
+
+async function handleCheckout() {
+  if (!cartStore.items.length) return
+
+  try {
+    const res = await $fetch<{ ok: boolean; orderId?: string }>('/api/order', {
+      method: 'POST',
+      body: {
+        items: cartStore.items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+      },
+    })
+
+    if (res?.ok) {
+      cartStore.clear()
+      cartStore.closeCartModal()
+      lastOrderId.value = res.orderId ?? null
+      showOrderSuccess.value = true
+    } else if (process.client) {
+      window.alert('Не удалось оформить заказ. Попробуйте ещё раз.')
+    }
+  } catch (error: unknown) {
+    const err = error as { statusCode?: number }
+    if (process.client && err?.statusCode === 401) {
+      window.alert('Чтобы оформить заказ на сайте, сначала войдите через Telegram.')
+    } else if (process.client) {
+      window.alert('Ошибка при отправке заказа. Проверьте соединение.')
+    }
+  }
 }
 
 function formatPrice(price: number) {
@@ -134,5 +224,23 @@ function formatPrice(price: number) {
   .cart-leave-to .relative {
     transform: scale(0.95);
   }
+}
+
+/* Модалка успеха заказа */
+.success-enter-active,
+.success-leave-active {
+  transition: opacity 0.2s ease;
+}
+.success-enter-active .relative,
+.success-leave-active .relative {
+  transition: transform 0.2s ease;
+}
+.success-enter-from,
+.success-leave-to {
+  opacity: 0;
+}
+.success-enter-from .relative,
+.success-leave-to .relative {
+  transform: scale(0.9);
 }
 </style>

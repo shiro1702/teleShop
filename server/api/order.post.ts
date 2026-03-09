@@ -1,4 +1,6 @@
 import crypto from 'node:crypto'
+import { MOCK_PRODUCTS } from '../../data/products'
+import { getTelegramUserFromEvent } from '../utils/getTelegramUserFromEvent'
 
 interface CartItemPayload {
   id: string
@@ -71,19 +73,50 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, message: 'Server config: bot token or manager chat ID missing' })
   }
 
-  const body = await readBody<{ items: CartItemPayload[]; initData: string }>(event)
-  if (!body?.items?.length || !body?.initData || typeof body.initData !== 'string') {
-    throw createError({ statusCode: 400, message: 'Expected { items, initData }' })
+  const body = await readBody<{ items: CartItemPayload[]; initData?: string | null } | null>(event)
+  if (!body?.items?.length) {
+    throw createError({ statusCode: 400, message: 'Expected { items }' })
   }
 
-  const user = validateInitData(body.initData, botToken)
-  if (!user) {
-    throw createError({ statusCode: 401, message: 'Invalid initData' })
+  // Пересчитываем сумму на сервере по каталогу, не доверяя ценам с клиента
+  const itemsWithServerPrice: CartItemPayload[] = body.items.map((item) => {
+    const product = MOCK_PRODUCTS.find((p) => p.id === item.id)
+    if (!product) {
+      throw createError({ statusCode: 400, message: `Unknown product id: ${item.id}` })
+    }
+    const quantity = item.quantity > 0 ? item.quantity : 0
+    return {
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      quantity,
+    }
+  })
+
+  const total = itemsWithServerPrice.reduce((sum, item) => sum + item.price * item.quantity, 0)
+
+  // Определяем пользователя: либо через initData (TMA), либо через сессию (WEB)
+  let user: TelegramUser | null = null
+  if (body.initData && typeof body.initData === 'string') {
+    user = validateInitData(body.initData, botToken)
+    if (!user) {
+      throw createError({ statusCode: 401, message: 'Invalid initData' })
+    }
+  } else {
+    const sessionUser = await getTelegramUserFromEvent(event)
+    if (!sessionUser) {
+      throw createError({ statusCode: 401, message: 'Unauthorized' })
+    }
+    user = {
+      id: sessionUser.id,
+      username: sessionUser.username,
+      first_name: sessionUser.firstName ?? undefined,
+      last_name: sessionUser.lastName ?? undefined,
+    }
   }
 
   const orderId = String(Math.floor(1000 + Math.random() * 9000))
-  const total = body.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const text = buildOrderMessage(orderId, body.items, total, user)
+  const text = buildOrderMessage(orderId, itemsWithServerPrice, total, user)
 
   const callbackData = `work_${user.id}_${orderId}`
   if (Buffer.byteLength(callbackData, 'utf8') > 64) {
@@ -94,7 +127,7 @@ export default defineEventHandler(async (event) => {
     chat_id: managerChatId,
     text,
     reply_markup: {
-      inline_keyboard: [[{ text: 'Принять в работу', callback_data }]],
+      inline_keyboard: [[{ text: 'Принять в работу', callback_data: callbackData }]],
     },
   }
 
@@ -111,5 +144,5 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 502, message: 'Failed to send message to manager' })
   }
 
-  return { ok: true }
+  return { ok: true, orderId }
 })
