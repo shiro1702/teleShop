@@ -115,7 +115,10 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const orderId = String(Math.floor(1000 + Math.random() * 9000))
+  const now = new Date()
+  const datePart = now.toISOString().slice(0, 10).replace(/-/g, '')
+  const timePart = now.toISOString().slice(11, 19).replace(/:/g, '')
+  const orderId = `${datePart}-${timePart}`
   const text = buildOrderMessage(orderId, itemsWithServerPrice, total, user)
 
   const callbackData = `work_${user.id}_${orderId}`
@@ -142,6 +145,20 @@ export default defineEventHandler(async (event) => {
     const err = await res.text()
     console.error('Telegram sendMessage error:', res.status, err)
     throw createError({ statusCode: 502, message: 'Failed to send message to manager' })
+  }
+
+  // Дополнительное уведомление клиента о создании заказа (ошибки не критичны)
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: user.id,
+        text: `Ваш заказ #${orderId} отправлен менеджеру. Мы скоро свяжемся с вами в Telegram.`,
+      }),
+    })
+  } catch (notifyErr) {
+    console.error('Telegram notify client error:', notifyErr)
   }
 
   return { ok: true, orderId }
