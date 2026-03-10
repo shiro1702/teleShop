@@ -14,6 +14,7 @@ export default defineNuxtConfig({
     yandexMapsApiKey: process.env.YANDEX_MAPS_API_KEY ?? '',
     public: {
       yandexMapsApiKey: process.env.YANDEX_MAPS_API_KEY ?? '',
+      telegramBotName: process.env.NUXT_TELEGRAM_BOT_NAME ?? '',
     },
   },
   app: {

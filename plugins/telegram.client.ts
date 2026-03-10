@@ -17,49 +17,8 @@ export default defineNuxtPlugin(() => {
 
   webApp.value.ready()
 
-  let mainButtonClickHandler: (() => void) | null = null
-
-  function updateMainButton() {
-    const hasItems = cartStore.items.length > 0
-    if (hasItems) {
-      showMainButton(`Оформить заказ на ${formatPrice(cartStore.total)}`)
-
-      if (!mainButtonClickHandler) {
-        mainButtonClickHandler = async () => {
-          if (!webApp.value) return
-          webApp.value.MainButton.showProgress(true)
-          try {
-            const res = await $fetch<{ ok: boolean }>('/api/order', {
-              method: 'POST',
-              body: {
-                items: cartStore.items,
-                initData: webApp.value.initData,
-              } satisfies { items: CartItem[]; initData: string },
-            })
-            if (res?.ok) {
-              cartStore.clear()
-              webApp.value.showAlert('Заказ оформлен!')
-              webApp.value.close()
-            } else {
-              webApp.value.showAlert('Не удалось оформить заказ. Попробуйте ещё раз.')
-            }
-          } catch {
-            webApp.value.showAlert('Ошибка при отправке заказа. Проверьте соединение.')
-          } finally {
-            webApp.value.MainButton.showProgress(false)
-          }
-        }
-        onMainButtonClick(mainButtonClickHandler)
-      }
-    } else {
-      hideMainButton()
-      if (mainButtonClickHandler) {
-        offMainButtonClick(mainButtonClickHandler)
-        mainButtonClickHandler = null
-      }
-    }
-  }
-
-  updateMainButton()
-  cartStore.$subscribe(updateMainButton)
+  // На текущем этапе мини‑приложение работает только как витрина:
+  // оформление заказа происходит через веб‑интерфейс, поэтому
+  // прячем MainButton и не вешаем на него обработчики.
+  hideMainButton()
 })
