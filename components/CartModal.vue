@@ -92,7 +92,7 @@
               </svg>
             </button>
           </div>
-          <!-- Прокручиваемый список (без итого) -->
+          <!-- Прокручиваемый список (только товары) -->
           <div class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6">
             <div v-if="cartStore.items.length === 0" class="py-12 text-center">
               <p class="text-gray-500">Корзина пуста</p>
@@ -104,13 +104,15 @@
                 Перейти к товарам
               </button>
             </div>
-            <ul v-else class="space-y-4">
-              <CartItem
-                v-for="item in cartStore.items"
-                :key="item.id"
-                :item="item"
-              />
-            </ul>
+            <template v-else>
+              <ul class="space-y-4">
+                <CartItem
+                  v-for="item in cartStore.items"
+                  :key="item.id"
+                  :item="item"
+                />
+              </ul>
+            </template>
           </div>
           <!-- Итого, очистить и оформить заказ закреплено снизу -->
           <div
@@ -127,20 +129,158 @@
               </button>
             </div>
             <div class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <div class="flex items-center justify-between">
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-gray-600">Товары</span>
+                <span class="font-semibold text-gray-900">
+                  {{ formatPrice(cartStore.total) }}
+                </span>
+              </div>
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-gray-600">Доставка</span>
+                <span class="font-semibold" :class="cartStore.deliveryCost === 0 ? 'text-emerald-600' : 'text-gray-900'">
+                  {{ cartStore.deliveryCost === 0 ? '0 ₽' : formatPrice(cartStore.deliveryCost) }}
+                </span>
+              </div>
+              <div class="flex items-center justify-between border-t border-dashed border-gray-200 pt-2">
                 <span class="font-semibold text-gray-900">Итого:</span>
                 <span class="text-xl font-bold text-[#2563eb]">
-                  {{ formatPrice(cartStore.total) }}
+                  {{ formatPrice(cartStore.grandTotal) }}
                 </span>
               </div>
               <button
                 type="button"
                 class="mt-1 w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
-                @click="handleCheckout"
+                @click="openAddressModal"
               >
                 Оформить заказ
               </button>
+              <p
+                v-if="!cartStore.canCheckout && cartStore.deliverySummary.minOrderAmount"
+                class="text-xs text-red-600"
+              >
+                Минимальная сумма заказа для вашей зоны — {{ formatPrice(cartStore.deliverySummary.minOrderAmount) }}.
+              </p>
             </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <!-- Отдельная модалка адреса/доставки -->
+  <Teleport to="body">
+    <Transition name="cart">
+      <div
+        v-if="showAddressModal"
+        class="fixed inset-0 z-[55] flex items-end sm:items-center sm:justify-center"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div
+          class="absolute inset-0 bg-black/40"
+          @click="closeAddressModal"
+        />
+        <div
+          class="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-t-2xl bg-gray-50 shadow-xl sm:max-h-[90vh] sm:rounded-2xl"
+          @click.stop
+        >
+          <div class="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
+            <h2 class="text-lg font-bold text-gray-900 sm:text-xl">
+              Адрес доставки
+            </h2>
+            <button
+              type="button"
+              class="-mr-2 rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+              aria-label="Закрыть"
+              @click="closeAddressModal"
+            >
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div class="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+            <section class="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+              <div class="space-y-2">
+                <div class="relative">
+                  <input
+                    ref="addressInputRef"
+                    v-model="addressQuery"
+                    type="text"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                    placeholder="Улан-Удэ, улица, дом"
+                    @input="onAddressInput"
+                  />
+                  <div
+                    v-if="suggestItems.length"
+                    class="absolute inset-x-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg"
+                  >
+                    <button
+                      v-for="item in suggestItems"
+                      :key="item.value"
+                      type="button"
+                      class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+                      @click="selectSuggestion(item)"
+                    >
+                      <span class="truncate">{{ item.displayName }}</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input
+                    v-model="flat"
+                    type="text"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                    placeholder="Квартира / подъезд"
+                  />
+                  <textarea
+                    v-model="comment"
+                    rows="2"
+                    class="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                    placeholder="Комментарий курьеру"
+                  />
+                </div>
+                <p v-if="cartStore.deliverySummary.message" class="text-xs text-gray-500">
+                  {{ cartStore.deliverySummary.message }}
+                </p>
+                <p v-if="deliveryChangeMessage" class="text-xs text-amber-600">
+                  {{ deliveryChangeMessage }}
+                </p>
+                <div v-if="savedAddresses.length" class="pt-1">
+                  <p class="mb-1 text-xs font-medium text-gray-500">
+                    Ранее использованные адреса:
+                  </p>
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      v-for="addr in savedAddresses"
+                      :key="addr.id"
+                      type="button"
+                      class="group flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:border-[#2563eb] hover:bg-blue-50"
+                      @click="applySavedAddress(addr)"
+                    >
+                      <span class="truncate max-w-[140px]">{{ addr.address }}</span>
+                      <button
+                        type="button"
+                        class="ml-1 text-gray-400 hover:text-red-500"
+                        @click.stop="deleteSavedAddress(addr.id)"
+                        aria-label="Удалить адрес"
+                      >
+                        ×
+                      </button>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+          <div class="shrink-0 border-t border-gray-200 bg-white p-4 sm:px-6 sm:py-4">
+            <button
+              type="button"
+              class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+              @click="confirmAddressAndCheckout"
+            >
+              Подтвердить адрес и оформить
+            </button>
           </div>
         </div>
       </div>
@@ -149,13 +289,197 @@
 </template>
 
 <script setup lang="ts">
+import { yandexGeocode, yandexSuggest } from '~/utils/yandexApi'
+import { useDeliveryZone } from '~/composables/useDeliveryZone'
+import { useTelegram } from '~/composables/useTelegram'
+
+type SavedAddress = {
+  id: string
+  address: string
+  flat?: string
+  comment?: string
+}
+
 const cartStore = useCartStore()
 const showOrderSuccess = ref(false)
 const lastOrderId = ref<string | null>(null)
+const showAddressModal = ref(false)
+const addressQuery = ref('')
+const flat = ref('')
+const comment = ref('')
+const addressInputRef = ref<HTMLInputElement | null>(null)
+const suggestItems = ref<Array<{ displayName: string; value: string }>>([])
+const savedAddresses = ref<SavedAddress[]>([])
+
+const { properties: deliveryZoneProps, reason, refresh: refreshZone } = useDeliveryZone()
+const { isTelegram, webApp } = useTelegram()
+
+const STORAGE_KEY = 'teleshop_addresses'
+const lastKnownDeliveryCost = ref(0)
+const deliveryChangeMessage = ref('')
 
 function closeSuccessModal() {
   showOrderSuccess.value = false
   lastOrderId.value = null
+}
+
+function onAddressInput() {
+  const query = addressQuery.value.trim()
+  if (query.length > 0) {
+    cartStore.setDeliveryError(null)
+  }
+
+  suggestItems.value = []
+  if (query.length < 3) return
+
+  // debounce через замыкание на функции
+  const fn = onAddressInput as any
+  if (fn._timer) {
+    clearTimeout(fn._timer)
+  }
+  fn._timer = setTimeout(async () => {
+    const items = await yandexSuggest(query)
+    suggestItems.value = items
+  }, 400)
+}
+
+async function selectSuggestion(item: { displayName: string; value: string }) {
+  addressQuery.value = item.displayName
+  suggestItems.value = []
+
+  const geo = await yandexGeocode(item.displayName)
+  if (!geo) return
+
+  refreshZone(geo.lat, geo.lon)
+}
+
+watch(
+  () => cartStore.isCartModalOpen,
+  (isOpen) => {
+    if (isOpen) {
+      nextTick(() => {
+        addressInputRef.value?.focus()
+      })
+    }
+  }
+)
+
+watch(
+  deliveryZoneProps,
+  (zone) => {
+    cartStore.setDeliveryZone(zone ?? null)
+  }
+)
+
+watch(reason, (val) => {
+  if (val === 'out_of_zone') {
+    cartStore.setDeliveryZone(null)
+  }
+})
+
+function applySavedAddress(addr: SavedAddress) {
+  addressQuery.value = addr.address
+  flat.value = addr.flat ?? ''
+  comment.value = addr.comment ?? ''
+}
+
+async function loadSavedAddresses() {
+  // Если мы внутри Telegram Web App — пробуем CloudStorage
+  if (isTelegram.value && webApp.value?.CloudStorage) {
+    await new Promise<void>((resolve) => {
+      webApp.value!.CloudStorage.getItem(STORAGE_KEY, (err: unknown, value: string | null) => {
+        if (!err && value) {
+          try {
+            savedAddresses.value = JSON.parse(value) as SavedAddress[]
+          } catch {
+            savedAddresses.value = []
+          }
+        }
+        resolve()
+      })
+    })
+    return
+  }
+
+  // Фоллбек на localStorage
+  if (process.client) {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        savedAddresses.value = JSON.parse(raw) as SavedAddress[]
+      }
+    } catch {
+      savedAddresses.value = []
+    }
+  }
+}
+
+async function persistAddresses() {
+  const data = JSON.stringify(savedAddresses.value)
+
+  if (isTelegram.value && webApp.value?.CloudStorage) {
+    await new Promise<void>((resolve) => {
+      webApp.value!.CloudStorage.setItem(STORAGE_KEY, data, () => resolve())
+    })
+  } else if (process.client) {
+    localStorage.setItem(STORAGE_KEY, data)
+  }
+}
+
+async function saveCurrentAddress() {
+  const line = addressQuery.value.trim()
+  if (!line) return
+
+  const existing = savedAddresses.value.find(
+    (a) => a.address === line && a.flat === flat.value.trim()
+  )
+  if (existing) return
+
+  savedAddresses.value.unshift({
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    address: line,
+    flat: flat.value.trim() || undefined,
+    comment: comment.value.trim() || undefined,
+  })
+
+  // ограничим историю, например, 5 адресами
+  savedAddresses.value = savedAddresses.value.slice(0, 5)
+  await persistAddresses()
+}
+
+async function deleteSavedAddress(id: string) {
+  savedAddresses.value = savedAddresses.value.filter((a) => a.id !== id)
+  await persistAddresses()
+}
+
+onMounted(() => {
+  loadSavedAddresses()
+})
+
+function openAddressModal() {
+  lastKnownDeliveryCost.value = cartStore.deliveryCost
+  deliveryChangeMessage.value = ''
+  showAddressModal.value = true
+  nextTick(() => {
+    addressInputRef.value?.focus()
+  })
+}
+
+function closeAddressModal() {
+  showAddressModal.value = false
+}
+
+async function confirmAddressAndCheckout() {
+  const before = lastKnownDeliveryCost.value
+  const after = cartStore.deliveryCost
+  if (after !== before) {
+    deliveryChangeMessage.value = `Стоимость доставки изменилась: была ${formatPrice(
+      before
+    )}, теперь ${formatPrice(after)}.`
+  }
+
+  await handleCheckout()
+  showAddressModal.value = false
 }
 
 async function handleCheckout() {
@@ -171,10 +495,17 @@ async function handleCheckout() {
           price: item.price,
           quantity: item.quantity,
         })),
+        address: {
+          line: addressQuery.value || null,
+          flat: flat.value || null,
+          comment: comment.value || null,
+          zone: deliveryZoneProps.value ?? null,
+        },
       },
     })
 
     if (res?.ok) {
+      await saveCurrentAddress()
       cartStore.clear()
       cartStore.closeCartModal()
       lastOrderId.value = res.orderId ?? null

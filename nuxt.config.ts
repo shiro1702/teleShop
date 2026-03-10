@@ -11,6 +11,10 @@ export default defineNuxtConfig({
     managerChatId: process.env.NUXT_MANAGER_CHAT_ID ?? '',
     appUrl: process.env.NUXT_APP_URL ?? '',
     sessionSecret: process.env.NUXT_SESSION_SECRET ?? '',
+    yandexMapsApiKey: process.env.YANDEX_MAPS_API_KEY ?? '',
+    public: {
+      yandexMapsApiKey: process.env.YANDEX_MAPS_API_KEY ?? '',
+    },
   },
   app: {
     head: {
