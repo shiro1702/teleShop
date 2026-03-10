@@ -35,15 +35,13 @@
               {{ section.label }}
             </a>
           </nav>
+          <!-- Кнопка корзины в шапке — только на планшетах и десктопе -->
           <button
             type="button"
-            class="flex shrink-0 items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200 sm:gap-2 sm:px-4"
+            class="hidden shrink-0 items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200 sm:gap-2 sm:px-4 md:flex"
             @click="cartStore.openCartModal()"
           >
-            <span class="hidden sm:inline-block">Корзина</span>
-            <svg class="h-5 w-5 sm:hidden" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
+            <span>Корзина</span>
             <template v-if="cartStore.count > 0">
               <span class="text-gray-500">
                 {{ cartStore.count }} шт.
@@ -101,7 +99,7 @@
       </Transition>
     </Teleport>
 
-    <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+    <main class="mx-auto max-w-6xl px-4 py-6 pb-24 sm:px-6 sm:py-8 sm:pb-10">
       <section
         v-for="section in cartStore.productsByCategory"
         :key="section.category"
@@ -112,26 +110,124 @@
           {{ section.label }}
         </h2>
         <ul
-          class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          class="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4"
         >
           <li v-for="product in section.products" :key="product.id" class="flex">
-            <ProductCard :product="product" />
+            <ProductCard :product="product" @open="openProduct(product)" />
           </li>
         </ul>
       </section>
     </main>
+    <!-- Нижняя панель корзины на мобильных -->
+    <div
+      class="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-4 py-2 sm:hidden"
+    >
+      <button
+        type="button"
+        class="flex w-full items-center justify-between gap-3 rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white shadow-md"
+        @click="cartStore.openCartModal()"
+      >
+        <div class="flex items-center gap-2">
+          <svg class="h-5 w-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+          <span>Корзина</span>
+        </div>
+        <div v-if="cartStore.count > 0" class="flex items-center gap-2">
+          <span class="text-xs text-blue-100">
+            {{ cartStore.count }} шт.
+          </span>
+          <span class="text-sm font-semibold">
+            {{ formatPrice(cartStore.total) }}
+          </span>
+        </div>
+      </button>
+    </div>
+    <!-- Модалка с информацией о товаре -->
+    <Teleport to="body">
+      <Transition name="product">
+        <div
+          v-if="selectedProduct"
+          class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            class="absolute inset-0"
+            @click="closeProduct"
+          />
+          <div
+            class="relative max-h-[90vh] w-full max-w-md overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+          >
+            <button
+              type="button"
+              class="absolute right-3 top-3 z-10 rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+              aria-label="Закрыть"
+              @click="closeProduct"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div class="h-48 w-full overflow-hidden bg-gray-100 sm:h-56">
+              <img
+                :src="selectedProduct.image"
+                :alt="selectedProduct.name"
+                class="h-full w-full object-cover"
+              />
+            </div>
+            <div class="space-y-3 p-4 sm:p-5">
+              <h2 class="text-lg font-semibold text-gray-900 sm:text-xl">
+                {{ selectedProduct.name }}
+              </h2>
+              <p
+                v-if="selectedProduct.description"
+                class="text-sm text-gray-600"
+              >
+                {{ selectedProduct.description }}
+              </p>
+              <p class="text-lg font-bold text-[#2563eb]">
+                {{ formatPrice(selectedProduct.price) }}
+              </p>
+              <button
+                type="button"
+                class="mt-2 w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+                @click="addSelectedToCart"
+              >
+                Добавить в корзину
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 const cartStore = useCartStore()
 const isNavOpen = ref(false)
+const selectedProduct = ref<import('~/data/products').Product | null>(null)
 
 function openNav() {
   isNavOpen.value = true
 }
 function closeNav() {
   isNavOpen.value = false
+}
+
+function openProduct(product: import('~/data/products').Product) {
+  selectedProduct.value = product
+}
+
+function closeProduct() {
+  selectedProduct.value = null
+}
+
+function addSelectedToCart() {
+  if (!selectedProduct.value) return
+  cartStore.addItem(selectedProduct.value, 1)
+  selectedProduct.value = null
 }
 
 function formatPrice(price: number) {
@@ -143,3 +239,29 @@ function formatPrice(price: number) {
 }
 
 </script>
+
+<style scoped>
+.product-enter-active,
+.product-leave-active {
+  transition: opacity 0.25s ease;
+}
+.product-enter-active .max-w-md,
+.product-leave-active .max-w-md {
+  transition: transform 0.25s ease;
+}
+.product-enter-from,
+.product-leave-to {
+  opacity: 0;
+}
+/* Мобильная модалка: выезжает снизу; на больших экранах лёгкий scale аналогичен корзине */
+.product-enter-from .max-w-md,
+.product-leave-to .max-w-md {
+  transform: translateY(100%);
+}
+@media (min-width: 640px) {
+  .product-enter-from .max-w-md,
+  .product-leave-to .max-w-md {
+    transform: scale(0.95);
+  }
+}
+</style>

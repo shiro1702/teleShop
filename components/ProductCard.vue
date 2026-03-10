@@ -1,6 +1,7 @@
 <template>
   <article
-    class="flex h-full w-full flex-col rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden transition hover:shadow-md"
+    class="flex h-full w-full cursor-pointer flex-col rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md"
+    @click="emit('open', product)"
   >
     <div class="aspect-square w-full shrink-0 overflow-hidden bg-gray-100">
       <img
@@ -32,7 +33,7 @@
           v-if="quantity === 0"
           type="button"
           class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
-          @click="cartStore.addItem(product)"
+          @click.stop="cartStore.addItem(product)"
         >
           В корзину
         </button>
@@ -46,7 +47,7 @@
             type="button"
             class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-gray-700 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-50"
             aria-label="Убавить"
-            @click="cartStore.updateQuantity(product.id, quantity - 1)"
+            @click.stop="cartStore.updateQuantity(product.id, quantity - 1)"
           >
             −
           </button>
@@ -57,7 +58,7 @@
             type="button"
             class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#2563eb] text-white transition hover:bg-[#1d4ed8]"
             aria-label="Добавить"
-            @click="cartStore.addItem(product)"
+            @click.stop="cartStore.addItem(product)"
           >
             +
           </button>
@@ -68,10 +69,14 @@
 </template>
 
 <script setup lang="ts">
-import type { Product } from '~/stores/cart'
+import type { Product } from '~/data/products'
 
 const props = defineProps<{
   product: Product
+}>()
+
+const emit = defineEmits<{
+  (e: 'open', product: Product): void
 }>()
 
 const cartStore = useCartStore()
