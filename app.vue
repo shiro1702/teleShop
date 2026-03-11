@@ -1,5 +1,12 @@
 <template>
-  <div>
+  <div
+    :class="[{ 'tg-miniapp-root': isTelegram }, 'app-root']"
+    :style="isTelegram ? {
+      minHeight: 'var(--tg-viewport-height)',
+      backgroundColor: 'var(--tg-theme-bg-color)',
+      color: 'var(--tg-theme-text-color)'
+    } : {}"
+  >
     <header
       v-if="!isTelegram"
       class="border-b border-gray-200 bg-white"
@@ -39,3 +46,14 @@ if (import.meta.client) {
   refreshMe()
 }
 </script>
+
+<style>
+.tg-miniapp-root {
+  background-color: var(--tg-theme-bg-color);
+  color: var(--tg-theme-text-color);
+}
+
+.tg-miniapp-root a {
+  color: var(--tg-theme-link-color, var(--tg-theme-button-color));
+}
+</style>

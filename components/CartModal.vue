@@ -70,7 +70,12 @@
         />
         <!-- Боттомшит (моб) / модалка (десктоп) -->
         <div
-          class="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-t-2xl bg-gray-50 shadow-xl pb-[env(safe-area-inset-bottom)] sm:max-h-[90vh] sm:rounded-2xl sm:pb-0"
+          class="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-t-2xl bg-gray-50 shadow-xl sm:max-h-[90vh] sm:rounded-2xl sm:pb-0"
+          :style="isTelegram ? {
+            paddingBottom: 'env(safe-area-inset-bottom)',
+            backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--tg-theme-bg-color))',
+            color: 'var(--tg-theme-text-color)'
+          } : {}"
           @click.stop
         >
           <!-- Ручка боттомшита только на мобильных -->
@@ -117,7 +122,13 @@
           <!-- Итого, очистить и оформить заказ закреплено снизу -->
           <div
             v-if="cartStore.items.length > 0"
-            class="shrink-0 space-y-3 border-t border-gray-200 bg-white p-4 sm:px-6 sm:py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4"
+            class="shrink-0 space-y-3 border-t border-gray-200 bg-white p-4 sm:px-6 sm:py-4 sm:pb-4"
+            :style="isTelegram ? {
+              paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
+              backgroundColor: 'var(--tg-theme-bg-color)',
+              color: 'var(--tg-theme-text-color)',
+              borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))'
+            } : {}"
           >
             <div class="flex justify-end">
               <button
