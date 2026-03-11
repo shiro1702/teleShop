@@ -30,7 +30,7 @@
     </header>
 
     <NuxtPage />
-    <CartModal v-if="!isTelegram" />
+    <CartModal />
   </div>
 </template>
 

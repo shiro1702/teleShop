@@ -1,5 +1,3 @@
-import type { CartItem } from '~/stores/cart'
-
 function formatPrice(value: number): string {
   return new Intl.NumberFormat('ru-RU', {
     style: 'currency',
@@ -17,8 +15,32 @@ export default defineNuxtPlugin(() => {
 
   webApp.value.ready()
 
-  // На текущем этапе мини‑приложение работает только как витрина:
-  // оформление заказа происходит через веб‑интерфейс, поэтому
-  // прячем MainButton и не вешаем на него обработчики.
-  hideMainButton()
+  let mainButtonClickHandler: (() => void) | null = null
+
+  function updateMainButton() {
+    const hasItems = cartStore.items.length > 0
+
+    if (hasItems) {
+      const text = `Корзина: ${cartStore.count} шт. на ${formatPrice(cartStore.total)}`
+      showMainButton(text)
+
+      if (!mainButtonClickHandler) {
+        mainButtonClickHandler = () => {
+          cartStore.openCartModal()
+        }
+        onMainButtonClick(mainButtonClickHandler)
+      }
+    } else {
+      hideMainButton()
+      if (mainButtonClickHandler) {
+        offMainButtonClick(mainButtonClickHandler)
+        mainButtonClickHandler = null
+      }
+    }
+  }
+
+  updateMainButton()
+  cartStore.$subscribe(() => {
+    updateMainButton()
+  })
 })
