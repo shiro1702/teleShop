@@ -49,20 +49,27 @@ export default defineEventHandler(async (event) => {
   const sessionSecret = (config as any).sessionSecret as string | undefined
 
   if (!botToken || !sessionSecret) {
+    console.error('[Auth][WEB] /api/auth/telegram: missing botToken or sessionSecret')
     throw createError({ statusCode: 500, message: 'Server config: bot token or session secret missing' })
   }
 
   const body = await readBody<TelegramLoginPayload | null>(event)
   if (!body || !body.id || !body.auth_date || !body.hash) {
+    console.warn('[Auth][WEB] /api/auth/telegram: invalid payload shape', body)
     throw createError({ statusCode: 400, message: 'Invalid Telegram login payload' })
   }
 
   const user = validateTelegramLogin(body, botToken)
   if (!user) {
+    console.warn('[Auth][WEB] /api/auth/telegram: hash/auth_date validation failed for id', body.id)
     throw createError({ statusCode: 401, message: 'Invalid Telegram login data' })
   }
 
   const token = createSessionToken(user, sessionSecret)
+  console.log('[Auth][WEB] /api/auth/telegram: session created for user', {
+    id: user.id,
+    username: user.username,
+  })
 
   setCookie(event, SESSION_COOKIE_NAME, token, {
     httpOnly: true,

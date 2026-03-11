@@ -1,5 +1,5 @@
 <template>
-  <div v-if="botName" ref="container" class="inline-flex items-center justify-center"></div>
+  <div ref="container" class="inline-flex items-center justify-center"></div>
 </template>
 
 <script setup lang="ts">
@@ -11,15 +11,28 @@ const emit = defineEmits<{
   (e: 'logged-in', user: any): void
 }>()
 
-onMounted(() => {
-  if (!botName.value || !container.value) return
+onMounted(async () => {
+  console.log('[Auth][WEB] TelegramLoginButton mounted, botName =', botName.value)
+  await nextTick()
+
+  if (!botName.value) {
+    console.warn('[Auth][WEB] TelegramLoginButton: botName is missing, widget will not render')
+    return
+  }
+
+  if (!container.value) {
+    console.warn('[Auth][WEB] TelegramLoginButton: container ref is missing after mount, widget will not render')
+    return
+  }
 
   ;(window as any).onTelegramAuth = async (user: any) => {
+    console.log('[Auth][WEB] onTelegramAuth called with user:', user)
     try {
       await $fetch('/api/auth/telegram', {
         method: 'POST',
         body: user,
       })
+      console.log('[Auth][WEB] /api/auth/telegram succeeded')
       emit('logged-in', user)
     } catch (e) {
       console.error('Telegram auth failed', e)
@@ -39,4 +52,3 @@ onMounted(() => {
   container.value.appendChild(script)
 })
 </script>
-

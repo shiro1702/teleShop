@@ -19,10 +19,12 @@
           <span v-if="webUser" class="hidden text-xs text-gray-600 sm:inline">
             Вошли как @{{ webUser.username || webUser.id }}
           </span>
-          <TelegramLoginButton
-            v-if="!webUser"
-            @logged-in="refreshMe"
-          />
+          <ClientOnly>
+            <TelegramLoginButton
+              v-if="!webUser"
+              @logged-in="refreshMe"
+            />
+          </ClientOnly>
         </div>
       </div>
     </header>
@@ -38,11 +40,15 @@ const { isTelegram } = useTelegram()
 const webUser = ref<{ id: number; username?: string } | null>(null)
 
 async function refreshMe() {
+  console.log('[Auth][WEB] refreshMe() called')
   const res = await $fetch<{ user: any | null }>('/api/auth/me')
   webUser.value = res.user
+  console.log('[Auth][WEB] /api/auth/me result:', res)
 }
 
 if (import.meta.client) {
+  console.log('[Env][WEB] import.meta.client = true')
+  console.log('[Env][WEB] isTelegram =', isTelegram.value)
   refreshMe()
 }
 </script>
