@@ -134,13 +134,8 @@
     </main>
     <!-- Нижняя панель корзины на мобильных -->
     <div
-      class="fixed inset-x-0 bottom-0 z-40 border-t bg-white px-4 py-2 pb-10 sm:hidden"
-      :style="isTelegram ? {
-        paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))',
-        backgroundColor: 'var(--tg-theme-bg-color)',
-        color: 'var(--tg-theme-text-color)',
-        borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))'
-      } : {}"
+      class="fixed inset-x-0 bottom-0 z-40 border-t bg-white px-4 py-2 sm:hidden"
+      :class="isTelegram ? 'pb-20': ''"
     >
       <button
         type="button"
