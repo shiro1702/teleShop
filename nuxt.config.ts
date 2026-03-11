@@ -12,6 +12,7 @@ export default defineNuxtConfig({
     appUrl: process.env.NUXT_APP_URL ?? '',
     sessionSecret: process.env.NUXT_SESSION_SECRET ?? '',
     yandexMapsApiKey: process.env.YANDEX_MAPS_API_KEY ?? '',
+    yandexGeocoderApiKey: process.env.YANDEX_GEOCODER_API_KEY ?? '',
     public: {
       yandexMapsApiKey: process.env.YANDEX_MAPS_API_KEY ?? '',
       telegramBotName: process.env.NUXT_TELEGRAM_BOT_NAME ?? '',

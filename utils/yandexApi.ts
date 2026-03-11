@@ -14,7 +14,10 @@ interface YandexGeocodeResult {
 
 export async function yandexSuggest(query: string): Promise<YandexSuggestItem[]> {
   const config = useRuntimeConfig()
-  const apiKey = config.public?.yandexMapsApiKey || config.yandexMapsApiKey
+  const apiKey =
+    config.yandexGeocoderApiKey ||
+    config.yandexMapsApiKey ||
+    config.public?.yandexMapsApiKey
 
   if (!apiKey || !query.trim()) return []
 
@@ -41,7 +44,10 @@ export async function yandexSuggest(query: string): Promise<YandexSuggestItem[]>
 
 export async function yandexGeocode(query: string): Promise<YandexGeocodeResult | null> {
   const config = useRuntimeConfig()
-  const apiKey = config.public?.yandexMapsApiKey || config.yandexMapsApiKey
+  const apiKey =
+    config.yandexGeocoderApiKey ||
+    config.yandexMapsApiKey ||
+    config.public?.yandexMapsApiKey
 
   if (!apiKey || !query.trim()) return null
 

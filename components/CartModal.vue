@@ -211,6 +211,29 @@
             </button>
           </div>
           <div class="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+            <div v-if="savedAddresses.length" class="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+              <p class="text-xs font-medium text-gray-500">
+                Ранее использованные адреса
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="addr in savedAddresses"
+                  :key="addr.id"
+                  type="button"
+                  class="group flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:border-[#2563eb] hover:bg-blue-50"
+                  @click="applySavedAddress(addr)"
+                >
+                  <span class="truncate max-w-[160px]">{{ addr.address }}</span>
+                  <div
+                    class="ml-1 text-gray-400 hover:text-red-500"
+                    @click.stop="deleteSavedAddress(addr.id)"
+                    aria-label="Удалить адрес"
+                  >
+                    ×
+                  </div>
+                </button>
+              </div>
+            </div>
             <section class="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
               <div class="space-y-2">
                 <div class="relative">
@@ -222,6 +245,30 @@
                     placeholder="Улан-Удэ, улица, дом"
                     @input="onAddressInput"
                   />
+                  <div
+                    v-if="isSuggestLoading"
+                    class="pointer-events-none absolute inset-y-0 right-2 flex items-center"
+                  >
+                    <svg
+                      class="h-4 w-4 animate-spin text-gray-400"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      />
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                      />
+                    </svg>
+                  </div>
                   <div
                     v-if="suggestItems.length"
                     class="absolute inset-x-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg"
@@ -257,29 +304,6 @@
                 <p v-if="deliveryChangeMessage" class="text-xs text-amber-600">
                   {{ deliveryChangeMessage }}
                 </p>
-                <div v-if="savedAddresses.length" class="pt-1">
-                  <p class="mb-1 text-xs font-medium text-gray-500">
-                    Ранее использованные адреса:
-                  </p>
-                  <div class="flex flex-wrap gap-2">
-                    <button
-                      v-for="addr in savedAddresses"
-                      :key="addr.id"
-                      type="button"
-                      class="group flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:border-[#2563eb] hover:bg-blue-50"
-                      @click="applySavedAddress(addr)"
-                    >
-                      <span class="truncate max-w-[140px]">{{ addr.address }}</span>
-                      <div
-                        class="ml-1 text-gray-400 hover:text-red-500"
-                        @click.stop="deleteSavedAddress(addr.id)"
-                        aria-label="Удалить адрес"
-                      >
-                        ×
-                      </div>
-                    </button>
-                  </div>
-                </div>
               </div>
             </section>
           </div>
@@ -320,6 +344,7 @@ const comment = ref('')
 const addressInputRef = ref<HTMLInputElement | null>(null)
 const suggestItems = ref<Array<{ displayName: string; value: string }>>([])
 const savedAddresses = ref<SavedAddress[]>([])
+const isSuggestLoading = ref(false)
 
 const { properties: deliveryZoneProps, reason, refresh: refreshZone } = useDeliveryZone()
 const { isTelegram, webApp } = useTelegram()
@@ -340,7 +365,10 @@ function onAddressInput() {
   }
 
   suggestItems.value = []
-  if (query.length < 3) return
+  if (query.length < 3) {
+    isSuggestLoading.value = false
+    return
+  }
 
   // debounce через замыкание на функции
   const fn = onAddressInput as any
@@ -348,14 +376,25 @@ function onAddressInput() {
     clearTimeout(fn._timer)
   }
   fn._timer = setTimeout(async () => {
-    const items = await yandexSuggest(query)
-    suggestItems.value = items
+    isSuggestLoading.value = true
+    try {
+      const currentQuery = addressQuery.value.trim()
+      if (currentQuery.length < 3) {
+        suggestItems.value = []
+        return
+      }
+      const items = await yandexSuggest(currentQuery)
+      suggestItems.value = items
+    } finally {
+      isSuggestLoading.value = false
+    }
   }, 400)
 }
 
 async function selectSuggestion(item: { displayName: string; value: string }) {
   addressQuery.value = item.displayName
   suggestItems.value = []
+  isSuggestLoading.value = false
 
   const geo = await yandexGeocode(item.displayName)
   if (!geo) return
@@ -480,6 +519,23 @@ function closeAddressModal() {
 }
 
 async function confirmAddressAndCheckout() {
+  const hasHouseNumber = /\d/.test(addressQuery.value.trim())
+  if (!hasHouseNumber) {
+    nextTick(() => {
+      const el = addressInputRef.value
+      if (el) {
+        el.focus()
+        const len = el.value.length
+        try {
+          el.setSelectionRange(len, len)
+        } catch {
+          // ignore
+        }
+      }
+    })
+    return
+  }
+
   const before = lastKnownDeliveryCost.value
   const after = cartStore.deliveryCost
   if (after !== before) {
