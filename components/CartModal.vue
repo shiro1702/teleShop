@@ -496,22 +496,29 @@ async function handleCheckout() {
   if (!cartStore.items.length) return
 
   try {
+    const body: any = {
+      items: cartStore.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+      })),
+      address: {
+        line: addressQuery.value || null,
+        flat: flat.value || null,
+        comment: comment.value || null,
+        zone: deliveryZoneProps.value ?? null,
+      },
+    }
+
+    // В Telegram Mini App передаём initData, чтобы бэкенд не требовал web-сессию
+    if (isTelegram.value && webApp.value?.initData) {
+      body.initData = webApp.value.initData
+    }
+
     const res = await $fetch<{ ok: boolean; orderId?: string }>('/api/order', {
       method: 'POST',
-      body: {
-        items: cartStore.items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-        })),
-        address: {
-          line: addressQuery.value || null,
-          flat: flat.value || null,
-          comment: comment.value || null,
-          zone: deliveryZoneProps.value ?? null,
-        },
-      },
+      body,
     })
 
     if (res?.ok) {
@@ -525,7 +532,9 @@ async function handleCheckout() {
     }
   } catch (error: unknown) {
     const err = error as { statusCode?: number }
-    if (process.client && err?.statusCode === 401) {
+
+    if (process.client && err?.statusCode === 401 && !isTelegram.value) {
+      // Требуем веб-авторизацию только для классического сайта
       window.alert('Чтобы оформить заказ на сайте, сначала войдите через Telegram.')
     } else if (process.client) {
       window.alert('Ошибка при отправке заказа. Проверьте соединение.')
