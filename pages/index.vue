@@ -17,7 +17,15 @@
     >
       <div class="mx-auto max-w-6xl px-4 py-3 sm:py-4 sm:px-6">
         <div class="flex items-center justify-between gap-2">
-          <div class="flex min-w-0 flex-1 items-center gap-2 md:flex-initial">
+          <div class="flex min-w-0 flex-1 items-center justify-center gap-2 md:flex-initial">
+            <NuxtLink to="/" class="flex shrink-0 items-center gap-2 gap-3 sm:gap-3">
+              <img
+                src="/image_112x112.png"
+                alt="Логотип"
+                class="h-9 w-9 rounded-full object-cover sm:h-10 sm:w-10"
+              />
+              <h1 class="truncate text-lg font-bold text-gray-900 sm:text-xl">Меню</h1>
+            </NuxtLink>
             <!-- Бургер только на мобильных -->
             <button
               type="button"
@@ -30,14 +38,6 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <NuxtLink to="/" class="flex shrink-0 items-center gap-2 gap-3 sm:gap-3">
-              <img
-                src="/image_112x112.png"
-                alt="Логотип"
-                class="h-9 w-9 rounded-full object-cover sm:h-10 sm:w-10"
-              />
-              <h1 class="truncate text-lg font-bold text-gray-900 sm:text-xl">Меню</h1>
-            </NuxtLink>
           </div>
           <nav class="hidden flex-wrap items-center justify-center gap-1 md:flex md:gap-2">
             <a
@@ -134,7 +134,7 @@
     </main>
     <!-- Нижняя панель корзины на мобильных -->
     <div
-      class="fixed inset-x-0 bottom-0 z-40 border-t bg-white px-4 py-2 sm:hidden"
+      class="fixed inset-x-0 bottom-0 z-40 border-t bg-white px-4 py-2 pb-10 sm:hidden"
       :style="isTelegram ? {
         paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))',
         backgroundColor: 'var(--tg-theme-bg-color)',

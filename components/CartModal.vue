@@ -270,14 +270,13 @@
                       @click="applySavedAddress(addr)"
                     >
                       <span class="truncate max-w-[140px]">{{ addr.address }}</span>
-                      <button
-                        type="button"
+                      <div
                         class="ml-1 text-gray-400 hover:text-red-500"
                         @click.stop="deleteSavedAddress(addr.id)"
                         aria-label="Удалить адрес"
                       >
                         ×
-                      </button>
+                      </div>
                     </button>
                   </div>
                 </div>
