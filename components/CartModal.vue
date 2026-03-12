@@ -160,6 +160,14 @@
               </div>
               <div class="mt-1">
                 <button
+                  v-if="isTelegram"
+                  type="button"
+                  class="mb-2 w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+                  @click="openAddressModal"
+                >
+                  Оформить заказ
+                </button>
+                <button
                   v-if="!isTelegram"
                   type="button"
                   class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
