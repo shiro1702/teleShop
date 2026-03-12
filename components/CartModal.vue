@@ -82,13 +82,26 @@
           <div class="flex shrink-0 justify-center pt-2 sm:hidden">
             <span class="h-1 w-12 rounded-full bg-gray-300" aria-hidden="true" />
           </div>
-          <div class="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
-            <h2 id="cart-title" class="text-lg font-bold text-gray-900 sm:text-xl">
+          <div
+            class="flex shrink-0 items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4"
+            :class="isTelegram ? '' : 'border-gray-200 bg-white'"
+            :style="isTelegram ? {
+              backgroundColor: 'var(--tg-theme-header-bg-color, var(--tg-theme-bg-color))',
+              color: 'var(--tg-theme-text-color)',
+              borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))'
+            } : {}"
+          >
+            <h2
+              id="cart-title"
+              class="text-lg font-bold sm:text-xl"
+              :class="isTelegram ? '' : 'text-gray-900'"
+            >
               Корзина
             </h2>
             <button
               type="button"
-              class="-mr-2 rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+              class="-mr-2 rounded-lg p-2 transition"
+              :class="isTelegram ? 'text-[var(--tg-theme-hint-color,#999)] hover:bg-[var(--tg-theme-secondary-bg-color)] hover:text-[var(--tg-theme-text-color)]' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'"
               aria-label="Закрыть"
               @click="cartStore.closeCartModal()"
             >
