@@ -17,18 +17,54 @@ async function telegram(
   return res.json()
 }
 
-function parseCallbackData(data: string): { status: string; userId: string; orderId: string } | null {
+type CallbackKind = 'status' | 'delay'
+
+function parseCallbackData(
+  data: string,
+): { kind: CallbackKind; status: 'work' | 'courier' | 'done'; userId: string; orderId: string } | null {
   const parts = data.split('_')
   if (parts.length !== 3) return null
-  const [status, userId, orderId] = parts
-  if (!status || !userId || !orderId) return null
-  return { status, userId, orderId }
+  const [rawStatus, userId, orderId] = parts
+  if (!rawStatus || !userId || !orderId) return null
+
+  // Обычные статусы
+  if (rawStatus === 'work' || rawStatus === 'courier' || rawStatus === 'done') {
+    return { kind: 'status', status: rawStatus, userId, orderId }
+  }
+
+  // Отдельные callback'и для задержек:
+  // delayWork_userId_orderId → задержка на этапе "work"
+  // delayCourier_userId_orderId → задержка на этапе "courier"
+  if (rawStatus === 'delayWork') {
+    return { kind: 'delay', status: 'work', userId, orderId }
+  }
+  if (rawStatus === 'delayCourier') {
+    return { kind: 'delay', status: 'courier', userId, orderId }
+  }
+
+  return null
 }
 
-const CLIENT_MESSAGES: Record<string, (orderId: string) => string> = {
-  work: (orderId) => `Ваш заказ #${orderId} принят в работу.`,
-  courier: (orderId) => `Заказ #${orderId} передан курьеру.`,
-  done: (orderId) => `Заказ #${orderId} доставлен. Спасибо!`,
+const CLIENT_MESSAGES: Record<'work' | 'courier' | 'done', (orderId: string) => string> = {
+  work: (orderId) =>
+    `👨‍🍳 Ваш заказ #${orderId} принят в работу и сейчас готовится. Мы сообщим, когда он будет передан курьеру.`,
+  courier: (orderId) =>
+    `🚚 Ваш заказ #${orderId} передан курьеру и уже в пути к вам. Ожидайте, пожалуйста.`,
+  done: (orderId) =>
+    `✅ Ваш заказ #${orderId} доставлен. Спасибо, что выбрали нас! Приятного аппетита 🥘🍣🍜`,
+}
+
+const CLIENT_DELAY_MESSAGES: Record<Exclude<'work' | 'courier' | 'done', 'done'>, (orderId: string) => string> = {
+  work: (orderId) =>
+    `⏱ Небольшая задержка по заказу #${orderId}: кухня готовит ваше блюдо чуть дольше обычного. Спасибо за ожидание 👨‍🍳👩‍🍳`,
+  courier: (orderId) =>
+    `⏱ Небольшая задержка по доставке заказа #${orderId}: курьер уже в пути, но может приехать чуть позже. Спасибо за терпение 🚚🚛📦`,
+}
+
+function withStatusLine(baseText: string, statusLabel: string): string {
+  const lines = baseText.split('\n')
+  const filtered = lines.filter((line) => !line.trim().startsWith('Статус заказа:'))
+  return `${filtered.join('\n')}\n\n${statusLabel}`
 }
 
 export default defineEventHandler(async (event) => {
@@ -91,17 +127,35 @@ export default defineEventHandler(async (event) => {
   }
 
   const parsed = parseCallbackData(query.data)
-  if (!parsed || !['work', 'courier', 'done'].includes(parsed.status)) {
+  if (!parsed) {
     await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id })
     return { ok: true }
   }
 
-  const { status, userId, orderId } = parsed
+  const { kind, status, userId, orderId } = parsed
   const chatId = query.message.chat.id
   const messageId = query.message.message_id
   const currentText = query.message.text || ''
 
-  // Уведомление клиенту
+  if (kind === 'delay') {
+    const baseStatus: 'work' | 'courier' = status === 'courier' ? 'courier' : 'work'
+    const clientDelayText = CLIENT_DELAY_MESSAGES[baseStatus]?.(orderId)
+    if (clientDelayText) {
+      await telegram(botToken, 'sendMessage', {
+        chat_id: Number(userId),
+        text: clientDelayText,
+      }).catch((err) => console.error('Notify client delay error:', err))
+    }
+
+    await telegram(botToken, 'answerCallbackQuery', {
+      callback_query_id: query.id,
+      text: 'Информация о задержке отправлена клиенту',
+      show_alert: false,
+    })
+    return { ok: true }
+  }
+
+  // kind === 'status'
   const clientText = CLIENT_MESSAGES[status]?.(orderId)
   if (clientText) {
     await telegram(botToken, 'sendMessage', {
@@ -110,26 +164,44 @@ export default defineEventHandler(async (event) => {
     }).catch((err) => console.error('Notify client error:', err))
   }
 
-  // Обновление сообщения у менеджера через editMessageText
+  let updatedText = currentText
   if (status === 'work') {
+    updatedText = withStatusLine(currentText, '🟡 Статус заказа: принят в работу')
     const nextData = `courier_${userId}_${orderId}`
+    const delayData = `delayWork_${userId}_${orderId}`
     await telegram(botToken, 'editMessageText', {
       chat_id: chatId,
       message_id: messageId,
-      text: currentText,
-      reply_markup: { inline_keyboard: [[{ text: 'Передать курьеру', callback_data: nextData }]] },
+      text: updatedText,
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🚚 Передать курьеру', callback_data: nextData },
+            { text: '⏱ Задержка (кухня)', callback_data: delayData },
+          ],
+        ],
+      },
     })
   } else if (status === 'courier') {
+    updatedText = withStatusLine(currentText, '🟠 Статус заказа: передан курьеру')
     const nextData = `done_${userId}_${orderId}`
+    const delayData = `delayCourier_${userId}_${orderId}`
     await telegram(botToken, 'editMessageText', {
       chat_id: chatId,
       message_id: messageId,
-      text: currentText,
-      reply_markup: { inline_keyboard: [[{ text: 'Доставлен', callback_data: nextData }]] },
+      text: updatedText,
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '✅ Доставлен', callback_data: nextData },
+            { text: '⏱ Задержка (доставка)', callback_data: delayData },
+          ],
+        ],
+      },
     })
   } else {
-    // done — кнопки убираем, остаётся текст "Заказ завершен"
-    const finalText = `${currentText}\n\n✅ Заказ завершен`
+    // done — кнопки убираем, добавляем финальный статус
+    const finalText = withStatusLine(currentText, '🟢 Статус заказа: доставлен клиенту ✅')
     await telegram(botToken, 'editMessageText', {
       chat_id: chatId,
       message_id: messageId,

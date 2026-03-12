@@ -1,3 +1,5 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — типы Node могут быть не подключены в проекте
 import crypto from 'node:crypto'
 import { MOCK_PRODUCTS } from '../../data/products'
 import { getTelegramUserFromEvent } from '../utils/getTelegramUserFromEvent'
@@ -64,6 +66,20 @@ function buildOrderMessage(orderId: string, items: CartItemPayload[], total: num
   return lines.join('\n')
 }
 
+function buildClientOrderMessage(orderId: string, items: CartItemPayload[], total: number): string {
+  const lines: string[] = [
+    `🧾 Ваш заказ #${orderId} принят!`,
+    '',
+    'Состав заказа:',
+    ...items.map((item) => `  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`),
+    '',
+    `💰 Итого к оплате: ${formatPrice(total)}`,
+    '',
+    'Мы будем присылать сюда обновления статуса: приготовление, передача курьеру и доставка 🚚🍣🍱',
+  ]
+  return lines.join('\n')
+}
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const botToken = config.botToken as string
@@ -122,6 +138,8 @@ export default defineEventHandler(async (event) => {
   const text = buildOrderMessage(orderId, itemsWithServerPrice, total, user)
 
   const callbackData = `work_${user.id}_${orderId}`
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore — Buffer может быть не типизирован без @types/node
   if (Buffer.byteLength(callbackData, 'utf8') > 64) {
     throw createError({ statusCode: 500, message: 'callback_data too long' })
   }
@@ -130,7 +148,12 @@ export default defineEventHandler(async (event) => {
     chat_id: managerChatId,
     text,
     reply_markup: {
-      inline_keyboard: [[{ text: 'Принять в работу', callback_data: callbackData }]],
+      inline_keyboard: [
+        [
+          { text: '✅ Принять в работу', callback_data: callbackData },
+          { text: '⏱ Задержка (кухня)', callback_data: `delayWork_${user.id}_${orderId}` },
+        ],
+      ],
     },
   }
 
@@ -154,7 +177,7 @@ export default defineEventHandler(async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: user.id,
-        text: `Ваш заказ #${orderId} отправлен менеджеру. Мы скоро свяжемся с вами в Telegram.`,
+        text: buildClientOrderMessage(orderId, itemsWithServerPrice, total),
       }),
     })
   } catch (notifyErr) {
