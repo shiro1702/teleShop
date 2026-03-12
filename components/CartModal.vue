@@ -158,13 +158,16 @@
                   {{ formatPrice(cartStore.grandTotal) }}
                 </span>
               </div>
-              <button
-                type="button"
-                class="mt-1 w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
-                @click="openAddressModal"
-              >
-                Оформить заказ
-              </button>
+              <div class="mt-1">
+                <button
+                  v-if="!isTelegram"
+                  type="button"
+                  class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+                  @click="continueInTelegram"
+                >
+                  Продолжить в Telegram
+                </button>
+              </div>
               <p
                 v-if="!cartStore.canCheckout && cartStore.deliverySummary.minOrderAmount"
                 class="text-xs text-red-600"
@@ -593,6 +596,34 @@ async function handleCheckout() {
       window.alert('Чтобы оформить заказ на сайте, сначала войдите через Telegram.')
     } else if (process.client) {
       window.alert('Ошибка при отправке заказа. Проверьте соединение.')
+    }
+  }
+}
+
+async function continueInTelegram() {
+  if (!cartStore.items.length) return
+
+  try {
+    const res = await $fetch<{ ok: boolean; deepLink: string }>('/api/cart-bridge', {
+      method: 'POST',
+      body: {
+        items: cartStore.items.map((item) => ({
+          id: item.id,
+          quantity: item.quantity,
+        })),
+      },
+    })
+
+    if (res?.ok && res.deepLink) {
+      if (process.client) {
+        window.location.href = res.deepLink
+      }
+    } else if (process.client) {
+      window.alert('Не удалось подготовить корзину для Telegram.')
+    }
+  } catch {
+    if (process.client) {
+      window.alert('Ошибка при подготовке корзины для Telegram. Попробуйте ещё раз.')
     }
   }
 }

@@ -4,6 +4,10 @@ declare global {
       WebApp: {
         ready: () => void
         initData: string
+        initDataUnsafe?: {
+          start_param?: string
+          [key: string]: unknown
+        }
         MainButton: {
           text: string
           show: () => void
