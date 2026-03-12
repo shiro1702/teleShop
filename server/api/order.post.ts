@@ -3,6 +3,7 @@
 import crypto from 'node:crypto'
 import { MOCK_PRODUCTS } from '../../data/products'
 import { getTelegramUserFromEvent } from '../utils/getTelegramUserFromEvent'
+import type { DeliveryZoneProperties } from '../../utils/deliveryZones'
 
 interface CartItemPayload {
   id: string
@@ -51,29 +52,48 @@ function formatPrice(value: number): string {
   }).format(value)
 }
 
-function buildOrderMessage(orderId: string, items: CartItemPayload[], total: number, user: TelegramUser): string {
+function buildOrderMessage(
+  orderId: string,
+  items: CartItemPayload[],
+  total: number,
+  deliveryCost: number,
+  deliveryZone: DeliveryZoneProperties | null,
+  user: TelegramUser,
+): string {
   const username = user.username ? `@${user.username}` : [user.first_name, user.last_name].filter(Boolean).join(' ') || `ID ${user.id}`
+  const grandTotal = total + deliveryCost
   const lines: string[] = [
     `📦 Заказ #${orderId}`,
     '',
     'Состав:',
     ...items.map((item) => `  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`),
     '',
-    `💰 Итого: ${formatPrice(total)}`,
+    `💰 Товары: ${formatPrice(total)}`,
+    `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
+    `💳 Итого с доставкой: ${formatPrice(grandTotal)}`,
     '',
     `👤 Клиент: ${username}`,
   ]
   return lines.join('\n')
 }
 
-function buildClientOrderMessage(orderId: string, items: CartItemPayload[], total: number): string {
+function buildClientOrderMessage(
+  orderId: string,
+  items: CartItemPayload[],
+  total: number,
+  deliveryCost: number,
+  deliveryZone: DeliveryZoneProperties | null,
+): string {
+  const grandTotal = total + deliveryCost
   const lines: string[] = [
     `🧾 Ваш заказ #${orderId} принят!`,
     '',
     'Состав заказа:',
     ...items.map((item) => `  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`),
     '',
-    `💰 Итого к оплате: ${formatPrice(total)}`,
+    `💰 Товары: ${formatPrice(total)}`,
+    `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
+    `💳 Итого к оплате: ${formatPrice(grandTotal)}`,
     '',
     'Мы будем присылать сюда обновления статуса: приготовление, передача курьеру и доставка 🚚🍣🍱',
   ]
@@ -89,7 +109,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, message: 'Server config: bot token or manager chat ID missing' })
   }
 
-  const body = await readBody<{ items: CartItemPayload[]; initData?: string | null } | null>(event)
+  const body = await readBody<{
+    items: CartItemPayload[]
+    initData?: string | null
+    address?: {
+      zone?: DeliveryZoneProperties | null
+    } | null
+  } | null>(event)
   if (!body?.items?.length) {
     throw createError({ statusCode: 400, message: 'Expected { items }' })
   }
@@ -110,6 +136,16 @@ export default defineEventHandler(async (event) => {
   })
 
   const total = itemsWithServerPrice.reduce((sum, item) => sum + item.price * item.quantity, 0)
+
+  const deliveryZone: DeliveryZoneProperties | null = body.address?.zone ?? null
+  let deliveryCost = 0
+  if (!deliveryZone) {
+    deliveryCost = itemsWithServerPrice.length ? 200 : 0
+  } else if (total >= deliveryZone.freeDeliveryThreshold) {
+    deliveryCost = 0
+  } else {
+    deliveryCost = deliveryZone.deliveryCost
+  }
 
   // Определяем пользователя: либо через initData (TMA), либо через сессию (WEB)
   let user: TelegramUser | null = null
@@ -135,7 +171,7 @@ export default defineEventHandler(async (event) => {
   const datePart = now.toISOString().slice(0, 10).replace(/-/g, '')
   const timePart = now.toISOString().slice(11, 19).replace(/:/g, '')
   const orderId = `${datePart}-${timePart}`
-  const text = buildOrderMessage(orderId, itemsWithServerPrice, total, user)
+  const text = buildOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, deliveryZone, user)
 
   const callbackData = `work_${user.id}_${orderId}`
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -177,7 +213,7 @@ export default defineEventHandler(async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: user.id,
-        text: buildClientOrderMessage(orderId, itemsWithServerPrice, total),
+        text: buildClientOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, deliveryZone),
       }),
     })
   } catch (notifyErr) {
