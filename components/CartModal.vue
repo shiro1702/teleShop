@@ -14,12 +14,17 @@
           @click="closeSuccessModal"
         />
         <div
-          class="relative flex w-full max-w-sm flex-col items-center rounded-2xl bg-white p-8 shadow-xl"
+          class="relative flex w-full max-w-sm flex-col items-center rounded-2xl p-8 shadow-xl"
+          :class="isTelegram ? 'tg-card' : 'bg-white'"
           @click.stop
         >
-          <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+          <div
+            class="mb-4 flex h-16 w-16 items-center justify-center rounded-full"
+            :class="isTelegram ? 'tg-button' : 'bg-emerald-100'"
+          >
             <svg
-              class="h-9 w-9 text-emerald-600"
+              class="h-9 w-9"
+              :class="isTelegram ? 'tg-button-text' : 'text-emerald-600'"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -33,13 +38,26 @@
               />
             </svg>
           </div>
-          <h2 id="order-success-title" class="text-xl font-bold text-gray-900">
+          <h2
+            id="order-success-title"
+            class="text-xl font-bold"
+            :class="isTelegram ? 'tg-text' : 'text-gray-900'"
+          >
             Заказ оформлен!
           </h2>
-          <p v-if="lastOrderId" class="mt-2 text-gray-500">
-            Номер заказа: <span class="font-semibold text-gray-700">#{{ lastOrderId }}</span>
+          <p v-if="lastOrderId" class="mt-2" :class="isTelegram ? 'tg-text-muted' : 'text-gray-500'">
+            Номер заказа:
+            <span
+              class="font-semibold"
+              :class="isTelegram ? 'tg-text' : 'text-gray-700'"
+            >
+              #{{ lastOrderId }}
+            </span>
           </p>
-          <p class="mt-1 text-sm text-gray-500">
+          <p
+            class="mt-1 text-sm"
+            :class="isTelegram ? 'text-[var(--tg-theme-hint-color,#999)]' : 'text-gray-500'"
+          >
             Менеджер свяжется с вами в Telegram.
           </p>
           <button
@@ -135,7 +153,8 @@
           <!-- Итого, очистить и оформить заказ закреплено снизу -->
           <div
             v-if="cartStore.items.length > 0"
-            class="shrink-0 space-y-3 border-t border-gray-200 bg-white p-4 sm:px-6 sm:py-4 sm:pb-4"
+            class="shrink-0 space-y-3 border-t p-4 sm:px-6 sm:py-4 sm:pb-4"
+            :class="isTelegram ? '' : 'border-gray-200 bg-white'"
             :style="isTelegram ? {
               paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
               backgroundColor: 'var(--tg-theme-bg-color)',
@@ -152,22 +171,45 @@
                 Очистить корзину
               </button>
             </div>
-            <div class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div
+              class="space-y-3 rounded-lg border p-4"
+              :class="isTelegram ? '' : 'border-gray-200 bg-gray-50'"
+              :style="isTelegram ? {
+                borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))',
+                backgroundColor: 'var(--tg-theme-secondary-bg-color, rgba(0,0,0,0.02))'
+              } : {}"
+            >
               <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600">Товары</span>
-                <span class="font-semibold text-gray-900">
+                <span :class="isTelegram ? 'text-[var(--tg-theme-hint-color,#999)]' : 'text-gray-600'">Товары</span>
+                <span
+                  class="font-semibold"
+                  :class="isTelegram ? '' : 'text-gray-900'"
+                >
                   {{ formatPrice(cartStore.total) }}
                 </span>
               </div>
               <div class="flex items-center justify-between text-sm">
-                <span class="text-gray-600">Доставка</span>
-                <span class="font-semibold" :class="cartStore.deliveryCost === 0 ? 'text-emerald-600' : 'text-gray-900'">
+                <span :class="isTelegram ? 'text-[var(--tg-theme-hint-color,#999)]' : 'text-gray-600'">Доставка</span>
+                <span
+                  class="font-semibold"
+                  :class="cartStore.deliveryCost === 0
+                    ? (isTelegram ? 'text-[var(--tg-theme-button-color)]' : 'text-emerald-600')
+                    : (isTelegram ? '' : 'text-gray-900')"
+                >
                   {{ cartStore.deliveryCost === 0 ? '0 ₽' : formatPrice(cartStore.deliveryCost) }}
                 </span>
               </div>
               <div class="flex items-center justify-between border-t border-dashed border-gray-200 pt-2">
-                <span class="font-semibold text-gray-900">Итого:</span>
-                <span class="text-xl font-bold text-[#2563eb]">
+                <span
+                  class="font-semibold"
+                  :class="isTelegram ? '' : 'text-gray-900'"
+                >
+                  Итого:
+                </span>
+                <span
+                  class="text-xl font-bold"
+                  :style="isTelegram ? { color: 'var(--tg-theme-button-color)' } : { color: '#2563eb' }"
+                >
                   {{ formatPrice(cartStore.grandTotal) }}
                 </span>
               </div>

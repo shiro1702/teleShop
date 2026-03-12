@@ -37,6 +37,22 @@ export function useTelegram() {
     webApp.value.MainButton.offClick(handler)
   }
 
+  function cardClass(baseWeb: string): string {
+    return isTelegram.value ? 'tg-card' : baseWeb
+  }
+
+  function buttonClass(baseWeb: string): string {
+    return isTelegram.value ? 'tg-button tg-button-text' : baseWeb
+  }
+
+  function textClass(baseWeb: string): string {
+    return isTelegram.value ? 'tg-text' : baseWeb
+  }
+
+  function mutedTextClass(baseWeb: string): string {
+    return isTelegram.value ? 'tg-text-muted' : baseWeb
+  }
+
   return {
     isTelegram,
     webApp,
@@ -44,6 +60,10 @@ export function useTelegram() {
     hideMainButton,
     onMainButtonClick,
     offMainButtonClick,
+    cardClass,
+    buttonClass,
+    textClass,
+    mutedTextClass,
   }
 }
 

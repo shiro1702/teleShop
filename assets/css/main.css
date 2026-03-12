@@ -1,0 +1,44 @@
+.tg-miniapp-root {
+  background-color: var(--tg-theme-bg-color);
+  color: var(--tg-theme-text-color);
+}
+
+.tg-miniapp-root .tg-bg {
+  background-color: var(--tg-theme-bg-color);
+  color: var(--tg-theme-text-color);
+}
+
+.tg-miniapp-root .tg-card {
+  background-color: var(--tg-theme-bg-color);
+  border-color: var(--tg-theme-section-separator-color, rgba(0, 0, 0, 0.08));
+  color: var(--tg-theme-text-color);
+}
+
+.tg-miniapp-root .tg-secondary {
+  background-color: var(--tg-theme-secondary-bg-color, rgba(0, 0, 0, 0.03));
+}
+
+.tg-miniapp-root .tg-border {
+  border-color: var(--tg-theme-section-separator-color, rgba(0, 0, 0, 0.08));
+}
+
+.tg-miniapp-root .tg-text {
+  color: var(--tg-theme-text-color);
+}
+
+.tg-miniapp-root .tg-text-muted {
+  color: var(--tg-theme-hint-color, #999999);
+}
+
+.tg-miniapp-root .tg-button {
+  background-color: var(--tg-theme-button-color);
+}
+
+.tg-miniapp-root .tg-button-text {
+  color: var(--tg-theme-button-text-color);
+}
+
+.tg-miniapp-root .tg-destructive-text {
+  color: var(--tg-theme-destructive-text-color, #e53935);
+}
+

@@ -15,7 +15,13 @@
         borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))'
       } : {}"
     >
-      <div class="mx-auto max-w-6xl px-4 py-3 sm:py-4 sm:px-6">
+      <div class="mx-auto max-w-6xl px-4 py-3 sm:py-4 sm:px-6"
+        :style="isTelegram ? {
+          backgroundColor: 'var(--tg-theme-header-bg-color, var(--tg-theme-bg-color))',
+          color: 'var(--tg-theme-text-color)',
+          borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))'
+        } : {}"
+      >
         <div class="flex items-center justify-between gap-2">
           <div class="flex min-w-0 flex-1 items-center justify-center gap-2 md:flex-initial">
             <NuxtLink to="/" class="flex shrink-0 items-center gap-2 gap-3 sm:gap-3">

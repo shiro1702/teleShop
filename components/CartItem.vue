@@ -1,18 +1,12 @@
 <template>
   <li
     class="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:gap-4"
-    :class="isTelegram ? '' : 'border-gray-200 bg-white'"
-    :style="isTelegram ? {
-      backgroundColor: 'var(--tg-theme-bg-color)',
-      borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))',
-      color: 'var(--tg-theme-text-color)'
-    } : {}"
+    :class="isTelegram ? 'tg-card' : 'border-gray-200 bg-white text-gray-900'"
   >
     <div class="flex gap-3 sm:flex-1 sm:min-w-0">
       <div
         class="h-16 w-16 shrink-0 overflow-hidden rounded-lg"
-        :class="isTelegram ? '' : 'bg-gray-100'"
-        :style="isTelegram ? { backgroundColor: 'var(--tg-theme-secondary-bg-color, #111)' } : {}"
+        :class="isTelegram ? 'tg-secondary' : 'bg-gray-100'"
       >
         <img
           :src="item.image"
@@ -24,13 +18,13 @@
       <div class="min-w-0 flex-1">
         <h3
           class="font-medium truncate"
-          :class="isTelegram ? '' : 'text-gray-900'"
+          :class="isTelegram ? 'tg-text' : 'text-gray-900'"
         >
           {{ item.name }}
         </h3>
         <p
           class="text-sm"
-          :style="isTelegram ? { color: 'var(--tg-theme-button-color)' } : { color: '#2563eb' }"
+          :class="isTelegram ? 'tg-button-text' : 'text-[#2563eb]'"
         >
           {{ formatPrice(item.price) }} за шт.
         </p>
@@ -39,22 +33,17 @@
     <!-- Панель: количество и кнопки +/- -->
     <div
       class="flex items-center justify-between gap-4 border-t pt-3 sm:border-0 sm:pt-0"
-      :class="isTelegram ? '' : 'border-gray-100'"
-      :style="isTelegram ? { borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))' } : {}"
+      :class="isTelegram ? 'tg-border' : 'border-gray-100'"
     >
       <div class="flex items-center gap-2">
         <div
           class="flex items-center rounded-lg border"
-          :class="isTelegram ? '' : 'border-gray-200 bg-gray-50'"
-          :style="isTelegram ? {
-            borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))',
-            backgroundColor: 'var(--tg-theme-secondary-bg-color, rgba(0,0,0,0.02))'
-          } : {}"
+          :class="isTelegram ? 'tg-border tg-secondary' : 'border-gray-200 bg-gray-50'"
         >
           <button
             type="button"
             class="flex h-9 w-9 shrink-0 items-center justify-center rounded-l-lg transition disabled:opacity-40"
-            :class="isTelegram ? 'text-[var(--tg-theme-hint-color,#999)] hover:bg-[var(--tg-theme-secondary-bg-color)]' : 'text-gray-600 hover:bg-gray-200'"
+            :class="isTelegram ? 'tg-text-muted hover:tg-secondary' : 'text-gray-600 hover:bg-gray-200'"
             aria-label="Уменьшить"
             :disabled="item.quantity <= 1"
             @click="cartStore.updateQuantity(item.id, item.quantity - 1)"
@@ -62,8 +51,8 @@
             −
           </button>
           <span
-            class="min-w-[2.5rem] text-center text-sm font-medium text-gray-900"
-            :class="isTelegram ? '' : 'text-gray-900'"
+            class="min-w-[2.5rem] text-center text-sm font-medium"
+            :class="isTelegram ? 'tg-text' : 'text-gray-900'"
             aria-live="polite"
           >
             {{ item.quantity }}
@@ -71,9 +60,7 @@
           <button
             type="button"
             class="flex h-9 w-9 shrink-0 items-center justify-center rounded-r-lg text-white transition"
-            :style="isTelegram
-              ? { backgroundColor: 'var(--tg-theme-button-color)', color: 'var(--tg-theme-button-text-color)' }
-              : { backgroundColor: '#2563eb' }"
+            :class="isTelegram ? 'tg-button tg-button-text' : 'bg-[#2563eb]'"
             aria-label="Увеличить"
             @click="cartStore.addItem(item, 1)"
           >
@@ -84,14 +71,14 @@
       <div class="flex items-center gap-3">
         <p
           class="font-semibold"
-          :class="isTelegram ? '' : 'text-gray-900'"
+          :class="isTelegram ? 'tg-text' : 'text-gray-900'"
         >
           {{ formatPrice(item.price * item.quantity) }}
         </p>
         <button
           type="button"
           class="rounded-lg px-2 py-1.5 text-sm transition"
-          :class="isTelegram ? 'text-[var(--tg-theme-destructive-text-color, #e53935)] hover:bg-[var(--tg-theme-secondary-bg-color)]' : 'text-red-600 hover:bg-red-50 hover:text-red-700'"
+          :class="isTelegram ? 'tg-destructive-text hover:tg-secondary' : 'text-red-600 hover:bg-red-50 hover:text-red-700'"
           @click="cartStore.removeItem(item.id)"
         >
           Удалить
