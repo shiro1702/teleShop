@@ -323,7 +323,7 @@
 </template>
 
 <script setup lang="ts">
-import { yandexGeocode, yandexSuggest } from '~/utils/yandexApi'
+import { dadataSuggest, type DadataSuggestItem } from '~/utils/dadataApi'
 import { useDeliveryZone } from '~/composables/useDeliveryZone'
 import { useTelegram } from '~/composables/useTelegram'
 
@@ -342,7 +342,7 @@ const addressQuery = ref('')
 const flat = ref('')
 const comment = ref('')
 const addressInputRef = ref<HTMLInputElement | null>(null)
-const suggestItems = ref<Array<{ displayName: string; value: string }>>([])
+const suggestItems = ref<DadataSuggestItem[]>([])
 const savedAddresses = ref<SavedAddress[]>([])
 const isSuggestLoading = ref(false)
 
@@ -383,7 +383,7 @@ function onAddressInput() {
         suggestItems.value = []
         return
       }
-      const items = await yandexSuggest(currentQuery)
+      const items = await dadataSuggest(currentQuery)
       suggestItems.value = items
     } finally {
       isSuggestLoading.value = false
@@ -391,15 +391,14 @@ function onAddressInput() {
   }, 400)
 }
 
-async function selectSuggestion(item: { displayName: string; value: string }) {
+async function selectSuggestion(item: DadataSuggestItem) {
   addressQuery.value = item.displayName
   suggestItems.value = []
   isSuggestLoading.value = false
 
-  const geo = await yandexGeocode(item.displayName)
-  if (!geo) return
-
-  refreshZone(geo.lat, geo.lon)
+  if (item.lat != null && item.lon != null) {
+    refreshZone(item.lat, item.lon)
+  }
 }
 
 watch(
