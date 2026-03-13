@@ -9,6 +9,8 @@
     "preview": "nuxt preview"
   },
   "dependencies": {
+    "@nuxtjs/supabase": "^2.0.4",
+    "@supabase/supabase-js": "^2.99.1",
     "nuxt": "^3.14.0",
     "pinia": "^2.2.0",
     "vue": "^3.5.0"

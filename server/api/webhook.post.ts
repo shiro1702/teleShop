@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto'
+import { serverSupabaseServiceRole } from '#supabase/server'
+
 const TELEGRAM_API = (token: string) => `https://api.telegram.org/bot${token}`
 
 async function telegram(
@@ -108,6 +111,48 @@ export default defineEventHandler(async (event) => {
         text: 'Добро пожаловать! Нажмите кнопку ниже, чтобы открыть магазин.',
         reply_markup: replyMarkup,
       })
+      return { ok: true }
+    }
+    if (text === '/login') {
+      // Привязка Telegram-аккаунта к аккаунту на сайте через одноразовый токен
+      if (!appUrl) {
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Ссылка для привязки временно недоступна. Попробуйте позже.',
+        })
+        return { ok: true }
+      }
+
+      const supabase = await serverSupabaseServiceRole(event)
+      const token = randomUUID()
+
+      const { error } = await supabase
+        .from('auth_tokens')
+        .insert({
+          token,
+          telegram_id: chatId,
+        })
+
+      if (error) {
+        console.error('Error inserting auth token from /login:', error)
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Произошла ошибка при создании ссылки. Попробуйте позже.',
+        })
+        return { ok: true }
+      }
+
+      const baseUrl = appUrl.replace(/\/$/, '')
+      const link = `${baseUrl}/link-telegram?token=${token}`
+
+      await telegram(botToken, 'sendMessage', {
+        chat_id: chatId,
+        text: 'Чтобы привязать ваш Telegram к аккаунту на сайте, нажмите кнопку ниже.',
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Привязать Telegram', url: link }]],
+        },
+      })
+
       return { ok: true }
     }
     if (text === '/help') {
