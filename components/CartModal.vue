@@ -49,11 +49,17 @@
               #{{ lastOrderId }}
             </span>
           </p>
-          <p
-            class="mt-1 text-sm text-gray-500"
-          >
+          <p class="mt-1 text-sm text-gray-500">
             Менеджер свяжется с вами в Telegram.
           </p>
+          <button
+            v-if="telegramBotUrl"
+            type="button"
+            class="mt-4 w-full rounded-lg border border-[#2563eb] px-4 py-2 text-sm font-medium text-[#2563eb] transition hover:bg-blue-50 active:bg-blue-100"
+            @click="openTelegramBot"
+          >
+            Открыть Telegram‑бота
+          </button>
           <button
             type="button"
             class="mt-6 w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-emerald-700 active:bg-emerald-800"
@@ -61,6 +67,51 @@
           >
             Понятно
           </button>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <!-- Модалка для предложения авторизоваться через Telegram-бота -->
+  <Teleport to="body">
+    <Transition name="cart">
+      <div
+        v-if="showTelegramAuthModal"
+        class="fixed inset-0 z-[58] flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div
+          class="absolute inset-0 bg-black/50"
+          @click="cancelTelegramAuth"
+        />
+        <div
+          class="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+          @click.stop
+        >
+          <h2 class="text-lg font-semibold text-gray-900">
+            Требуется авторизация через Telegram
+          </h2>
+          <p class="mt-2 text-sm text-gray-600">
+            Чтобы оформить заказ на сайте, сначала привяжите ваш Telegram‑аккаунт через нашего бота.
+            Мы откроем чат с ботом в новом окне. После привязки вернитесь сюда и повторите оформление.
+          </p>
+          <div class="mt-4 flex gap-3">
+            <button
+              type="button"
+              class="flex-1 rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+              @click="confirmTelegramAuth"
+            >
+              Открыть бота в Telegram
+            </button>
+            <button
+              type="button"
+              class="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              @click="cancelTelegramAuth"
+            >
+              Отмена
+            </button>
+          </div>
         </div>
       </div>
     </Transition>
@@ -188,14 +239,42 @@
                 >
                   Оформить заказ
                 </button>
-                <button
-                  v-if="!isTelegram"
-                  type="button"
-                  class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
-                  @click="continueInTelegram"
+                <div
+                  v-else
+                  class="space-y-2"
                 >
-                  Продолжить в Telegram
-                </button>
+                  <button
+                    type="button"
+                    class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+                    @click="openAddressModal"
+                  >
+                    Оформить на сайте
+                  </button>
+                  <button
+                    type="button"
+                    class="w-full rounded-lg border border-[#2563eb] px-4 py-2 text-sm font-medium text-[#2563eb] transition hover:bg-blue-50 active:bg-blue-100"
+                    @click="continueInTelegram"
+                  >
+                    Продолжить в Telegram
+                  </button>
+                  <p
+                    v-if="telegramBotUrl"
+                    class="text-center text-xs text-gray-500"
+                  >
+                    Или откройте нашего бота в Telegram
+                    <a
+                      :href="telegramBotUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="font-mono text-[#2563eb] underline"
+                    >
+                      @{{ telegramBotName }}
+                    </a>
+                    и введите команду
+                    <span class="font-mono text-gray-700">/login</span>, чтобы привязать аккаунт и вернуться на сайт
+                    по ссылке из бота.
+                  </p>
+                </div>
               </div>
               <p
                 v-if="!cartStore.canCheckout && cartStore.deliverySummary.minOrderAmount"
@@ -399,6 +478,11 @@ const isSuggestLoading = ref(false)
 
 const { properties: deliveryZoneProps, reason, refresh: refreshZone } = useDeliveryZone()
 const { isTelegram, webApp } = useTelegram()
+
+const config = useRuntimeConfig()
+const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
+const telegramBotUrl = computed(() => (telegramBotName ? `https://t.me/${telegramBotName}` : null))
+const showTelegramAuthModal = ref(false)
 
 const STORAGE_KEY = 'teleshop_addresses'
 const lastKnownDeliveryCost = ref(0)
@@ -640,8 +724,11 @@ async function handleCheckout() {
     const err = error as { statusCode?: number }
 
     if (process.client && err?.statusCode === 401 && !isTelegram.value) {
-      // Требуем веб-авторизацию только для классического сайта
-      window.alert('Чтобы оформить заказ на сайте, сначала войдите через Telegram.')
+      if (telegramBotUrl.value) {
+        showTelegramAuthModal.value = true
+      } else {
+        window.alert('Чтобы оформить заказ на сайте, сначала войдите через Telegram.')
+      }
     } else if (process.client) {
       window.alert('Ошибка при отправке заказа. Проверьте соединение.')
     }
@@ -674,6 +761,23 @@ async function continueInTelegram() {
       window.alert('Ошибка при подготовке корзины для Telegram. Попробуйте ещё раз.')
     }
   }
+}
+
+function openTelegramBot() {
+  if (!telegramBotUrl.value) return
+  if (process.client) {
+    const url = `${telegramBotUrl.value}?start=auth_link`
+    window.open(url, '_blank', 'noopener')
+  }
+}
+
+function confirmTelegramAuth() {
+  showTelegramAuthModal.value = false
+  openTelegramBot()
+}
+
+function cancelTelegramAuth() {
+  showTelegramAuthModal.value = false
 }
 
 function formatPrice(price: number) {

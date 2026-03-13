@@ -94,24 +94,66 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Expected Telegram update body' })
   }
 
-  // Команда /start — приветствие и кнопка Web App
+  // Команда /start и другие текстовые команды
   if (body.message?.text) {
     const chatId = body.message.chat?.id
     if (chatId === undefined) return { ok: true }
 
     const text = (body.message.text || '').trim()
-    if (text === '/start') {
-      const replyMarkup = appUrl
-        ? {
-            inline_keyboard: [[{ text: 'Открыть магазин', web_app: { url: appUrl } }]],
-          }
-        : undefined
-      await telegram(botToken, 'sendMessage', {
-        chat_id: chatId,
-        text: 'Добро пожаловать! Нажмите кнопку ниже, чтобы открыть магазин.',
-        reply_markup: replyMarkup,
-      })
-      return { ok: true }
+    if (text.startsWith('/start')) {
+      const [, rawParam] = text.split(' ')
+      const startParam = rawParam || ''
+
+      // Специальный сценарий: старт с параметром для авторизации с возвратом на сайт
+      if (startParam === 'auth_link' && appUrl) {
+        const supabase = await serverSupabaseServiceRole(event)
+        const token = randomUUID()
+
+        const { error } = await supabase
+          .from('auth_tokens')
+          .insert({
+            token,
+            telegram_id: chatId,
+          })
+
+        if (error) {
+          console.error('Error inserting auth token from /start auth_link:', error)
+          await telegram(botToken, 'sendMessage', {
+            chat_id: chatId,
+            text: 'Произошла ошибка при создании ссылки. Попробуйте позже.',
+          })
+          return { ok: true }
+        }
+
+        const baseUrl = appUrl.replace(/\/$/, '')
+        // После привязки возвращаем пользователя на главную страницу сайта
+        const redirectPath = '/'
+        const link = `${baseUrl}/link-telegram?token=${token}&redirect=${encodeURIComponent(redirectPath)}`
+
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Для привязки вашего Telegram к аккаунту на сайте нажмите кнопку ниже, затем вернитесь на сайт.',
+          reply_markup: {
+            inline_keyboard: [[{ text: 'Привязать Telegram и вернуться на сайт', url: link }]],
+          },
+        })
+        return { ok: true }
+      }
+
+      // Обычный /start без параметров — приветствие и кнопка Web App
+      if (text === '/start') {
+        const replyMarkup = appUrl
+          ? {
+              inline_keyboard: [[{ text: 'Открыть магазин', web_app: { url: appUrl } }]],
+            }
+          : undefined
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Добро пожаловать! Нажмите кнопку ниже, чтобы открыть магазин.',
+          reply_markup: replyMarkup,
+        })
+        return { ok: true }
+      }
     }
     if (text === '/login') {
       // Привязка Telegram-аккаунта к аккаунту на сайте через одноразовый токен

@@ -49,6 +49,11 @@ const token = computed(() => {
   return typeof t === 'string' ? t : undefined;
 });
 
+const redirectPath = computed(() => {
+  const r = route.query.redirect;
+  return typeof r === 'string' ? r : undefined;
+});
+
 const isLoading = ref(false);
 const isSuccess = ref(false);
 const errorMessage = ref<string | null>(null);
@@ -85,6 +90,10 @@ const linkTelegram = async () => {
     });
 
     isSuccess.value = true;
+
+    if (redirectPath.value) {
+      await router.replace(redirectPath.value);
+    }
   } catch (err: any) {
     const message =
       err?.data?.statusMessage ||
