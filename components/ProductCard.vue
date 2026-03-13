@@ -1,12 +1,10 @@
 <template>
   <article
-    class="flex h-full w-full cursor-pointer flex-col rounded-xl border overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md"
-    :class="isTelegram ? 'tg-card shadow-sm' : 'border-gray-200 bg-white shadow-sm text-gray-900'"
+    class="flex h-full w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-gray-200 bg-white text-gray-900 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
     @click="emit('open', product)"
   >
     <div
-      class="aspect-square w-full shrink-0 overflow-hidden"
-      :class="isTelegram ? 'tg-secondary' : 'bg-gray-100'"
+      class="aspect-square w-full shrink-0 overflow-hidden bg-gray-100"
     >
       <img
         :src="product.image"
@@ -18,23 +16,20 @@
     <div class="flex min-h-0 flex-1 flex-col p-4">
       <div class="min-h-0 flex-1">
         <h3
-          class="font-semibold line-clamp-2"
-          :class="isTelegram ? 'tg-text' : 'text-gray-900'"
+          class="line-clamp-2 font-semibold text-gray-900"
         >
           {{ product.name }}
         </h3>
         <p
           v-if="product.description"
-          class="mt-2 text-sm line-clamp-3"
-          :class="isTelegram ? 'tg-text-muted' : 'text-gray-500'"
+          class="mt-2 line-clamp-3 text-sm text-gray-500"
         >
           {{ product.description }}
         </p>
       </div>
       <div class="mt-3 shrink-0 space-y-3">
         <p
-          class="text-lg font-medium"
-          :class="isTelegram ? 'tg-button-text' : 'text-[#2563eb]'"
+          class="text-lg font-medium text-[#2563eb]"
         >
           {{ formatPrice(product.price) }}
         </p>
@@ -43,8 +38,7 @@
         <button
           v-if="quantity === 0"
           type="button"
-          class="w-full rounded-lg px-4 py-2 text-sm font-medium text-white transition"
-          :class="isTelegram ? 'tg-button tg-button-text' : 'bg-[#2563eb]'"
+          class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition"
           @click.stop="cartStore.addItem(product)"
         >
           В корзину
@@ -53,28 +47,24 @@
         <!-- Товар в корзине — счётчик и кнопки +/- -->
         <div
           v-else
-          class="flex items-center justify-center gap-1 rounded-lg border p-1"
-          :class="isTelegram ? 'tg-border tg-secondary' : 'border-gray-200 bg-gray-50'"
+          class="flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1"
         >
           <button
             type="button"
-            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md shadow-sm ring-1 transition"
-            :class="isTelegram ? 'tg-bg tg-border' : 'bg-white text-gray-700 ring-gray-200 hover:bg-gray-50'"
+            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-gray-700 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-50"
             aria-label="Убавить"
             @click.stop="cartStore.updateQuantity(product.id, quantity - 1)"
           >
             −
           </button>
           <span
-            class="grow min-w-[2rem] text-center text-sm font-medium"
-            :class="isTelegram ? 'tg-text' : 'text-gray-900'"
+            class="grow min-w-[2rem] text-center text-sm font-medium text-gray-900"
           >
             {{ quantity }}
           </span>
           <button
             type="button"
-            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white transition"
-            :class="isTelegram ? 'tg-button tg-button-text' : 'bg-[#2563eb]'"
+            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#2563eb] text-white transition"
             aria-label="Добавить"
             @click.stop="cartStore.addItem(product)"
           >
@@ -98,7 +88,6 @@ const emit = defineEmits<{
 }>()
 
 const cartStore = useCartStore()
-const { isTelegram } = useTelegram()
 const quantity = computed(() => cartStore.quantityById(props.product.id))
 
 function formatPrice(price: number) {

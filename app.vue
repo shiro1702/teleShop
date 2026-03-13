@@ -1,12 +1,5 @@
 <template>
-  <div
-    :class="[{ 'tg-miniapp-root': isTelegram }, 'app-root']"
-    :style="isTelegram ? {
-      minHeight: 'var(--tg-viewport-height)',
-      backgroundColor: 'var(--tg-theme-bg-color)',
-      color: 'var(--tg-theme-text-color)'
-    } : {}"
-  >
+  <div class="app-root min-h-screen bg-gray-50 text-gray-900">
     <header
       v-if="!isTelegram"
       class="border-b border-gray-200 bg-white"
@@ -36,7 +29,6 @@
 
 <script setup lang="ts">
 const { isTelegram } = useTelegram()
-
 const webUser = ref<{ id: number; username?: string } | null>(null)
 
 async function refreshMe() {
@@ -52,14 +44,3 @@ if (import.meta.client) {
   refreshMe()
 }
 </script>
-
-<style>
-.tg-miniapp-root {
-  background-color: var(--tg-theme-bg-color);
-  color: var(--tg-theme-text-color);
-}
-
-.tg-miniapp-root a {
-  color: var(--tg-theme-link-color, var(--tg-theme-button-color));
-}
-</style>

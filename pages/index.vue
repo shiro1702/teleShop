@@ -1,26 +1,9 @@
 <template>
-  <div
-    class="min-h-screen"
-    :style="isTelegram ? {
-      minHeight: 'var(--tg-viewport-height)',
-      backgroundColor: 'var(--tg-theme-bg-color)',
-      color: 'var(--tg-theme-text-color)'
-    } : {}"
-  >
+  <div class="min-h-screen bg-gray-50 text-gray-900">
     <header
-      class="sticky top-0 z-40 border-b"
-      :style="isTelegram ? {
-        backgroundColor: 'var(--tg-theme-header-bg-color, var(--tg-theme-bg-color))',
-        color: 'var(--tg-theme-text-color)',
-        borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))'
-      } : {}"
+      class="sticky top-0 z-40 border-b border-gray-200 bg-white"
     >
       <div class="mx-auto max-w-6xl px-4 py-3 sm:py-4 sm:px-6"
-        :style="isTelegram ? {
-          backgroundColor: 'var(--tg-theme-header-bg-color, var(--tg-theme-bg-color))',
-          color: 'var(--tg-theme-text-color)',
-          borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))'
-        } : {}"
       >
         <div class="flex items-center justify-between gap-2">
           <div class="flex min-w-0 flex-1 items-center justify-center gap-2 md:flex-initial">
@@ -140,16 +123,12 @@
     </main>
     <!-- Нижняя панель корзины на мобильных -->
     <div
-      class="fixed inset-x-0 bottom-0 z-40 border-t bg-white px-4 py-2 sm:hidden"
-      :class="isTelegram ? 'pb-20': ''"
+      class="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-4 py-2 sm:hidden"
+      :class="isTelegram ? 'pb-20' : ''"
     >
       <button
         type="button"
-        class="flex w-full items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-md"
-        :style="isTelegram ? {
-          backgroundColor: 'var(--tg-theme-button-color)',
-          color: 'var(--tg-theme-button-text-color)'
-        } : { backgroundColor: '#2563eb' }"
+        class="flex w-full items-center justify-between gap-3 rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white shadow-md"
         @click="cartStore.openCartModal()"
       >
         <div class="flex items-center gap-2">

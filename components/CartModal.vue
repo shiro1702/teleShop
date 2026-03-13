@@ -14,17 +14,14 @@
           @click="closeSuccessModal"
         />
         <div
-          class="relative flex w-full max-w-sm flex-col items-center rounded-2xl p-8 shadow-xl"
-          :class="isTelegram ? 'tg-card' : 'bg-white'"
+          class="relative flex w-full max-w-sm flex-col items-center rounded-2xl bg-white p-8 shadow-xl"
           @click.stop
         >
           <div
-            class="mb-4 flex h-16 w-16 items-center justify-center rounded-full"
-            :class="isTelegram ? 'tg-button' : 'bg-emerald-100'"
+            class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100"
           >
             <svg
-              class="h-9 w-9"
-              :class="isTelegram ? 'tg-button-text' : 'text-emerald-600'"
+              class="h-9 w-9 text-emerald-600"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -40,23 +37,20 @@
           </div>
           <h2
             id="order-success-title"
-            class="text-xl font-bold"
-            :class="isTelegram ? 'tg-text' : 'text-gray-900'"
+            class="text-xl font-bold text-gray-900"
           >
             Заказ оформлен!
           </h2>
-          <p v-if="lastOrderId" class="mt-2" :class="isTelegram ? 'tg-text-muted' : 'text-gray-500'">
+          <p v-if="lastOrderId" class="mt-2 text-gray-500">
             Номер заказа:
             <span
-              class="font-semibold"
-              :class="isTelegram ? 'tg-text' : 'text-gray-700'"
+              class="font-semibold text-gray-700"
             >
               #{{ lastOrderId }}
             </span>
           </p>
           <p
-            class="mt-1 text-sm"
-            :class="isTelegram ? 'text-[var(--tg-theme-hint-color,#999)]' : 'text-gray-500'"
+            class="mt-1 text-sm text-gray-500"
           >
             Менеджер свяжется с вами в Telegram.
           </p>
@@ -89,11 +83,7 @@
         <!-- Боттомшит (моб) / модалка (десктоп) -->
         <div
           class="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-t-2xl bg-gray-50 shadow-xl sm:max-h-[90vh] sm:rounded-2xl sm:pb-0"
-          :style="isTelegram ? {
-            paddingBottom: 'env(safe-area-inset-bottom)',
-            backgroundColor: 'var(--tg-theme-secondary-bg-color, var(--tg-theme-bg-color))',
-            color: 'var(--tg-theme-text-color)'
-          } : {}"
+          :style="isTelegram ? { paddingBottom: 'env(safe-area-inset-bottom)' } : {}"
           @click.stop
         >
           <!-- Ручка боттомшита только на мобильных -->
@@ -101,25 +91,17 @@
             <span class="h-1 w-12 rounded-full bg-gray-300" aria-hidden="true" />
           </div>
           <div
-            class="flex shrink-0 items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4"
-            :class="isTelegram ? '' : 'border-gray-200 bg-white'"
-            :style="isTelegram ? {
-              backgroundColor: 'var(--tg-theme-header-bg-color, var(--tg-theme-bg-color))',
-              color: 'var(--tg-theme-text-color)',
-              borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))'
-            } : {}"
+            class="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3 sm:px-6 sm:py-4"
           >
             <h2
               id="cart-title"
-              class="text-lg font-bold sm:text-xl"
-              :class="isTelegram ? '' : 'text-gray-900'"
+              class="text-lg font-bold text-gray-900 sm:text-xl"
             >
               Корзина
             </h2>
             <button
               type="button"
-              class="-mr-2 rounded-lg p-2 transition"
-              :class="isTelegram ? 'text-[var(--tg-theme-hint-color,#999)] hover:bg-[var(--tg-theme-secondary-bg-color)] hover:text-[var(--tg-theme-text-color)]' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'"
+              class="-mr-2 rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
               aria-label="Закрыть"
               @click="cartStore.closeCartModal()"
             >
@@ -153,14 +135,8 @@
           <!-- Итого, очистить и оформить заказ закреплено снизу -->
           <div
             v-if="cartStore.items.length > 0"
-            class="shrink-0 space-y-3 border-t p-4 sm:px-6 sm:py-4 sm:pb-4"
-            :class="isTelegram ? '' : 'border-gray-200 bg-white'"
-            :style="isTelegram ? {
-              paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
-              backgroundColor: 'var(--tg-theme-bg-color)',
-              color: 'var(--tg-theme-text-color)',
-              borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))'
-            } : {}"
+            class="shrink-0 space-y-3 border-t border-gray-200 bg-white p-4 sm:px-6 sm:py-4 sm:pb-4"
+            :style="isTelegram ? { paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' } : {}"
           >
             <div class="flex justify-end">
               <button
@@ -172,43 +148,33 @@
               </button>
             </div>
             <div
-              class="space-y-3 rounded-lg border p-4"
-              :class="isTelegram ? '' : 'border-gray-200 bg-gray-50'"
-              :style="isTelegram ? {
-                borderColor: 'var(--tg-theme-section-separator-color, rgba(0,0,0,0.08))',
-                backgroundColor: 'var(--tg-theme-secondary-bg-color, rgba(0,0,0,0.02))'
-              } : {}"
+              class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4"
             >
               <div class="flex items-center justify-between text-sm">
-                <span :class="isTelegram ? 'text-[var(--tg-theme-hint-color,#999)]' : 'text-gray-600'">Товары</span>
+                <span class="text-gray-600">Товары</span>
                 <span
-                  class="font-semibold"
-                  :class="isTelegram ? '' : 'text-gray-900'"
+                  class="font-semibold text-gray-900"
                 >
                   {{ formatPrice(cartStore.total) }}
                 </span>
               </div>
               <div class="flex items-center justify-between text-sm">
-                <span :class="isTelegram ? 'text-[var(--tg-theme-hint-color,#999)]' : 'text-gray-600'">Доставка</span>
+                <span class="text-gray-600">Доставка</span>
                 <span
                   class="font-semibold"
-                  :class="cartStore.deliveryCost === 0
-                    ? (isTelegram ? 'text-[var(--tg-theme-button-color)]' : 'text-emerald-600')
-                    : (isTelegram ? '' : 'text-gray-900')"
+                  :class="cartStore.deliveryCost === 0 ? 'text-emerald-600' : 'text-gray-900'"
                 >
                   {{ cartStore.deliveryCost === 0 ? '0 ₽' : formatPrice(cartStore.deliveryCost) }}
                 </span>
               </div>
               <div class="flex items-center justify-between border-t border-dashed border-gray-200 pt-2">
                 <span
-                  class="font-semibold"
-                  :class="isTelegram ? '' : 'text-gray-900'"
+                  class="font-semibold text-gray-900"
                 >
                   Итого:
                 </span>
                 <span
-                  class="text-xl font-bold"
-                  :style="isTelegram ? { color: 'var(--tg-theme-button-color)' } : { color: '#2563eb' }"
+                  class="text-xl font-bold text-[#2563eb]"
                 >
                   {{ formatPrice(cartStore.grandTotal) }}
                 </span>
@@ -257,12 +223,16 @@
           class="absolute inset-0 bg-black/40"
           @click="closeAddressModal"
         />
-        <div
-          class="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-t-2xl bg-gray-50 shadow-xl sm:max-h-[90vh] sm:rounded-2xl"
-          @click.stop
-        >
-          <div class="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
-            <h2 class="text-lg font-bold text-gray-900 sm:text-xl">
+          <div
+            class="relative flex max-h-[88vh] w-full max-w-lg flex-col rounded-t-2xl bg-gray-50 shadow-xl sm:max-h-[90vh] sm:rounded-2xl"
+            @click.stop
+          >
+          <div
+            class="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3 sm:px-6 sm:py-4"
+          >
+            <h2
+              class="text-lg font-bold text-gray-900 sm:text-xl"
+            >
               Адрес доставки
             </h2>
             <button
@@ -277,8 +247,13 @@
             </button>
           </div>
           <div class="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4 sm:p-6">
-            <div v-if="savedAddresses.length" class="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
-              <p class="text-xs font-medium text-gray-500">
+            <div
+              v-if="savedAddresses.length"
+              class="space-y-2 rounded-lg border border-gray-200 bg-white p-4"
+            >
+              <p
+                class="text-xs font-medium text-gray-500"
+              >
                 Ранее использованные адреса
               </p>
               <div class="flex flex-wrap gap-2">
@@ -300,14 +275,16 @@
                 </button>
               </div>
             </div>
-            <section class="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+            <section
+              class="space-y-3 rounded-lg border border-gray-200 bg-white p-4"
+            >
               <div class="space-y-2">
                 <div class="relative">
                   <input
                     ref="addressInputRef"
                     v-model="addressQuery"
                     type="text"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
                     placeholder="Улан-Удэ, улица, дом"
                     @input="onAddressInput"
                   />
@@ -343,7 +320,7 @@
                       v-for="item in suggestItems"
                       :key="item.value"
                       type="button"
-                      class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+                      class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-800 transition hover:bg-gray-50"
                       @click="selectSuggestion(item)"
                     >
                       <span class="truncate">{{ item.displayName }}</span>
@@ -354,26 +331,34 @@
                   <input
                     v-model="flat"
                     type="text"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
                     placeholder="Квартира / подъезд"
                   />
                   <textarea
                     v-model="comment"
                     rows="2"
-                    class="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                    class="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
                     placeholder="Комментарий курьеру"
                   />
                 </div>
-                <p v-if="cartStore.deliverySummary.message" class="text-xs text-gray-500">
+                <p
+                  v-if="cartStore.deliverySummary.message"
+                  class="text-xs text-gray-500"
+                >
                   {{ cartStore.deliverySummary.message }}
                 </p>
-                <p v-if="deliveryChangeMessage" class="text-xs text-amber-600">
+                <p
+                  v-if="deliveryChangeMessage"
+                  class="text-xs text-amber-600"
+                >
                   {{ deliveryChangeMessage }}
                 </p>
               </div>
             </section>
           </div>
-          <div class="shrink-0 border-t border-gray-200 bg-white p-4 sm:px-6 sm:py-4">
+          <div
+            class="shrink-0 border-t border-gray-200 bg-white p-4 sm:px-6 sm:py-4"
+          >
             <button
               type="button"
               class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"

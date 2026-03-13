@@ -38,19 +38,19 @@ export function useTelegram() {
   }
 
   function cardClass(baseWeb: string): string {
-    return isTelegram.value ? 'tg-card' : baseWeb
+    return baseWeb
   }
 
   function buttonClass(baseWeb: string): string {
-    return isTelegram.value ? 'tg-button tg-button-text' : baseWeb
+    return baseWeb
   }
 
   function textClass(baseWeb: string): string {
-    return isTelegram.value ? 'tg-text' : baseWeb
+    return baseWeb
   }
 
   function mutedTextClass(baseWeb: string): string {
-    return isTelegram.value ? 'tg-text-muted' : baseWeb
+    return baseWeb
   }
 
   return {
