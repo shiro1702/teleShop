@@ -94,15 +94,18 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Expected Telegram update body' })
   }
 
-  // Команда /start и другие текстовые команды
+  // Команды /start, /login и другие текстовые команды
   if (body.message?.text) {
     const chatId = body.message.chat?.id
     if (chatId === undefined) return { ok: true }
 
     const text = (body.message.text || '').trim()
-    if (text.startsWith('/start')) {
-      const [, rawParam] = text.split(' ')
-      const startParam = rawParam || ''
+    const [commandRaw, paramRaw] = text.split(' ')
+    const isStart = commandRaw === '/start' || commandRaw.startsWith('/start@')
+    const isLogin = commandRaw === '/login' || commandRaw.startsWith('/login@')
+
+    if (isStart) {
+      const startParam = paramRaw || ''
 
       // Специальный сценарий: старт с параметром для авторизации с возвратом на сайт
       if (startParam === 'auth_link' && appUrl) {
@@ -141,7 +144,7 @@ export default defineEventHandler(async (event) => {
       }
 
       // Обычный /start без параметров — приветствие и кнопка Web App
-      if (text === '/start') {
+      if (!startParam) {
         const replyMarkup = appUrl
           ? {
               inline_keyboard: [[{ text: 'Открыть магазин', web_app: { url: appUrl } }]],
@@ -155,7 +158,7 @@ export default defineEventHandler(async (event) => {
         return { ok: true }
       }
     }
-    if (text === '/login') {
+    if (isLogin) {
       // Привязка Telegram-аккаунта к аккаунту на сайте через одноразовый токен
       if (!appUrl) {
         await telegram(botToken, 'sendMessage', {
