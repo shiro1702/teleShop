@@ -72,6 +72,43 @@
     </Transition>
   </Teleport>
 
+  <!-- Универсальная информационная модалка -->
+  <Teleport to="body">
+    <Transition name="cart">
+      <div
+        v-if="infoModal.visible"
+        class="fixed inset-0 z-[57] flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div
+          class="absolute inset-0 bg-black/50"
+          @click="closeInfoModal"
+        />
+        <div
+          class="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+          @click.stop
+        >
+          <h2 class="text-lg font-semibold text-gray-900">
+            {{ infoModal.title }}
+          </h2>
+          <p class="mt-2 text-sm text-gray-600">
+            {{ infoModal.message }}
+          </p>
+          <div class="mt-4 flex justify-end">
+            <button
+              type="button"
+              class="rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+              @click="closeInfoModal"
+            >
+              Понятно
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
   <!-- Модалка для предложения авторизоваться через Telegram-бота -->
   <Teleport to="body">
     <Transition name="cart">
@@ -478,11 +515,17 @@ const isSuggestLoading = ref(false)
 
 const { properties: deliveryZoneProps, reason, refresh: refreshZone } = useDeliveryZone()
 const { isTelegram, webApp } = useTelegram()
+const supabaseUser = useSupabaseUser()
 
 const config = useRuntimeConfig()
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() => (telegramBotName ? `https://t.me/${telegramBotName}` : null))
 const showTelegramAuthModal = ref(false)
+const infoModal = ref<{ visible: boolean; title: string; message: string }>({
+  visible: false,
+  title: '',
+  message: '',
+})
 
 const STORAGE_KEY = 'teleshop_addresses'
 const lastKnownDeliveryCost = ref(0)
@@ -678,6 +721,20 @@ async function confirmAddressAndCheckout() {
     )}, теперь ${formatPrice(after)}.`
   }
 
+  // Веб-режим: если Supabase-сессии ещё нет, сразу предлагаем авторизацию через бота
+  if (!isTelegram.value && !supabaseUser.value) {
+    if (telegramBotUrl.value) {
+      showTelegramAuthModal.value = true
+    } else if (process.client) {
+      infoModal.value = {
+        visible: true,
+        title: 'Требуется авторизация',
+        message: 'Чтобы оформить заказ на сайте, сначала войдите через Telegram.',
+      }
+    }
+    return
+  }
+
   await handleCheckout()
   showAddressModal.value = false
 }
@@ -723,14 +780,26 @@ async function handleCheckout() {
   } catch (error: unknown) {
     const err = error as { statusCode?: number }
 
-    if (process.client && err?.statusCode === 401 && !isTelegram.value) {
+    if (
+      process.client &&
+      !isTelegram.value &&
+      (err?.statusCode === 401 || err?.statusCode === 409)
+    ) {
       if (telegramBotUrl.value) {
         showTelegramAuthModal.value = true
       } else {
-        window.alert('Чтобы оформить заказ на сайте, сначала войдите через Telegram.')
+        infoModal.value = {
+          visible: true,
+          title: 'Требуется авторизация',
+          message: 'Чтобы оформить заказ на сайте, сначала войдите через Telegram.',
+        }
       }
     } else if (process.client) {
-      window.alert('Ошибка при отправке заказа. Проверьте соединение.')
+      infoModal.value = {
+        visible: true,
+        title: 'Ошибка оформления заказа',
+        message: 'Ошибка при отправке заказа. Проверьте соединение и попробуйте ещё раз.',
+      }
     }
   }
 }
@@ -754,11 +823,19 @@ async function continueInTelegram() {
         window.location.href = res.deepLink
       }
     } else if (process.client) {
-      window.alert('Не удалось подготовить корзину для Telegram.')
+      infoModal.value = {
+        visible: true,
+        title: 'Не удалось продолжить в Telegram',
+        message: 'Не удалось подготовить корзину для Telegram. Попробуйте ещё раз.',
+      }
     }
   } catch {
     if (process.client) {
-      window.alert('Ошибка при подготовке корзины для Telegram. Попробуйте ещё раз.')
+      infoModal.value = {
+        visible: true,
+        title: 'Ошибка при подготовке корзины',
+        message: 'Ошибка при подготовке корзины для Telegram. Попробуйте ещё раз.',
+      }
     }
   }
 }
@@ -778,6 +855,10 @@ function confirmTelegramAuth() {
 
 function cancelTelegramAuth() {
   showTelegramAuthModal.value = false
+}
+
+function closeInfoModal() {
+  infoModal.value.visible = false
 }
 
 function formatPrice(price: number) {
