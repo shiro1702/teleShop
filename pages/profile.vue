@@ -14,7 +14,7 @@
       <dl class="info">
         <div>
           <dt>User ID</dt>
-          <dd>{{ user.id }}</dd>
+          <dd>{{ userId }}</dd>
         </div>
         <div v-if="telegramId !== null">
           <dt>Telegram ID</dt>
@@ -38,7 +38,11 @@ import { computed } from 'vue';
 import { useSupabaseUser, useSupabaseClient } from '#imports';
 
 const user = useSupabaseUser();
-const supabase = useSupabaseClient();
+
+const userId = computed<string | null>(() => {
+  const raw = (user.value as any)?.id;
+  return typeof raw === 'string' ? raw : null;
+});
 
 const telegramId = computed<number | null>(() => {
   const raw = (user.value as any)?.user_metadata?.telegram_id;
