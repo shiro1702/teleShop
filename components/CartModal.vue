@@ -735,6 +735,11 @@ async function confirmAddressAndCheckout() {
 
   // Веб-режим: если Supabase-сессии ещё нет, сразу предлагаем авторизацию через бота
   if (!isTelegram.value && !supabaseUser.value) {
+    // Отладочный лог для поиска расхождений между шапкой и корзиной
+    if (process.client) {
+      // eslint-disable-next-line no-console
+      console.log('[Cart][Auth] supabaseUser is null in CartModal, cannot checkout via WEB')
+    }
     if (telegramBotUrl.value) {
       showTelegramAuthModal.value = true
     } else if (process.client) {
@@ -745,6 +750,16 @@ async function confirmAddressAndCheckout() {
       }
     }
     return
+  }
+
+  // Дополнительный отладочный лог, если пользователь есть
+  if (!isTelegram.value && supabaseUser.value && process.client) {
+    const rawUser = supabaseUser.value as any
+    // eslint-disable-next-line no-console
+    console.log('[Cart][Auth] supabaseUser in CartModal:', {
+      sub: rawUser?.sub,
+      telegram_id: rawUser?.user_metadata?.telegram_id,
+    })
   }
 
   await handleCheckout()
