@@ -162,12 +162,18 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 401, message: 'Unauthorized' })
     }
 
+     // Дополнительная защита от некорректного/пустого id
+    if (typeof supabaseUser.id !== 'string') {
+      console.error('Supabase user has invalid id in order (WEB):', supabaseUser)
+      throw createError({ statusCode: 401, message: 'Unauthorized' })
+    }
+
     const serviceClient = await serverSupabaseServiceRole(event)
 
     const { data: profile, error: profileError } = await serviceClient
       .from('profiles')
       .select('telegram_id')
-      .eq('id', supabaseUser.id)
+      .eq('id', supabaseUser.id as string)
       .maybeSingle()
 
     if (profileError) {
