@@ -26,10 +26,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRoute, useRouter } from '#imports';
+import { useRoute, useRouter, useSupabaseClient } from '#imports';
 
 const route = useRoute();
 const router = useRouter();
+const supabase = useSupabaseClient();
+
 const token = computed(() => {
   const t = route.query.token;
   return typeof t === 'string' ? t : undefined;
@@ -60,15 +62,31 @@ const linkTelegram = async () => {
   errorMessage.value = null;
 
   try {
-    await $fetch('/api/auth/link-telegram', {
+    const res = await $fetch<{
+      success: boolean;
+      access_token: string;
+      refresh_token: string;
+      expires_in: number;
+    }>('/api/auth/exchange-telegram-session', {
       method: 'POST',
       body: { token: token.value },
     });
 
-    isSuccess.value = true;
+    if (res?.success) {
+      const { access_token, refresh_token } = res;
+      // Устанавливаем Supabase-сессию на фронте
+      await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
 
-    if (redirectPath.value) {
-      await router.replace(redirectPath.value);
+      isSuccess.value = true;
+
+      if (redirectPath.value) {
+        await router.replace(redirectPath.value);
+      }
+    } else {
+      throw new Error('Не удалось создать сессию Supabase.');
     }
   } catch (err: any) {
     const message =
