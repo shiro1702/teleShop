@@ -91,7 +91,7 @@ export default defineEventHandler(async (event) => {
   let userId: string
 
   if (!existingProfile) {
-    // Создаём пользователя в auth.users, если его ещё нет
+    // Пользователь и профиль ещё не созданы — создаём с нуля
     const { data: createdUser, error: createUserError } =
       await serviceClient.auth.admin.createUser({
         email: syntheticEmail,
@@ -130,7 +130,81 @@ export default defineEventHandler(async (event) => {
       })
     }
   } else {
+    // Профиль уже есть: убеждаемся, что auth-пользователь существует и имеет синтетические учётные данные
     userId = existingProfile.id as string
+
+    const { data: existingUser, error: getUserError } =
+      await serviceClient.auth.admin.getUserById(userId)
+
+    if (getUserError) {
+      console.error('Error fetching auth user for existing profile in exchange-session:', getUserError)
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Failed to prepare existing user for Telegram session',
+      })
+    }
+
+    if (!existingUser) {
+      // На всякий случай: профиль есть, а пользователя нет — создаём нового пользователя и переназначаем профиль
+      const { data: createdUser, error: createUserError } =
+        await serviceClient.auth.admin.createUser({
+          email: syntheticEmail,
+          password: syntheticPassword,
+          email_confirm: true,
+          user_metadata: {
+            telegram_id: telegramId,
+          },
+        })
+
+      if (createUserError || !createdUser?.user) {
+        console.error(
+          'Error creating auth user for orphaned profile in exchange-session:',
+          createUserError,
+        )
+        throw createError({
+          statusCode: 500,
+          statusMessage: 'Failed to repair Telegram user',
+        })
+      }
+
+      userId = createdUser.user.id
+
+      const { error: upsertError } = await serviceClient
+        .from('profiles')
+        .upsert(
+          {
+            id: userId,
+            telegram_id: telegramId,
+          },
+          { onConflict: 'id' },
+        )
+
+      if (upsertError) {
+        console.error(
+          'Error updating profile for orphaned user in exchange-session:',
+          upsertError,
+        )
+        throw createError({
+          statusCode: 500,
+          statusMessage: 'Failed to link repaired Telegram profile',
+        })
+      }
+    } else {
+      // Приводим существующего пользователя к синтетическому email/паролю (чтобы signInWithPassword всегда работал)
+      const { error: updateError } = await serviceClient.auth.admin.updateUserById(userId, {
+        email: syntheticEmail,
+        password: syntheticPassword,
+        email_confirm: true,
+      })
+
+      if (updateError) {
+        console.error('Error updating existing auth user in exchange-session:', updateError)
+        throw createError({
+          statusCode: 500,
+          statusMessage: 'Failed to prepare existing Telegram user',
+        })
+      }
+    }
   }
 
   // Создаём сессию Supabase для этого пользователя через signInWithPassword
