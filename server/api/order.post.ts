@@ -2,8 +2,8 @@
 // @ts-ignore — типы Node могут быть не подключены в проекте
 import crypto from 'node:crypto'
 import { MOCK_PRODUCTS } from '../../data/products'
-import { getTelegramUserFromEvent } from '../utils/getTelegramUserFromEvent'
 import type { DeliveryZoneProperties } from '../../utils/deliveryZones'
+import { serverSupabaseUser, serverSupabaseServiceRole } from '#supabase/server'
 
 interface CartItemPayload {
   id: string
@@ -147,23 +147,41 @@ export default defineEventHandler(async (event) => {
     deliveryCost = deliveryZone.deliveryCost
   }
 
-  // Определяем пользователя: либо через initData (TMA), либо через сессию (WEB)
+  // Определяем пользователя: либо через initData (TMA), либо через Supabase-сессию (WEB)
   let user: TelegramUser | null = null
   if (body.initData && typeof body.initData === 'string') {
+    // Telegram Mini App: авторизация через initData
     user = validateInitData(body.initData, botToken)
     if (!user) {
       throw createError({ statusCode: 401, message: 'Invalid initData' })
     }
   } else {
-    const sessionUser = await getTelegramUserFromEvent(event)
-    if (!sessionUser) {
+    // Веб-режим: авторизация через Supabase-сессию и profiles.telegram_id
+    const supabaseUser = await serverSupabaseUser(event)
+    if (!supabaseUser) {
       throw createError({ statusCode: 401, message: 'Unauthorized' })
     }
+
+    const serviceClient = await serverSupabaseServiceRole(event)
+
+    const { data: profile, error: profileError } = await serviceClient
+      .from('profiles')
+      .select('telegram_id')
+      .eq('id', supabaseUser.id)
+      .maybeSingle()
+
+    if (profileError) {
+      console.error('Error querying profile for order (WEB):', profileError)
+      throw createError({ statusCode: 500, message: 'Failed to read profile' })
+    }
+
+    if (!profile || profile.telegram_id == null) {
+      // Пользователь авторизован в Supabase, но Telegram еще не привязан
+      throw createError({ statusCode: 409, message: 'Telegram not linked' })
+    }
+
     user = {
-      id: sessionUser.id,
-      username: sessionUser.username,
-      first_name: sessionUser.firstName ?? undefined,
-      last_name: sessionUser.lastName ?? undefined,
+      id: profile.telegram_id as number,
     }
   }
 
