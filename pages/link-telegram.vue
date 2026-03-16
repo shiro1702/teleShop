@@ -75,9 +75,22 @@ const linkTelegram = async () => {
     if (res?.success) {
       const { access_token, refresh_token } = res;
       // Устанавливаем Supabase-сессию на фронте
-      await supabase.auth.setSession({
+      const { data: sessionData, error: setError } = await supabase.auth.setSession({
         access_token,
         refresh_token,
+      });
+
+      if (setError || !sessionData?.session) {
+        throw new Error('Не удалось установить сессию Supabase на клиенте.');
+      }
+
+      // Синхронизируем сессию в cookie для serverSupabaseUser
+      await $fetch('/api/_supabase/session', {
+        method: 'POST',
+        body: {
+          event: 'SIGNED_IN',
+          session: sessionData.session,
+        },
       });
 
       isSuccess.value = true;
