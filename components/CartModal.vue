@@ -364,7 +364,7 @@
           </div>
           <div class="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4 sm:p-6">
             <div
-              v-if="savedAddresses.length"
+              <!-- v-if="savedAddresses.length" -->
               class="space-y-2 rounded-lg border border-gray-200 bg-white p-4"
             >
               <p
@@ -624,6 +624,18 @@ async function loadSavedAddresses() {
         resolve()
       })
     })
+
+    // Если в CloudStorage ничего нет, попробуем подхватить локальные адреса из localStorage
+    if (savedAddresses.value.length === 0 && process.client) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY)
+        if (raw) {
+          savedAddresses.value = JSON.parse(raw) as SavedAddress[]
+        }
+      } catch {
+        savedAddresses.value = []
+      }
+    }
     return
   }
 
