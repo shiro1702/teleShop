@@ -4,14 +4,14 @@
       v-if="!isTelegram"
       class="border-b border-gray-200 bg-white"
     >
-      <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6 z-50">
+      <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <NuxtLink to="/" class="flex items-center gap-2 text-gray-900">
           <span class="text-sm font-semibold uppercase tracking-wide">JINJI</span>
         </NuxtLink>
         <div class="flex items-center gap-3">
           <div
             v-if="user"
-            class="relative hidden sm:block"
+            class="relative hidden sm:block z-[51]"
           >
             <button
               type="button"
