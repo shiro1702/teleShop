@@ -38,7 +38,7 @@ import { computed } from 'vue';
 import { useSupabaseUser, useSupabaseClient } from '#imports';
 
 const user = useSupabaseUser();
-
+console.log('user', user.value);
 const userId = computed<string | null>(() => {
   const raw = (user.value as any)?.id;
   return typeof raw === 'string' ? raw : null;
