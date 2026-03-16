@@ -5,28 +5,16 @@
     <p v-if="!token">Некорректная ссылка: отсутствует токен.</p>
 
     <div v-else>
-      <p v-if="!user">Для привязки Telegram необходимо войти на сайт.</p>
-
-      <div v-if="!user">
-        <button type="button" @click="goToLogin" class="btn btn-primary">
-          Войти
-        </button>
-      </div>
-
-      <div v-else>
-        <p>Вы вошли как: {{ user?.email || user?.id }}</p>
-
-        <button
-          type="button"
-          class="btn btn-primary"
-          :disabled="isLoading || isSuccess || !token"
-          @click="linkTelegram"
-        >
-          <span v-if="isLoading">Привязка...</span>
-          <span v-else-if="isSuccess">Успешно привязано</span>
-          <span v-else>Привязать Telegram</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        class="btn btn-primary"
+        :disabled="isLoading || isSuccess || !token"
+        @click="linkTelegram"
+      >
+        <span v-if="isLoading">Привязка...</span>
+        <span v-else-if="isSuccess">Успешно привязано</span>
+        <span v-else>Привязать Telegram</span>
+      </button>
 
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
       <p v-if="isSuccess" class="success">
@@ -38,12 +26,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRoute, useRouter, useSupabaseUser } from '#imports';
+import { useRoute, useRouter } from '#imports';
 
 const route = useRoute();
 const router = useRouter();
-const user = useSupabaseUser();
-
 const token = computed(() => {
   const t = route.query.token;
   return typeof t === 'string' ? t : undefined;
@@ -63,16 +49,6 @@ onMounted(() => {
     errorMessage.value = 'Некорректная или устаревшая ссылка.';
   }
 });
-
-const goToLogin = () => {
-  router.push({
-    path: '/login',
-    query: {
-      redirect: '/link-telegram',
-      token: token.value,
-    },
-  });
-};
 
 const linkTelegram = async () => {
   if (!token.value) {

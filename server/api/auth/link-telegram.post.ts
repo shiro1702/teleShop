@@ -1,8 +1,5 @@
 import { defineEventHandler, readBody, createError } from 'h3';
-import {
-  serverSupabaseUser,
-  serverSupabaseServiceRole,
-} from '#supabase/server';
+import { serverSupabaseServiceRole } from '#supabase/server';
 
 interface LinkTelegramBody {
   token?: string;
@@ -15,14 +12,6 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       statusMessage: 'Token is required',
-    });
-  }
-
-  const user = await serverSupabaseUser(event);
-  if (!user) {
-    throw createError({
-      statusCode: 401,
-      statusMessage: 'Unauthorized',
     });
   }
 
@@ -62,22 +51,68 @@ export default defineEventHandler(async (event) => {
 
   const telegramId: number = tokenRow.telegram_id;
 
-  const { error: upsertError } = await serviceClient
+  // Пытаемся найти существующий профиль по telegram_id (идемпотентность)
+  const { data: existingProfile, error: profileError } = await serviceClient
     .from('profiles')
-    .upsert(
-      {
-        id: user.id,
-        telegram_id: telegramId,
-      },
-      { onConflict: 'id' },
-    );
+    .select('id')
+    .eq('telegram_id', telegramId)
+    .maybeSingle();
 
-  if (upsertError) {
-    console.error('Error updating profile with telegram_id:', upsertError);
+  if (profileError) {
+    console.error('Error querying profiles by telegram_id:', profileError);
     throw createError({
       statusCode: 500,
       statusMessage: 'Failed to link Telegram',
     });
+  }
+
+  let userId: string;
+
+  if (existingProfile) {
+    userId = existingProfile.id as string;
+  } else {
+    // Создаём нового пользователя в auth.users через сервисный ключ.
+    // Используем "синтетический" email на основе telegram_id, чтобы Supabase принял пользователя.
+    const syntheticEmail = `tg_${telegramId}@telegram.local`;
+    const syntheticPassword = crypto.randomUUID();
+
+    const { data: createdUser, error: createUserError } =
+      await serviceClient.auth.admin.createUser({
+        email: syntheticEmail,
+        password: syntheticPassword,
+        email_confirm: true,
+        user_metadata: {
+          telegram_id: telegramId,
+        },
+      });
+
+    if (createUserError || !createdUser?.user) {
+      console.error('Error creating auth user for telegram_id:', createUserError);
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Failed to create user for Telegram link',
+      });
+    }
+
+    userId = createdUser.user.id;
+
+    const { error: upsertError } = await serviceClient
+      .from('profiles')
+      .upsert(
+        {
+          id: userId,
+          telegram_id: telegramId,
+        },
+        { onConflict: 'id' },
+      );
+
+    if (upsertError) {
+      console.error('Error creating profile with telegram_id:', upsertError);
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Failed to link Telegram',
+      });
+    }
   }
 
   const { error: deleteError } = await serviceClient
@@ -92,6 +127,7 @@ export default defineEventHandler(async (event) => {
   return {
     success: true,
     telegramId,
+    userId,
   };
 });
 
