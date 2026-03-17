@@ -162,9 +162,17 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 401, message: 'Unauthorized' })
     }
 
-     // Дополнительная защита от некорректного/пустого id
-    if (typeof supabaseUser.id !== 'string') {
-      console.error('Supabase user has invalid id in order (WEB):', supabaseUser)
+    // В Supabase JWT id может лежать в поле sub, а не id.
+    const rawUser = supabaseUser as any
+    const userId =
+      typeof rawUser.id === 'string'
+        ? rawUser.id
+        : typeof rawUser.sub === 'string'
+          ? rawUser.sub
+          : null
+
+    if (!userId) {
+      console.error('Supabase user has invalid id/sub in order (WEB):', supabaseUser)
       throw createError({ statusCode: 401, message: 'Unauthorized' })
     }
 
@@ -173,7 +181,7 @@ export default defineEventHandler(async (event) => {
     const { data: profile, error: profileError } = await serviceClient
       .from('profiles')
       .select('telegram_id')
-      .eq('id', supabaseUser.id as string)
+      .eq('id', userId)
       .maybeSingle()
 
     if (profileError) {
