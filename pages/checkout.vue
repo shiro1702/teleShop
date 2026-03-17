@@ -315,6 +315,26 @@
                     </div>
                   </div>
                 </label>
+                <div
+                  v-if="state.paymentMethod === 'cash'"
+                  class="mt-1 space-y-1 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700"
+                >
+                  <label class="flex flex-col gap-1">
+                    <span>С какой суммы подготовить сдачу (необязательно)</span>
+                    <div class="flex items-center gap-2">
+                      <input
+                        v-model="changeFrom"
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputmode="numeric"
+                        class="w-32 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                        placeholder="2000"
+                      >
+                      <span class="text-gray-500">₽</span>
+                    </div>
+                  </label>
+                </div>
                 <label class="flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm">
                   <div class="flex items-center gap-2">
                     <input
@@ -351,26 +371,6 @@
                     </div>
                   </div>
                 </label>
-                <div
-                  v-if="state.paymentMethod === 'cash'"
-                  class="mt-1 space-y-1 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700"
-                >
-                  <label class="flex flex-col gap-1">
-                    <span>С какой суммы подготовить сдачу (необязательно)</span>
-                    <div class="flex items-center gap-2">
-                      <input
-                        v-model="changeFrom"
-                        type="number"
-                        min="0"
-                        step="1"
-                        inputmode="numeric"
-                        class="w-32 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
-                        placeholder="2000"
-                      >
-                      <span class="text-gray-500">₽</span>
-                    </div>
-                  </label>
-                </div>
               </div>
             </div>
 
