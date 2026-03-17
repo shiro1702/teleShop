@@ -52,6 +52,14 @@ function formatPrice(value: number): string {
   }).format(value)
 }
 
+type PaymentMethod = 'cash' | 'card_courier' | 'online'
+
+function formatPaymentMethod(method: PaymentMethod | undefined): string {
+  if (method === 'card_courier') return 'Картой курьеру'
+  if (method === 'online') return 'Онлайн (на сайте)'
+  return 'Наличными курьеру'
+}
+
 function buildOrderMessage(
   orderId: string,
   items: CartItemPayload[],
@@ -59,6 +67,13 @@ function buildOrderMessage(
   deliveryCost: number,
   deliveryZone: DeliveryZoneProperties | null,
   user: TelegramUser,
+  options: {
+    addressLine?: string | null
+    flat?: string | null
+    comment?: string | null
+    paymentMethod?: PaymentMethod
+    changeFrom?: number | null
+  },
 ): string {
   const username = user.username ? `@${user.username}` : [user.first_name, user.last_name].filter(Boolean).join(' ') || `ID ${user.id}`
   const grandTotal = total + deliveryCost
@@ -72,7 +87,26 @@ function buildOrderMessage(
     `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
     `💳 Итого с доставкой: ${formatPrice(grandTotal)}`,
     '',
+  ]
+
+  if (options.addressLine) {
+    const addrParts = [options.addressLine]
+    if (options.flat) addrParts.push(options.flat)
+    lines.push(`📍 Адрес: ${addrParts.join(', ')}`)
+  }
+  if (options.comment) {
+    lines.push(`📝 Комментарий: ${options.comment}`)
+  }
+
+  lines.push(`💳 Оплата: ${formatPaymentMethod(options.paymentMethod)}`)
+  if (options.paymentMethod === 'cash' && typeof options.changeFrom === 'number' && options.changeFrom > 0) {
+    lines.push(`💵 Сдача с: ${formatPrice(options.changeFrom)}`)
+  }
+
+  lines.push(
+    '',
     `👤 Клиент: ${username}`,
+    `🆔 Telegram ID: ${user.id}`,
   ]
   return lines.join('\n')
 }
@@ -83,6 +117,13 @@ function buildClientOrderMessage(
   total: number,
   deliveryCost: number,
   deliveryZone: DeliveryZoneProperties | null,
+  options: {
+    addressLine?: string | null
+    flat?: string | null
+    comment?: string | null
+    paymentMethod?: PaymentMethod
+    changeFrom?: number | null
+  },
 ): string {
   const grandTotal = total + deliveryCost
   const lines: string[] = [
@@ -93,7 +134,23 @@ function buildClientOrderMessage(
     '',
     `💰 Товары: ${formatPrice(total)}`,
     `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
-    `💳 Итого к оплате: ${formatPrice(grandTotal)}`,
+  ]
+
+  if (options.addressLine) {
+    const addrParts = [options.addressLine]
+    if (options.flat) addrParts.push(options.flat)
+    lines.push(`📍 Адрес: ${addrParts.join(', ')}`)
+  }
+  if (options.comment) {
+    lines.push(`📝 Комментарий: ${options.comment}`)
+  }
+
+  lines.push(`💳 Способ оплаты: ${formatPaymentMethod(options.paymentMethod)}`)
+  if (options.paymentMethod === 'cash' && typeof options.changeFrom === 'number' && options.changeFrom > 0) {
+    lines.push(`💵 Вы указали сдачу с: ${formatPrice(options.changeFrom)}`)
+  }
+
+  lines.push(
     '',
     'Мы будем присылать сюда обновления статуса: приготовление, передача курьеру и доставка 🚚🍣🍱',
   ]
@@ -113,8 +170,13 @@ export default defineEventHandler(async (event) => {
     items: CartItemPayload[]
     initData?: string | null
     address?: {
+      line?: string | null
+      flat?: string | null
+      comment?: string | null
       zone?: DeliveryZoneProperties | null
     } | null
+    paymentMethod?: PaymentMethod
+    changeFrom?: number | null
   } | null>(event)
   if (!body?.items?.length) {
     throw createError({ statusCode: 400, message: 'Expected { items }' })
@@ -146,6 +208,15 @@ export default defineEventHandler(async (event) => {
   } else {
     deliveryCost = deliveryZone.deliveryCost
   }
+
+  const addressLine = body.address?.line?.trim() || null
+  const flat = body.address?.flat?.trim() || null
+  const comment = body.address?.comment?.trim() || null
+  const paymentMethod: PaymentMethod = body.paymentMethod || 'cash'
+  const changeFrom =
+    typeof body.changeFrom === 'number' && Number.isFinite(body.changeFrom) && body.changeFrom > 0
+      ? Math.floor(body.changeFrom)
+      : null
 
   // Определяем пользователя: либо через initData (TMA), либо через Supabase-сессию (WEB)
   let user: TelegramUser | null = null
@@ -203,7 +274,13 @@ export default defineEventHandler(async (event) => {
   const datePart = now.toISOString().slice(0, 10).replace(/-/g, '')
   const timePart = now.toISOString().slice(11, 19).replace(/:/g, '')
   const orderId = `${datePart}-${timePart}`
-  const text = buildOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, deliveryZone, user)
+  const text = buildOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, deliveryZone, user, {
+    addressLine,
+    flat,
+    comment,
+    paymentMethod,
+    changeFrom,
+  })
 
   const callbackData = `work_${user.id}_${orderId}`
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -212,7 +289,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, message: 'callback_data too long' })
   }
 
-  const payload = {
+  const payload: any = {
     chat_id: managerChatId,
     text,
     reply_markup: {
@@ -220,6 +297,9 @@ export default defineEventHandler(async (event) => {
         [
           { text: '✅ Принять в работу', callback_data: callbackData },
           { text: '⏱ Задержка (кухня)', callback_data: `delayWork_${user.id}_${orderId}` },
+        ],
+        [
+          { text: '✉️ Написать клиенту', url: `tg://user?id=${user.id}` },
         ],
       ],
     },
@@ -240,14 +320,33 @@ export default defineEventHandler(async (event) => {
 
   // Дополнительное уведомление клиента о создании заказа (ошибки не критичны)
   try {
-    await fetch(url, {
+    const clientPayload: any = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: user.id,
-        text: buildClientOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, deliveryZone),
+        text: buildClientOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, deliveryZone, {
+          addressLine,
+          flat,
+          comment,
+          paymentMethod,
+          changeFrom,
+        }),
       }),
-    })
+    }
+
+    // Кнопка "написать менеджеру" ведёт в чат с ботом
+    const config = useRuntimeConfig()
+    const telegramBotName = (config.public?.telegramBotName as string | undefined) || ''
+    if (telegramBotName) {
+      const payloadBody = JSON.parse(clientPayload.body as string)
+      payloadBody.reply_markup = {
+        inline_keyboard: [[{ text: '✉️ Написать менеджеру', url: `https://t.me/${telegramBotName}` }]],
+      }
+      clientPayload.body = JSON.stringify(payloadBody)
+    }
+
+    await fetch(url, clientPayload)
   } catch (notifyErr) {
     console.error('Telegram notify client error:', notifyErr)
   }

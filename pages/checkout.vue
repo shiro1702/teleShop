@@ -351,6 +351,26 @@
                     </div>
                   </div>
                 </label>
+                <div
+                  v-if="state.paymentMethod === 'cash'"
+                  class="mt-1 space-y-1 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700"
+                >
+                  <label class="flex flex-col gap-1">
+                    <span>С какой суммы подготовить сдачу (необязательно)</span>
+                    <div class="flex items-center gap-2">
+                      <input
+                        v-model="changeFrom"
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputmode="numeric"
+                        class="w-32 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                        placeholder="2000"
+                      >
+                      <span class="text-gray-500">₽</span>
+                    </div>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -462,6 +482,7 @@ const state = reactive<CheckoutState>({
 })
 
 const isPlacing = ref(false)
+const changeFrom = ref<string>('')
 
 const {
   addressLine,
@@ -510,6 +531,7 @@ function serializeState() {
     addressLine: addressLine.value,
     flat: flat.value,
     comment: comment.value,
+    changeFrom: changeFrom.value,
   })
 }
 
@@ -530,6 +552,9 @@ function restoreFromPlainObject(obj: any) {
   }
   if (typeof obj.comment === 'string') {
     comment.value = obj.comment
+  }
+  if (typeof obj.changeFrom === 'string') {
+    changeFrom.value = obj.changeFrom
   }
 }
 
@@ -641,6 +666,9 @@ async function placeOrder() {
         zone: cartStore.deliveryZone ?? null,
       },
       paymentMethod: state.paymentMethod,
+      changeFrom: state.paymentMethod === 'cash' && Number.isFinite(Number.parseInt(changeFrom.value, 10))
+        ? Number.parseInt(changeFrom.value, 10)
+        : null,
     }
 
     if (isTelegram.value && webApp.value?.initData) {
