@@ -42,7 +42,7 @@
           <button
             type="button"
             class="hidden shrink-0 items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200 sm:gap-2 sm:px-4 md:flex"
-            @click="cartStore.openCartModal()"
+            @click="router.push('/checkout')"
           >
             <span>Корзина</span>
             <template v-if="cartStore.count > 0">
@@ -129,7 +129,7 @@
       <button
         type="button"
         class="flex w-full items-center justify-between gap-3 rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white shadow-md"
-        @click="cartStore.openCartModal()"
+        @click="router.push('/checkout')"
       >
         <div class="flex items-center gap-2">
           <svg class="h-5 w-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -211,6 +211,7 @@
 <script setup lang="ts">
 const cartStore = useCartStore()
 const { isTelegram } = useTelegram()
+const router = useRouter()
 const isNavOpen = ref(false)
 const selectedProduct = ref<import('~/data/products').Product | null>(null)
 

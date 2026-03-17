@@ -283,7 +283,7 @@
                   <button
                     type="button"
                     class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
-                    @click="openAddressModal"
+                    @click="goToCheckoutPage"
                   >
                     Оформить на сайте
                   </button>
@@ -516,6 +516,7 @@ const isSuggestLoading = ref(false)
 const { properties: deliveryZoneProps, reason, refresh: refreshZone } = useDeliveryZone()
 const { isTelegram, webApp } = useTelegram()
 const supabaseUser = useSupabaseUser()
+const router = useRouter()
 
 const config = useRuntimeConfig()
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
@@ -701,6 +702,11 @@ function openAddressModal() {
   nextTick(() => {
     addressInputRef.value?.focus()
   })
+}
+
+function goToCheckoutPage() {
+  cartStore.closeCartModal()
+  router.push('/checkout')
 }
 
 function closeAddressModal() {
