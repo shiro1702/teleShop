@@ -100,7 +100,7 @@ async function logout() {
     }
 
     // Синхронизируем событие выхода для serverSupabaseUser
-    await $fetch('/api/_supabase/session', {
+    await $fetch('/_supabase/session', {
       method: 'POST',
       body: {
         event: 'SIGNED_OUT',

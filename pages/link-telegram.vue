@@ -85,7 +85,7 @@ const linkTelegram = async () => {
       }
 
       // Синхронизируем сессию в cookie для serverSupabaseUser
-      await $fetch('/api/_supabase/session', {
+      await $fetch('/_supabase/session', {
         method: 'POST',
         body: {
           event: 'SIGNED_IN',
