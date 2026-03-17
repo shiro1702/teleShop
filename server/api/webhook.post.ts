@@ -269,6 +269,9 @@ export default defineEventHandler(async (event) => {
             { text: '🚚 Передать курьеру', callback_data: nextData },
             { text: '⏱ Задержка (кухня)', callback_data: delayData },
           ],
+          [
+            { text: '✉️ Написать клиенту', url: `tg://user?id=${userId}` },
+          ],
         ],
       },
     })
@@ -286,6 +289,9 @@ export default defineEventHandler(async (event) => {
             { text: '✅ Доставлен', callback_data: nextData },
             { text: '⏱ Задержка (доставка)', callback_data: delayData },
           ],
+          [
+            { text: '✉️ Написать клиенту', url: `tg://user?id=${userId}` },
+          ],
         ],
       },
     })
@@ -296,7 +302,13 @@ export default defineEventHandler(async (event) => {
       chat_id: chatId,
       message_id: messageId,
       text: finalText,
-      reply_markup: { inline_keyboard: [] },
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '✉️ Написать клиенту', url: `tg://user?id=${userId}` },
+          ],
+        ],
+      },
     })
   }
 
