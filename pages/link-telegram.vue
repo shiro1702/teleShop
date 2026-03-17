@@ -46,9 +46,15 @@ const isLoading = ref(false);
 const isSuccess = ref(false);
 const errorMessage = ref<string | null>(null);
 
-onMounted(() => {
+onMounted(async () => {
   if (!token.value) {
     errorMessage.value = 'Некорректная или устаревшая ссылка.';
+    return;
+  }
+
+  // Пытаемся привязать Telegram сразу, без нажатия на кнопку
+  if (!isSuccess.value && !isLoading.value) {
+    await linkTelegram();
   }
 });
 
@@ -89,6 +95,8 @@ const linkTelegram = async () => {
 
       if (redirectPath.value) {
         await router.replace(redirectPath.value);
+      } else {
+        await router.replace('/');
       }
     } else {
       throw new Error('Не удалось создать сессию Supabase.');

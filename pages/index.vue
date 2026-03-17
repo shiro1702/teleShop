@@ -121,6 +121,44 @@
         </ul>
       </section>
     </main>
+    <!-- Модалка успеха заказа после возврата на меню -->
+    <Teleport to="body">
+      <Transition name="product">
+        <div
+          v-if="showOrderSuccess"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+          >
+            <h2 class="text-lg font-bold text-gray-900">
+              Заказ оформлен!
+            </h2>
+            <p
+              v-if="lastOrderId"
+              class="mt-2 text-sm text-gray-600"
+            >
+              Номер заказа:
+              <span class="font-semibold text-gray-900">
+                #{{ lastOrderId }}
+              </span>
+            </p>
+            <p class="mt-2 text-sm text-gray-600">
+              Мы пришлём обновления по заказу в Telegram.
+            </p>
+            <button
+              type="button"
+              class="mt-4 w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8]"
+              @click="showOrderSuccess = false"
+            >
+              Понятно
+            </button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
     <!-- Нижняя панель корзины на мобильных -->
     <div
       class="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-4 py-2 sm:hidden"
@@ -212,8 +250,11 @@
 const cartStore = useCartStore()
 const { isTelegram } = useTelegram()
 const router = useRouter()
+const route = useRoute()
 const isNavOpen = ref(false)
 const selectedProduct = ref<import('~/data/products').Product | null>(null)
+const showOrderSuccess = ref(false)
+const lastOrderId = ref<string | null>(null)
 
 function openNav() {
   isNavOpen.value = true
@@ -243,6 +284,15 @@ function formatPrice(price: number) {
     maximumFractionDigits: 0,
   }).format(price)
 }
+
+onMounted(() => {
+  const orderId = route.query.orderId
+  if (typeof orderId === 'string' && orderId) {
+    lastOrderId.value = orderId
+    showOrderSuccess.value = true
+    router.replace({ query: { ...route.query, orderId: undefined } })
+  }
+})
 
 </script>
 

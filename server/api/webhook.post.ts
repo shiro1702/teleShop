@@ -129,8 +129,8 @@ export default defineEventHandler(async (event) => {
         }
 
         const baseUrl = appUrl.replace(/\/$/, '')
-        // После привязки возвращаем пользователя на главную страницу сайта
-        const redirectPath = '/'
+        // После привязки возвращаем пользователя на оформление заказа
+        const redirectPath = '/checkout?step=3'
         const link = `${baseUrl}/link-telegram?token=${token}&redirect=${encodeURIComponent(redirectPath)}`
 
         await telegram(botToken, 'sendMessage', {
