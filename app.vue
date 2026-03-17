@@ -98,15 +98,6 @@ async function logout() {
     if (error) {
       console.error('Supabase signOut error:', error)
     }
-
-    // Синхронизируем событие выхода для serverSupabaseUser
-    await $fetch('/_supabase/session', {
-      method: 'POST',
-      body: {
-        event: 'SIGNED_OUT',
-        session: null,
-      },
-    })
   } catch (e) {
     console.error('Logout error:', e)
   }
