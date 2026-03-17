@@ -107,7 +107,7 @@ function buildOrderMessage(
     '',
     `👤 Клиент: ${username}`,
     `🆔 Telegram ID: ${user.id}`,
-  ]
+  )
   return lines.join('\n')
 }
 
@@ -153,7 +153,7 @@ function buildClientOrderMessage(
   lines.push(
     '',
     'Мы будем присылать сюда обновления статуса: приготовление, передача курьеру и доставка 🚚🍣🍱',
-  ]
+  )
   return lines.join('\n')
 }
 
