@@ -72,7 +72,7 @@
         <button
           v-else-if="telegramBotUrl"
           type="button"
-          class="rounded-full border border-[#2563eb] px-4 py-2 text-sm font-medium text-[#2563eb] transition hover:bg-blue-50 active:bg-blue-100 sm:rounded-lg"
+          class="rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100 sm:rounded-lg"
           @click="openTelegramAuth"
         >
           <span class="sm:hidden">Войти</span>

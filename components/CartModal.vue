@@ -55,7 +55,7 @@
           <button
             v-if="telegramBotUrl"
             type="button"
-            class="mt-4 w-full rounded-lg border border-[#2563eb] px-4 py-2 text-sm font-medium text-[#2563eb] transition hover:bg-blue-50 active:bg-blue-100"
+            class="mt-4 w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100"
             @click="openTelegramBot"
           >
             Открыть Telegram‑бота
@@ -98,7 +98,7 @@
           <div class="mt-4 flex justify-end">
             <button
               type="button"
-              class="rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+              class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
               @click="closeInfoModal"
             >
               Понятно
@@ -136,7 +136,7 @@
           <div class="mt-4 flex gap-3">
             <button
               type="button"
-              class="flex-1 rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+              class="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
               @click="confirmTelegramAuth"
             >
               Открыть бота в Telegram
@@ -204,7 +204,7 @@
               <p class="text-gray-500">Корзина пуста</p>
               <button
                 type="button"
-                class="mt-4 rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8]"
+                class="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
                 @click="cartStore.closeCartModal()"
               >
                 Перейти к товарам
@@ -262,7 +262,7 @@
                   Итого:
                 </span>
                 <span
-                  class="text-xl font-bold text-[#2563eb]"
+                  class="text-xl font-bold text-primary"
                 >
                   {{ formatPrice(cartStore.grandTotal) }}
                 </span>
@@ -271,7 +271,7 @@
                 <button
                   v-if="isTelegram"
                   type="button"
-                  class="mb-2 w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+                    class="mb-2 w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
                   @click="openAddressModal"
                 >
                   Оформить заказ
@@ -282,14 +282,14 @@
                 >
                   <button
                     type="button"
-                    class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+                    class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
                     @click="goToCheckoutPage"
                   >
                     Оформить на сайте
                   </button>
                   <button
                     type="button"
-                    class="w-full rounded-lg border border-[#2563eb] px-4 py-2 text-sm font-medium text-[#2563eb] transition hover:bg-blue-50 active:bg-blue-100"
+                    class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100"
                     @click="continueInTelegram"
                   >
                     Продолжить в Telegram
@@ -303,7 +303,7 @@
                       :href="telegramBotUrl"
                       target="_blank"
                       rel="noopener noreferrer"
-                      class="font-mono text-[#2563eb] underline"
+                      class="font-mono text-primary underline"
                     >
                       @{{ telegramBotName }}
                     </a>
@@ -377,7 +377,7 @@
                   v-for="addr in savedAddresses"
                   :key="addr.id"
                   type="button"
-                  class="group flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:border-[#2563eb] hover:bg-blue-50"
+                  class="group flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:border-primary hover:bg-primary-50"
                   @click="applySavedAddress(addr)"
                 >
                   <span class="truncate max-w-[160px]">{{ addr.address }}</span>
@@ -400,7 +400,7 @@
                     ref="addressInputRef"
                     v-model="addressQuery"
                     type="text"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                     placeholder="Улан-Удэ, улица, дом"
                     @input="onAddressInput"
                   />
@@ -447,13 +447,13 @@
                   <input
                     v-model="flat"
                     type="text"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                     placeholder="Квартира / подъезд"
                   />
                   <textarea
                     v-model="comment"
                     rows="2"
-                    class="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
+                    class="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                     placeholder="Комментарий курьеру"
                   />
                 </div>
@@ -477,7 +477,7 @@
           >
             <button
               type="button"
-              class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+              class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
               @click="confirmAddressAndCheckout"
             >
               Подтвердить адрес и оформить

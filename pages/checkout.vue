@@ -77,7 +77,7 @@
             <span class="text-sm font-medium text-gray-600">
               {{ cartStore.count }} шт.
             </span>
-            <span class="text-sm font-semibold text-[#2563eb]">
+            <span class="text-sm font-semibold text-primary">
               {{ formatPrice(cartStore.total) }}
             </span>
           </div>
@@ -103,7 +103,7 @@
               </p>
               <NuxtLink
                 to="/"
-                class="mt-4 inline-flex items-center justify-center rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8]"
+                class="mt-4 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
               >
                 Перейти к товарам
               </NuxtLink>
@@ -150,7 +150,7 @@
                 <span class="font-semibold text-gray-900">
                   Итого
                 </span>
-                <span class="text-xl font-bold text-[#2563eb]">
+                <span class="text-xl font-bold text-primary">
                   {{ formatPrice(cartStore.grandTotal) }}
                 </span>
               </div>
@@ -159,7 +159,7 @@
             <div class="flex flex-1 flex-col gap-2 sm:max-w-xs">
               <button
                 type="button"
-                class="w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-gray-300"
+                class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                 :disabled="!canGoToAddress"
                 @click="goToStep(2)"
               >
@@ -191,7 +191,7 @@
                     v-for="addr in savedAddresses"
                     :key="addr.id"
                     type="button"
-                    class="group flex items-center gap-1 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:border-[#2563eb] hover:bg-blue-50"
+                    class="group flex items-center gap-1 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:border-primary hover:bg-primary-50"
                     @click="applySavedAddress(addr)"
                   >
                     <span class="max-w-[160px] truncate sm:max-w-[220px]">
@@ -215,7 +215,7 @@
                       ref="addressInputRef"
                       v-model="addressLine"
                       type="text"
-                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
+                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       placeholder="Улан-Удэ, улица, дом"
                       @input="onAddressInput"
                     />
@@ -264,13 +264,13 @@
                     <input
                       v-model="flat"
                       type="text"
-                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
+                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       placeholder="Квартира / подъезд"
                     />
                     <textarea
                       v-model="comment"
                       rows="2"
-                      class="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]"
+                      class="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       placeholder="Комментарий курьеру"
                     />
                   </div>
@@ -295,7 +295,7 @@
             </button>
             <button
               type="button"
-              class="w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
+              class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
               :disabled="!canGoToSummary"
               @click="goToStep(3)"
             >
@@ -370,7 +370,7 @@
                       v-model="state.paymentMethod"
                       type="radio"
                       value="cash"
-                      class="h-4 w-4 text-[#2563eb]"
+                      class="h-4 w-4 text-primary"
                     >
                     <div>
                       <p class="font-medium text-gray-900">
@@ -395,7 +395,7 @@
                         min="0"
                         step="1"
                         inputmode="numeric"
-                        class="w-32 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+                        class="w-32 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                         placeholder="2000"
                       >
                       <span class="text-gray-500">₽</span>
@@ -408,7 +408,7 @@
                       v-model="state.paymentMethod"
                       type="radio"
                       value="card_courier"
-                      class="h-4 w-4 text-[#2563eb]"
+                      class="h-4 w-4 text-primary"
                     >
                     <div>
                       <p class="font-medium text-gray-900">
@@ -426,7 +426,7 @@
                       type="radio"
                       value="online"
                       disabled
-                      class="h-4 w-4 text-[#2563eb]"
+                      class="h-4 w-4 text-primary"
                     >
                     <div>
                       <p class="font-medium text-gray-400">
@@ -462,7 +462,7 @@
                   <span class="font-semibold text-gray-900">
                     Итого к оплате
                   </span>
-                  <span class="text-xl font-bold text-[#2563eb]">
+                  <span class="text-xl font-bold text-primary">
                     {{ formatPrice(cartStore.grandTotal) }}
                   </span>
                 </div>
@@ -484,7 +484,7 @@
                 <button
                   v-if="isAuthorizedForOrder"
                   type="button"
-                  class="w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
+                  class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
                   :disabled="isPlacing || !cartStore.items.length || !canGoToSummary"
                   @click="placeOrder"
                 >
@@ -496,14 +496,14 @@
                 <template v-else>
                   <button
                     type="button"
-                    class="w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8] sm:w-auto"
+                    class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 sm:w-auto"
                     @click="authAndReturn"
                   >
                     Авторизоваться и оформить
                   </button>
                   <button
                     type="button"
-                    class="w-full rounded-lg border border-[#2563eb] px-4 py-3 text-base font-medium text-[#2563eb] transition hover:bg-blue-50 sm:w-auto"
+                    class="w-full rounded-lg border border-primary px-4 py-3 text-base font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100 sm:w-auto"
                     @click="continueInTelegramFromCheckout"
                   >
                     Продолжить в Telegram‑боте

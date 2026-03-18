@@ -131,7 +131,7 @@ const linkTelegram = async () => {
 }
 
 .btn-primary {
-  background: #2563eb;
+  background: #E25E2D;
   color: #ffffff;
 }
 

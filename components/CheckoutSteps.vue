@@ -10,7 +10,7 @@
     >
       <button
         type="button"
-        class="group flex items-center gap-2 rounded-lg px-1 py-1 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]/40"
+        class="group flex items-center gap-2 rounded-lg px-1 py-1 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         :class="stepButtonClass(step.id)"
         :disabled="!isStepClickable(step.id)"
         :aria-current="step.id === currentStep ? 'step' : undefined"
@@ -100,7 +100,7 @@ function stepButtonClass(id: 1 | 2 | 3) {
 
 function stepCircleClass(id: number) {
   if (id === props.currentStep) {
-    return 'border-[#2563eb] bg-[#2563eb] text-white'
+    return 'border-primary bg-primary text-white'
   }
   if (id < props.currentStep) {
     return 'border-emerald-500 bg-emerald-50 text-emerald-600'
@@ -120,7 +120,7 @@ function stepLabelClass(id: number) {
 
 function connectorClass(id: number) {
   if (id <= props.currentStep) {
-    return 'bg-[#2563eb]'
+    return 'bg-primary'
   }
   return 'bg-gray-200'
 }

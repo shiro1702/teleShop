@@ -20,7 +20,7 @@
           {{ item.name }}
         </h3>
         <p
-          class="text-base text-[#2563eb]"
+          class="text-base text-primary"
         >
           {{ formatPrice(item.price) }} за шт.
         </p>
@@ -51,7 +51,7 @@
           </span>
           <button
             type="button"
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-r-lg bg-[#2563eb] text-white transition"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-r-lg bg-primary text-white transition hover:bg-primary-600 active:bg-primary-700"
             aria-label="Увеличить"
             @click="cartStore.addItem(item, 1)"
           >

@@ -8,7 +8,7 @@
               v-for="section in cartStore.productsByCategory"
               :key="section.category"
               :href="`#${section.category}`"
-              class="shrink-0 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-[#2563eb] hover:bg-blue-50 hover:text-gray-900"
+              class="shrink-0 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-primary hover:bg-primary-50 hover:text-gray-900"
             >
               {{ section.label }}
             </a>
@@ -24,7 +24,7 @@
               <span class="text-gray-500">
                 {{ cartStore.count }} шт.
               </span>
-              <span class="font-semibold text-[#2563eb]">
+              <span class="font-semibold text-primary">
                 {{ formatPrice(cartStore.total) }}
               </span>
             </template>
@@ -81,7 +81,7 @@
             </p>
             <button
               type="button"
-            class="mt-4 w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8]"
+            class="mt-4 w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
               @click="showOrderSuccess = false"
             >
               Понятно
@@ -97,7 +97,7 @@
     >
       <button
         type="button"
-        class="flex w-full items-center justify-between gap-3 rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white shadow-md"
+        class="flex w-full items-center justify-between gap-3 rounded-lg bg-primary px-4 py-3 text-base font-medium text-white shadow-md"
         @click="router.push('/checkout')"
       >
         <div class="flex items-center gap-2">
@@ -107,7 +107,7 @@
           <span>Корзина</span>
         </div>
         <div v-if="cartStore.count > 0" class="flex items-center gap-2">
-          <span class="text-sm text-blue-100">
+          <span class="text-sm text-orange-100">
             {{ cartStore.count }} шт.
           </span>
           <span class="text-sm font-semibold">
@@ -159,12 +159,12 @@
               >
                 {{ selectedProduct.description }}
               </p>
-              <p class="text-lg font-bold text-[#2563eb]">
+              <p class="text-lg font-bold text-primary">
                 {{ formatPrice(selectedProduct.price) }}
               </p>
               <button
                 type="button"
-              class="mt-2 w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+              class="mt-2 w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
                 @click="addSelectedToCart"
               >
                 Добавить в корзину

@@ -13,7 +13,7 @@
           </NuxtLink>
           <div class="text-right">
             <h1 class="text-xl font-bold text-gray-900">Корзина</h1>
-            <p v-if="cartStore.count > 0" class="text-sm text-[#2563eb]">
+            <p v-if="cartStore.count > 0" class="text-sm text-primary">
               {{ cartStore.count }} шт. · {{ formatPrice(cartStore.total) }}
             </p>
           </div>
@@ -27,7 +27,7 @@
         <p class="text-gray-500">Корзина пуста</p>
         <NuxtLink
           to="/"
-          class="mt-4 inline-block rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8]"
+          class="mt-4 inline-block rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
         >
           Перейти к товарам
         </NuxtLink>
@@ -46,7 +46,7 @@
         <div class="mt-8 space-y-3 rounded-lg border border-gray-200 bg-white p-4">
           <div class="flex items-center justify-between">
             <span class="font-semibold text-gray-900">Итого:</span>
-            <span class="text-xl font-bold text-[#2563eb]">
+            <span class="text-xl font-bold text-primary">
               {{ formatPrice(cartStore.total) }}
             </span>
           </div>

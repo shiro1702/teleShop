@@ -1,14 +1,13 @@
-# Nuxt dev/build outputs
-.output
-.data
-.nuxt
-.nitro
-.cache
-.env
-dist
-
 # Node dependencies
 node_modules
+
+# Nuxt outputs
+.nuxt
+.output
+.data
+.nitro
+.cache
+dist
 
 # Logs
 logs
@@ -19,11 +18,12 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Misc
-.DS_Store
-.fleet
-.idea
-
-# Local env (keep .env.example for placeholders)
+# Local env files (keep .env.example)
+.env
 .env.local
 .env.*.local
+
+# OS / IDE
+.DS_Store
+.idea
+.fleet

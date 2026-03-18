@@ -29,7 +29,7 @@
       </div>
       <div class="mt-3 shrink-0 space-y-3">
         <p
-          class="text-lg font-medium text-[#2563eb]"
+          class="text-lg font-medium text-primary"
         >
           {{ formatPrice(product.price) }}
         </p>
@@ -38,7 +38,7 @@
         <button
           v-if="quantity === 0"
           type="button"
-          class="w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition"
+          class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
           @click.stop="cartStore.addItem(product)"
         >
           В корзину
@@ -64,7 +64,7 @@
           </span>
           <button
             type="button"
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#2563eb] text-white transition"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-white transition hover:bg-primary-600 active:bg-primary-700"
             aria-label="Добавить"
             @click.stop="cartStore.addItem(product)"
           >

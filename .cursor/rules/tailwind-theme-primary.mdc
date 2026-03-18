@@ -1,0 +1,28 @@
+---
+description: Use Tailwind semantic primary color (no hardcoded hex)
+globs: **/*.{vue,ts,js,css,md}
+alwaysApply: false
+---
+
+# Tailwind primary color
+
+This project defines a semantic Tailwind color `primary` in `tailwind.config.ts`.
+
+## Rules
+
+- Do **not** hardcode brand colors via `bg-[#...]`, `text-[#...]`, `border-[#...]`, `ring-[#...]`.
+- Use semantic classes instead:
+  - `bg-primary`, `text-primary`, `border-primary`, `ring-primary`
+  - hover/active: `hover:bg-primary-600`, `active:bg-primary-700`
+  - light backgrounds: `bg-primary-50`, `bg-primary-100`
+
+## Examples
+
+Bad:
+
+`class="bg-[#E25E2D] hover:bg-[#C84E24]"`
+
+Good:
+
+`class="bg-primary hover:bg-primary-600 active:bg-primary-700"`
+

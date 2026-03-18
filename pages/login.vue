@@ -140,8 +140,8 @@ h1 {
 
 .field input:focus {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.3);
+  border-color: #E25E2D;
+  box-shadow: 0 0 0 1px rgba(226, 94, 45, 0.3);
 }
 
 .btn-primary {
@@ -150,7 +150,7 @@ h1 {
   border-radius: 0.4rem;
   border: none;
   cursor: pointer;
-  background: #2563eb;
+  background: #E25E2D;
   color: #ffffff;
   font-size: 0.95rem;
   font-weight: 500;
@@ -163,7 +163,7 @@ h1 {
 }
 
 .btn-primary:not(:disabled):hover {
-  background: #1d4ed8;
+  background: #C84E24;
 }
 
 .error {
