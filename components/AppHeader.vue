@@ -17,7 +17,11 @@
 
       <div class="flex items-center gap-2 sm:gap-3">
         <!-- Авторизован: на мобилке — иконка, на десктопе — текстовая кнопка -->
-        <div v-if="user" class="relative z-[51]">
+        <div
+          v-if="user"
+          ref="userMenuRootRef"
+          class="relative z-[51]"
+        >
           <button
             type="button"
             class="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 sm:hidden"
@@ -91,6 +95,17 @@ const telegramBotUrl = computed(() =>
 )
 
 const showUserMenu = ref(false)
+const userMenuRootRef = ref<HTMLElement | null>(null)
+
+function onDocumentClickCapture(e: MouseEvent) {
+  if (!showUserMenu.value) return
+  const root = userMenuRootRef.value
+  const target = e.target as Node | null
+  if (!root || !target) return
+  if (!root.contains(target)) {
+    showUserMenu.value = false
+  }
+}
 
 function openTelegramAuth() {
   if (!telegramBotUrl.value) return
@@ -115,5 +130,15 @@ async function logout() {
     console.error('Logout error:', e)
   }
 }
+
+onMounted(() => {
+  if (!import.meta.client) return
+  document.addEventListener('click', onDocumentClickCapture, true)
+})
+
+onBeforeUnmount(() => {
+  if (!import.meta.client) return
+  document.removeEventListener('click', onDocumentClickCapture, true)
+})
 </script>
 
