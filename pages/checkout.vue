@@ -1,37 +1,97 @@
 <template>
   <div class="min-h-screen bg-gray-50">
+    <!-- Модалка подтверждения очистки корзины -->
+    <Teleport to="body">
+      <Transition name="cart">
+        <div
+          v-if="showClearCartModal"
+          class="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="clear-cart-title"
+        >
+          <div
+            class="absolute inset-0 bg-black/50"
+            @click="closeClearCartModal"
+          />
+          <div
+            class="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+            @click.stop
+          >
+            <h2 id="clear-cart-title" class="text-lg font-semibold text-gray-900">
+              Очистить корзину?
+            </h2>
+            <p class="mt-2 text-sm text-gray-600">
+              Все товары будут удалены из корзины.
+            </p>
+            <div class="mt-5 flex gap-3">
+              <button
+                type="button"
+                class="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                @click="closeClearCartModal"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                class="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 active:bg-red-800"
+                @click="confirmClearCart"
+              >
+                Очистить
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <header class="border-b border-gray-200 bg-white">
-      <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
+      <div class="mx-auto grid max-w-6xl grid-cols-3 items-center gap-3 px-4 py-4 sm:px-6">
         <NuxtLink
           to="/"
-          class="flex items-center gap-3 text-gray-600 transition hover:text-gray-900"
+          class="flex w-fit items-center gap-2 text-gray-600 transition hover:text-gray-900"
+          aria-label="Назад в магазин"
         >
-          <img
-            src="/logo.webp"
-            alt="Логотип"
-            class="h-10 w-10 rounded-full object-cover"
-          />
+          <span
+            class="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-gray-100"
+            aria-hidden="true"
+          >
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+          </span>
           <span class="hidden text-sm sm:inline">
-            ← Назад в магазин
+            Назад в магазин
           </span>
         </NuxtLink>
+
+        <h1 class="text-center text-xl font-bold text-gray-900">
+          Оформление
+        </h1>
+
         <div class="text-right">
-          <h1 class="text-xl font-bold text-gray-900">
-            Оформление заказа
-          </h1>
-          <p
+          <div
             v-if="cartStore.count > 0"
-            class="text-sm text-[#2563eb]"
+            class="flex flex-col items-end leading-tight"
           >
-            {{ cartStore.count }} шт. · {{ formatPrice(cartStore.total) }}
-          </p>
+            <span class="text-sm font-medium text-gray-600">
+              {{ cartStore.count }} шт.
+            </span>
+            <span class="text-sm font-semibold text-[#2563eb]">
+              {{ formatPrice(cartStore.total) }}
+            </span>
+          </div>
         </div>
-        <span class="w-24" />
       </div>
     </header>
 
     <main class="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-      <CheckoutSteps :current-step="state.currentStep" />
+      <CheckoutSteps
+        :current-step="state.currentStep"
+        :can-go-to-address="canGoToAddress"
+        :can-go-to-summary="canGoToSummary"
+        @go="goToStep"
+      />
 
       <div class="space-y-6">
         <!-- Шаг 1: корзина -->
@@ -55,6 +115,13 @@
                   :key="item.id"
                   :item="item"
                 />
+                <button
+                  type="button"
+                  class="w-full rounded-lg border border-red-200 bg-white px-4 py-3 text-base font-medium text-red-600 transition hover:bg-red-50 active:bg-red-100"
+                  @click="openClearCartModal"
+                >
+                  Очистить корзину
+                </button>
               </ul>
             </template>
           </div>
@@ -483,6 +550,7 @@ const state = reactive<CheckoutState>({
 
 const isPlacing = ref(false)
 const changeFrom = ref<string>('')
+const showClearCartModal = ref(false)
 
 const {
   addressLine,
@@ -514,6 +582,25 @@ const isAuthorizedForOrder = computed(() => {
 
 function goToStep(step: 1 | 2 | 3) {
   state.currentStep = step
+}
+
+function openClearCartModal() {
+  if (!cartStore.items.length) return
+  showClearCartModal.value = true
+}
+
+function closeClearCartModal() {
+  showClearCartModal.value = false
+}
+
+function confirmClearCart() {
+  if (!cartStore.items.length) {
+    showClearCartModal.value = false
+    return
+  }
+  cartStore.clear()
+  state.currentStep = 1
+  showClearCartModal.value = false
 }
 
 function formatPrice(price: number) {

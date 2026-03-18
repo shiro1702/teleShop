@@ -8,7 +8,14 @@
       :key="step.id"
       class="flex flex-1 items-center"
     >
-      <div class="flex items-center gap-2">
+      <button
+        type="button"
+        class="group flex items-center gap-2 rounded-lg px-1 py-1 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]/40"
+        :class="stepButtonClass(step.id)"
+        :disabled="!isStepClickable(step.id)"
+        :aria-current="step.id === currentStep ? 'step' : undefined"
+        @click="onStepClick(step.id)"
+      >
         <div
           class="flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-semibold sm:h-7 sm:w-7 sm:text-xs"
           :class="stepCircleClass(step.id)"
@@ -26,7 +33,7 @@
             {{ step.subtitle }}
           </span>
         </div>
-      </div>
+      </button>
 
       <div
         v-if="step.id !== steps.length"
@@ -44,6 +51,12 @@
 <script setup lang="ts">
 const props = defineProps<{
   currentStep: 1 | 2 | 3
+  canGoToAddress?: boolean
+  canGoToSummary?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'go', step: 1 | 2 | 3): void
 }>()
 
 const steps = [
@@ -63,6 +76,27 @@ const steps = [
     subtitle: 'Способ оплаты и итог',
   },
 ] as const
+
+function isStepClickable(id: 1 | 2 | 3) {
+  if (id === 1) return true
+  if (id === 2) return !!props.canGoToAddress
+  return !!props.canGoToSummary
+}
+
+function onStepClick(id: 1 | 2 | 3) {
+  if (!isStepClickable(id)) return
+  emit('go', id)
+}
+
+function stepButtonClass(id: 1 | 2 | 3) {
+  if (!isStepClickable(id)) {
+    return 'cursor-not-allowed opacity-60'
+  }
+  if (id === props.currentStep) {
+    return 'cursor-default'
+  }
+  return 'cursor-pointer hover:bg-gray-50 active:bg-gray-100'
+}
 
 function stepCircleClass(id: number) {
   if (id === props.currentStep) {

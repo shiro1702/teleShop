@@ -43,11 +43,22 @@
           />
         </ul>
 
-        <div class="mt-8 flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
-          <span class="font-semibold text-gray-900">Итого:</span>
-          <span class="text-xl font-bold text-[#2563eb]">
-            {{ formatPrice(cartStore.total) }}
-          </span>
+        <div class="mt-8 space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-gray-900">Итого:</span>
+            <span class="text-xl font-bold text-[#2563eb]">
+              {{ formatPrice(cartStore.total) }}
+            </span>
+          </div>
+          <div class="flex justify-end">
+            <button
+              type="button"
+              class="text-sm text-gray-500 transition hover:text-red-600"
+              @click="confirmClearCart"
+            >
+              Очистить корзину
+            </button>
+          </div>
         </div>
       </template>
     </main>
@@ -56,6 +67,19 @@
 
 <script setup lang="ts">
 const cartStore = useCartStore()
+
+function isClient() {
+  return typeof window !== 'undefined'
+}
+
+function confirmClearCart() {
+  if (!cartStore.items.length) return
+  if (isClient()) {
+    const ok = window.confirm('Очистить корзину?')
+    if (!ok) return
+  }
+  cartStore.clear()
+}
 
 function formatPrice(price: number) {
   return new Intl.NumberFormat('ru-RU', {
