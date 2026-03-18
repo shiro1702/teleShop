@@ -5,7 +5,7 @@
         <div class="flex items-center justify-between">
           <NuxtLink to="/" class="flex items-center gap-3 text-gray-600 transition hover:text-gray-900">
             <img
-              src="/image_112x112.png"
+              src="/logo.webp"
               alt="Логотип"
               class="h-10 w-10 rounded-full object-cover"
             />

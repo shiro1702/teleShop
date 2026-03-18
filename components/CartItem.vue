@@ -20,7 +20,7 @@
           {{ item.name }}
         </h3>
         <p
-          class="text-sm text-[#2563eb]"
+          class="text-base text-[#2563eb]"
         >
           {{ formatPrice(item.price) }} за шт.
         </p>
@@ -36,7 +36,7 @@
         >
           <button
             type="button"
-            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-l-lg text-gray-600 transition hover:bg-gray-200 disabled:opacity-40"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-l-lg text-gray-600 transition hover:bg-gray-200 disabled:opacity-40"
             aria-label="Уменьшить"
             :disabled="item.quantity <= 1"
             @click="cartStore.updateQuantity(item.id, item.quantity - 1)"
@@ -44,14 +44,14 @@
             −
           </button>
           <span
-            class="min-w-[2.5rem] text-center text-sm font-medium text-gray-900"
+            class="min-w-[2.5rem] text-center text-base font-medium text-gray-900"
             aria-live="polite"
           >
             {{ item.quantity }}
           </span>
           <button
             type="button"
-            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-r-lg bg-[#2563eb] text-white transition"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-r-lg bg-[#2563eb] text-white transition"
             aria-label="Увеличить"
             @click="cartStore.addItem(item, 1)"
           >
@@ -67,7 +67,7 @@
         </p>
         <button
           type="button"
-          class="rounded-lg px-2 py-1.5 text-sm text-red-600 transition hover:bg-red-50 hover:text-red-700"
+          class="rounded-lg px-3 py-2 text-base text-red-600 transition hover:bg-red-50 hover:text-red-700"
           @click="cartStore.removeItem(item.id)"
         >
           Удалить

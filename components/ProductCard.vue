@@ -38,7 +38,7 @@
         <button
           v-if="quantity === 0"
           type="button"
-          class="w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition"
+          class="w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition"
           @click.stop="cartStore.addItem(product)"
         >
           В корзину
@@ -51,20 +51,20 @@
         >
           <button
             type="button"
-            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-gray-700 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-50"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-gray-700 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-50"
             aria-label="Убавить"
             @click.stop="cartStore.updateQuantity(product.id, quantity - 1)"
           >
             −
           </button>
           <span
-            class="grow min-w-[2rem] text-center text-sm font-medium text-gray-900"
+            class="grow min-w-[2rem] text-center text-base font-medium text-gray-900"
           >
             {{ quantity }}
           </span>
           <button
             type="button"
-            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#2563eb] text-white transition"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#2563eb] text-white transition"
             aria-label="Добавить"
             @click.stop="cartStore.addItem(product)"
           >

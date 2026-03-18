@@ -7,7 +7,7 @@
           class="flex items-center gap-3 text-gray-600 transition hover:text-gray-900"
         >
           <img
-            src="/image_112x112.png"
+            src="/logo.webp"
             alt="Логотип"
             class="h-10 w-10 rounded-full object-cover"
           />
@@ -43,7 +43,7 @@
               </p>
               <NuxtLink
                 to="/"
-                class="mt-4 inline-flex items-center justify-center rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8]"
+                class="mt-4 inline-flex items-center justify-center rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8]"
               >
                 Перейти к товарам
               </NuxtLink>
@@ -92,7 +92,7 @@
             <div class="flex flex-1 flex-col gap-2 sm:max-w-xs">
               <button
                 type="button"
-                class="w-full rounded-lg bg-[#2563eb] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-gray-300"
+                class="w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-gray-300"
                 :disabled="!canGoToAddress"
                 @click="goToStep(2)"
               >
@@ -124,7 +124,7 @@
                     v-for="addr in savedAddresses"
                     :key="addr.id"
                     type="button"
-                    class="group flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-700 hover:border-[#2563eb] hover:bg-blue-50"
+                    class="group flex items-center gap-1 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:border-[#2563eb] hover:bg-blue-50"
                     @click="applySavedAddress(addr)"
                   >
                     <span class="max-w-[160px] truncate sm:max-w-[220px]">
@@ -184,7 +184,7 @@
                         v-for="item in suggestItems"
                         :key="item.value"
                         type="button"
-                        class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-800 transition hover:bg-gray-50"
+                        class="flex w-full items-center justify-between px-4 py-3 text-left text-base text-gray-800 transition hover:bg-gray-50"
                         @click="selectSuggestion(item)"
                       >
                         <span class="truncate">
@@ -221,14 +221,14 @@
           <div class="mt-4 flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center">
             <button
               type="button"
-              class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 sm:w-auto"
+              class="w-full rounded-lg border border-gray-300 px-4 py-3 text-base font-medium text-gray-700 transition hover:bg-gray-50 sm:w-auto"
               @click="goToStep(1)"
             >
               Назад к корзине
             </button>
             <button
               type="button"
-              class="w-full rounded-lg bg-[#2563eb] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
+              class="w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
               :disabled="!canGoToSummary"
               @click="goToStep(3)"
             >
@@ -405,7 +405,7 @@
             <div class="flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center">
               <button
                 type="button"
-                class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 sm:w-auto"
+                class="w-full rounded-lg border border-gray-300 px-4 py-3 text-base font-medium text-gray-700 transition hover:bg-gray-50 sm:w-auto"
                 @click="goToStep(2)"
               >
                 Назад к адресу
@@ -417,7 +417,7 @@
                 <button
                   v-if="isAuthorizedForOrder"
                   type="button"
-                  class="w-full rounded-lg bg-[#2563eb] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
+                  class="w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
                   :disabled="isPlacing || !cartStore.items.length || !canGoToSummary"
                   @click="placeOrder"
                 >
@@ -429,14 +429,14 @@
                 <template v-else>
                   <button
                     type="button"
-                    class="w-full rounded-lg bg-[#2563eb] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#1d4ed8] sm:w-auto"
+                    class="w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8] sm:w-auto"
                     @click="authAndReturn"
                   >
                     Авторизоваться и оформить
                   </button>
                   <button
                     type="button"
-                    class="w-full rounded-lg border border-[#2563eb] px-4 py-2.5 text-sm font-medium text-[#2563eb] transition hover:bg-blue-50 sm:w-auto"
+                    class="w-full rounded-lg border border-[#2563eb] px-4 py-3 text-base font-medium text-[#2563eb] transition hover:bg-blue-50 sm:w-auto"
                     @click="continueInTelegramFromCheckout"
                   >
                     Продолжить в Telegram‑боте

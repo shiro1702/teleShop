@@ -9,7 +9,7 @@
           <div class="flex min-w-0 flex-1 items-center justify-center gap-2 md:flex-initial">
             <NuxtLink to="/" class="flex shrink-0 items-center gap-2 gap-3 sm:gap-3">
               <img
-                src="/image_112x112.png"
+                src="/logo.webp"
                 alt="Логотип"
                 class="h-9 w-9 rounded-full object-cover sm:h-10 sm:w-10"
               />
@@ -41,7 +41,7 @@
           <!-- Кнопка корзины в шапке — только на планшетах и десктопе -->
           <button
             type="button"
-            class="hidden shrink-0 items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200 sm:gap-2 sm:px-4 md:flex"
+            class="hidden shrink-0 items-center gap-2 rounded-lg bg-gray-100 px-4 py-2.5 text-base font-medium text-gray-700 transition hover:bg-gray-200 md:flex"
             @click="router.push('/checkout')"
           >
             <span>Корзина</span>
@@ -150,7 +150,7 @@
             </p>
             <button
               type="button"
-              class="mt-4 w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8]"
+            class="mt-4 w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8]"
               @click="showOrderSuccess = false"
             >
               Понятно
@@ -166,7 +166,7 @@
     >
       <button
         type="button"
-        class="flex w-full items-center justify-between gap-3 rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white shadow-md"
+        class="flex w-full items-center justify-between gap-3 rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white shadow-md"
         @click="router.push('/checkout')"
       >
         <div class="flex items-center gap-2">
@@ -176,7 +176,7 @@
           <span>Корзина</span>
         </div>
         <div v-if="cartStore.count > 0" class="flex items-center gap-2">
-          <span class="text-xs text-blue-100">
+          <span class="text-sm text-blue-100">
             {{ cartStore.count }} шт.
           </span>
           <span class="text-sm font-semibold">
@@ -233,7 +233,7 @@
               </p>
               <button
                 type="button"
-                class="mt-2 w-full rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
+              class="mt-2 w-full rounded-lg bg-[#2563eb] px-4 py-3 text-base font-medium text-white transition hover:bg-[#1d4ed8] active:bg-[#1e40af]"
                 @click="addSelectedToCart"
               >
                 Добавить в корзину

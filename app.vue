@@ -6,7 +6,7 @@
     >
       <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <NuxtLink to="/" class="flex items-center gap-2 text-gray-900">
-          <span class="text-sm font-semibold uppercase tracking-wide">JINJI</span>
+          <span class="text-sm font-semibold uppercase tracking-wide">пибимпаб</span>
         </NuxtLink>
         <div class="flex items-center gap-3">
           <div
@@ -15,7 +15,7 @@
           >
             <button
               type="button"
-              class="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              class="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               @click="toggleUserMenu"
             >
               <span>Вошли через Telegram</span>
@@ -30,7 +30,7 @@
             </button>
             <div
               v-if="showUserMenu"
-              class="absolute right-0 mt-2 w-48 rounded-lg border border-gray-200 bg-white py-1 text-xs text-gray-700 shadow-lg"
+              class="absolute right-0 mt-2 w-48 rounded-lg border border-gray-200 bg-white py-1 text-sm text-gray-700 shadow-lg"
             >
               <NuxtLink
                 to="/profile"
@@ -51,7 +51,7 @@
           <button
             v-else-if="telegramBotUrl"
             type="button"
-            class="hidden rounded-lg border border-[#2563eb] px-3 py-1.5 text-xs font-medium text-[#2563eb] transition hover:bg-blue-50 active:bg-blue-100 sm:inline-block"
+            class="hidden rounded-lg border border-[#2563eb] px-4 py-2 text-sm font-medium text-[#2563eb] transition hover:bg-blue-50 active:bg-blue-100 sm:inline-block"
             @click="openTelegramAuth"
           >
             Войти через Telegram
