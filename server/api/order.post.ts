@@ -53,6 +53,23 @@ function formatPrice(value: number): string {
 }
 
 type PaymentMethod = 'cash' | 'card_courier' | 'online'
+type FulfillmentType = 'delivery' | 'pickup'
+type PickupPoint = {
+  id: string
+  name: string
+  address: string
+}
+
+function parseAvailableFulfillmentTypes(raw: string | undefined): FulfillmentType[] {
+  if (!raw) return ['delivery', 'pickup']
+  const parsed = raw
+    .split(',')
+    .map((x) => x.trim().toLowerCase())
+    .filter((x): x is FulfillmentType => x === 'delivery' || x === 'pickup')
+
+  if (!parsed.length) return ['delivery', 'pickup']
+  return Array.from(new Set(parsed))
+}
 
 function formatPaymentMethod(method: PaymentMethod | undefined): string {
   if (method === 'card_courier') return 'Картой курьеру'
@@ -68,6 +85,8 @@ function buildOrderMessage(
   deliveryZone: DeliveryZoneProperties | null,
   user: TelegramUser,
   options: {
+    fulfillmentType?: FulfillmentType
+    pickupPoint?: PickupPoint | null
     addressLine?: string | null
     flat?: string | null
     comment?: string | null
@@ -77,6 +96,7 @@ function buildOrderMessage(
 ): string {
   const username = user.username ? `@${user.username}` : [user.first_name, user.last_name].filter(Boolean).join(' ') || `ID ${user.id}`
   const grandTotal = total + deliveryCost
+  const isPickup = options.fulfillmentType === 'pickup'
   const lines: string[] = [
     `📦 Заказ #${orderId}`,
     '',
@@ -84,15 +104,21 @@ function buildOrderMessage(
     ...items.map((item) => `  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`),
     '',
     `💰 Товары: ${formatPrice(total)}`,
-    `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
-    `💳 Итого с доставкой: ${formatPrice(grandTotal)}`,
+    isPickup
+      ? '🏬 Способ получения: Самовывоз'
+      : `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
+    isPickup
+      ? `💳 Итого: ${formatPrice(grandTotal)}`
+      : `💳 Итого с доставкой: ${formatPrice(grandTotal)}`,
     '',
   ]
 
-  if (options.addressLine) {
+  if (!isPickup && options.addressLine) {
     const addrParts = [options.addressLine]
     if (options.flat) addrParts.push(options.flat)
     lines.push(`📍 Адрес: ${addrParts.join(', ')}`)
+  } else if (isPickup && options.pickupPoint) {
+    lines.push(`🏬 Точка самовывоза: ${options.pickupPoint.name}, ${options.pickupPoint.address}`)
   }
   if (options.comment) {
     lines.push(`📝 Комментарий: ${options.comment}`)
@@ -118,6 +144,8 @@ function buildClientOrderMessage(
   deliveryCost: number,
   deliveryZone: DeliveryZoneProperties | null,
   options: {
+    fulfillmentType?: FulfillmentType
+    pickupPoint?: PickupPoint | null
     addressLine?: string | null
     flat?: string | null
     comment?: string | null
@@ -126,6 +154,7 @@ function buildClientOrderMessage(
   },
 ): string {
   const grandTotal = total + deliveryCost
+  const isPickup = options.fulfillmentType === 'pickup'
   const lines: string[] = [
     `🧾 Ваш заказ #${orderId} принят!`,
     '',
@@ -133,13 +162,18 @@ function buildClientOrderMessage(
     ...items.map((item) => `  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`),
     '',
     `💰 Товары: ${formatPrice(total)}`,
-    `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
+    isPickup
+      ? '🏬 Способ получения: Самовывоз'
+      : `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
+    isPickup ? `💳 Итого: ${formatPrice(grandTotal)}` : `💳 Итого с доставкой: ${formatPrice(grandTotal)}`,
   ]
 
-  if (options.addressLine) {
+  if (!isPickup && options.addressLine) {
     const addrParts = [options.addressLine]
     if (options.flat) addrParts.push(options.flat)
     lines.push(`📍 Адрес: ${addrParts.join(', ')}`)
+  } else if (isPickup && options.pickupPoint) {
+    lines.push(`🏬 Точка самовывоза: ${options.pickupPoint.name}, ${options.pickupPoint.address}`)
   }
   if (options.comment) {
     lines.push(`📝 Комментарий: ${options.comment}`)
@@ -161,6 +195,7 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const botToken = config.botToken as string
   const managerChatId = config.managerChatId as string
+  const availableFulfillmentTypes = parseAvailableFulfillmentTypes(config.public?.fulfillmentTypes as string | undefined)
 
   if (!botToken || !managerChatId) {
     throw createError({ statusCode: 500, message: 'Server config: bot token or manager chat ID missing' })
@@ -175,6 +210,12 @@ export default defineEventHandler(async (event) => {
       comment?: string | null
       zone?: DeliveryZoneProperties | null
     } | null
+    pickupPoint?: {
+      id?: string | null
+      name?: string | null
+      address?: string | null
+    } | null
+    fulfillmentType?: FulfillmentType
     paymentMethod?: PaymentMethod
     changeFrom?: number | null
   } | null>(event)
@@ -198,10 +239,16 @@ export default defineEventHandler(async (event) => {
   })
 
   const total = itemsWithServerPrice.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const fulfillmentType: FulfillmentType = body.fulfillmentType === 'pickup' ? 'pickup' : 'delivery'
+  if (!availableFulfillmentTypes.includes(fulfillmentType)) {
+    throw createError({ statusCode: 400, message: `Fulfillment type "${fulfillmentType}" is disabled` })
+  }
 
   const deliveryZone: DeliveryZoneProperties | null = body.address?.zone ?? null
   let deliveryCost = 0
-  if (!deliveryZone) {
+  if (fulfillmentType === 'pickup') {
+    deliveryCost = 0
+  } else if (!deliveryZone) {
     deliveryCost = itemsWithServerPrice.length ? 200 : 0
   } else if (total >= deliveryZone.freeDeliveryThreshold) {
     deliveryCost = 0
@@ -212,6 +259,14 @@ export default defineEventHandler(async (event) => {
   const addressLine = body.address?.line?.trim() || null
   const flat = body.address?.flat?.trim() || null
   const comment = body.address?.comment?.trim() || null
+  const pickupPoint: PickupPoint | null =
+    body.pickupPoint?.id && body.pickupPoint?.name && body.pickupPoint?.address
+      ? {
+          id: body.pickupPoint.id.trim(),
+          name: body.pickupPoint.name.trim(),
+          address: body.pickupPoint.address.trim(),
+        }
+      : null
   const paymentMethod: PaymentMethod = body.paymentMethod || 'cash'
   const changeFrom =
     typeof body.changeFrom === 'number' && Number.isFinite(body.changeFrom) && body.changeFrom > 0
@@ -275,6 +330,8 @@ export default defineEventHandler(async (event) => {
   const timePart = now.toISOString().slice(11, 19).replace(/:/g, '')
   const orderId = `${datePart}-${timePart}`
   const text = buildOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, deliveryZone, user, {
+    fulfillmentType,
+    pickupPoint,
     addressLine,
     flat,
     comment,
@@ -326,6 +383,8 @@ export default defineEventHandler(async (event) => {
       body: JSON.stringify({
         chat_id: user.id,
         text: buildClientOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, deliveryZone, {
+          fulfillmentType,
+          pickupPoint,
           addressLine,
           flat,
           comment,

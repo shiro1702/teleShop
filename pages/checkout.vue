@@ -177,7 +177,7 @@
                 :disabled="!canGoToAddress"
                 @click="goToStep(2)"
               >
-                Далее: адрес доставки
+                {{ step1NextButtonLabel }}
               </button>
               <p
                 v-if="!cartStore.canCheckout && cartStore.deliverySummary.minOrderAmount"
@@ -189,12 +189,46 @@
           </div>
           </section>
 
-          <!-- Шаг 2: оформление (адрес + оплата + подтверждение) -->
+          <!-- Шаг 2: оформление (получение + адрес + оплата + подтверждение) -->
           <section v-else key="checkout-step-2">
           <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
             <div class="space-y-3">
+              <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4">
+                <h2 class="text-sm font-semibold text-gray-900">
+                  Способ получения
+                </h2>
+                <p
+                  v-if="availableFulfillmentTypes.length === 1"
+                  class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                >
+                  Доступно только: <span class="font-semibold text-gray-900">{{ summaryDeliveryLabel }}</span>
+                </p>
+                <div v-else class="inline-flex w-full rounded-xl border border-gray-200 bg-white p-1">
+                  <button
+                    type="button"
+                    class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition"
+                    :class="state.fulfillmentType === 'delivery'
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-gray-600 hover:bg-gray-100'"
+                    @click="state.fulfillmentType = 'delivery'"
+                  >
+                    Доставка
+                  </button>
+                  <button
+                    type="button"
+                    class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition"
+                    :class="state.fulfillmentType === 'pickup'
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-gray-600 hover:bg-gray-100'"
+                    @click="state.fulfillmentType = 'pickup'"
+                  >
+                    Самовывоз
+                  </button>
+                </div>
+              </section>
+
               <div
-                v-if="savedAddresses.length"
+                v-if="hasDeliveryOption && state.fulfillmentType === 'delivery' && savedAddresses.length"
                 class="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4"
               >
                 <p class="text-xs font-medium text-gray-500">
@@ -222,7 +256,10 @@
                 </div>
               </div>
 
-              <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4">
+              <section
+                v-if="hasDeliveryOption && state.fulfillmentType === 'delivery'"
+                class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4"
+              >
                 <div class="space-y-2">
                   <div class="relative">
                     <input
@@ -296,6 +333,58 @@
                   </p>
                 </div>
               </section>
+
+              <section
+                v-else-if="hasPickupOption"
+                class="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 sm:p-4"
+              >
+                <p>
+                  {{ pickupIntroText }}
+                </p>
+
+                <div
+                  v-if="pickupPoints.length > 1"
+                  class="space-y-2"
+                >
+                  <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700/80">
+                    Точка самовывоза
+                  </p>
+                  <div class="space-y-2">
+                    <label
+                      v-for="point in pickupPoints"
+                      :key="point.id"
+                      class="flex cursor-pointer items-start gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-gray-900"
+                    >
+                      <input
+                        v-model="selectedPickupPointId"
+                        type="radio"
+                        :value="point.id"
+                        class="mt-1 h-4 w-4 text-primary"
+                      >
+                      <div>
+                        <p class="text-sm font-medium">
+                          {{ point.name }}
+                        </p>
+                        <p class="text-xs text-gray-600">
+                          {{ point.address }}
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div v-else-if="selectedPickupPoint" class="rounded-lg border border-emerald-200 bg-white p-3 text-gray-900">
+                  <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700/80">
+                    Точка самовывоза
+                  </p>
+                  <p class="mt-1 text-sm font-medium">
+                    {{ selectedPickupPoint.name }}
+                  </p>
+                  <p class="text-xs text-gray-600">
+                    {{ selectedPickupPoint.address }}
+                  </p>
+                </div>
+              </section>
             </div>
           </div>
 
@@ -315,7 +404,7 @@
                     >
                     <div>
                       <p class="font-medium text-gray-900">
-                        Наличные курьеру
+                        Наличными при получении
                       </p>
                       <p class="text-xs text-gray-500">
                         Оплата наличными при получении
@@ -353,7 +442,7 @@
                     >
                     <div>
                       <p class="font-medium text-gray-900">
-                        Картой курьеру
+                        Картой при получении
                       </p>
                       <p class="text-xs text-gray-500">
                         Курьер привезёт терминал
@@ -391,12 +480,12 @@
                   </span>
                 </div>
                 <div class="flex items-center justify-between">
-                  <span class="text-gray-600">Доставка</span>
+                  <span class="text-gray-600">{{ summaryDeliveryLabel }}</span>
                   <span
                     class="font-semibold"
-                    :class="cartStore.deliveryCost === 0 ? 'text-emerald-600' : 'text-gray-900'"
+                    :class="summaryDeliveryCost === 0 ? 'text-emerald-600' : 'text-gray-900'"
                   >
-                    {{ cartStore.deliveryCost === 0 ? '0 ₽' : formatPrice(cartStore.deliveryCost) }}
+                    {{ summaryDeliveryCost === 0 ? '0 ₽' : formatPrice(summaryDeliveryCost) }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between border-t border-dashed border-gray-200 pt-2">
@@ -404,7 +493,7 @@
                     Итого к оплате
                   </span>
                   <span class="text-xl font-bold text-primary">
-                    {{ formatPrice(cartStore.grandTotal) }}
+                    {{ formatPrice(summaryGrandTotal) }}
                   </span>
                 </div>
               </div>
@@ -525,12 +614,21 @@ const telegramBotName = (config.public.telegramBotName as string | undefined) ||
 const telegramBotUrl = computed(() =>
   telegramBotName ? `https://t.me/${telegramBotName}` : null,
 )
+const pickupPointsConfigRaw = (config.public.pickupPointsJson as string | undefined) || ''
+const fulfillmentTypesConfigRaw = (config.public.fulfillmentTypes as string | undefined) || ''
 
 type PaymentMethod = 'cash' | 'card_courier' | 'online'
+type FulfillmentType = 'delivery' | 'pickup'
+type PickupPoint = {
+  id: string
+  name: string
+  address: string
+}
 
 type CheckoutState = {
   currentStep: 1 | 2
   paymentMethod: PaymentMethod
+  fulfillmentType: FulfillmentType
 }
 
 const CHECKOUT_STORAGE_KEY = 'teleshop_checkout_state'
@@ -538,11 +636,13 @@ const CHECKOUT_STORAGE_KEY = 'teleshop_checkout_state'
 const state = reactive<CheckoutState>({
   currentStep: 1,
   paymentMethod: 'cash',
+  fulfillmentType: 'delivery',
 })
 
 const isPlacing = ref(false)
 const changeFrom = ref<string>('')
 const showClearCartModal = ref(false)
+const selectedPickupPointId = ref<string>('')
 const step1InlineNavRef = ref<HTMLElement | null>(null)
 const step2ActionsRef = ref<HTMLElement | null>(null)
 const isStep1InlineNavVisible = ref(false)
@@ -573,14 +673,96 @@ const {
   deleteSavedAddress,
 } = useCheckoutAddress()
 
+const pickupPoints = computed<PickupPoint[]>(() => {
+  try {
+    const parsed = JSON.parse(pickupPointsConfigRaw) as unknown
+    if (Array.isArray(parsed)) {
+      const normalized = parsed
+        .filter((x): x is { id?: unknown; name?: unknown; address?: unknown } => !!x && typeof x === 'object')
+        .map((x, idx) => {
+          const id = typeof x.id === 'string' && x.id.trim() ? x.id.trim() : `pickup-${idx + 1}`
+          const name = typeof x.name === 'string' && x.name.trim() ? x.name.trim() : `Ресторан ${idx + 1}`
+          const address = typeof x.address === 'string' ? x.address.trim() : ''
+          return { id, name, address }
+        })
+        .filter((x) => x.address.length > 0)
+      if (normalized.length) return normalized
+    }
+  } catch {
+    // ignore invalid JSON config and use fallback
+  }
+
+  return [
+    {
+      id: 'main',
+      name: 'Ресторан',
+      address: 'Адрес ресторана не указан',
+    },
+  ]
+})
+
+const selectedPickupPoint = computed<PickupPoint | null>(() =>
+  pickupPoints.value.find((point) => point.id === selectedPickupPointId.value) ?? null,
+)
+
+const availableFulfillmentTypes = computed<FulfillmentType[]>(() => {
+  const parsed = fulfillmentTypesConfigRaw
+    .split(',')
+    .map((x) => x.trim().toLowerCase())
+    .filter((x): x is FulfillmentType => x === 'delivery' || x === 'pickup')
+
+  if (parsed.length) {
+    return Array.from(new Set(parsed))
+  }
+
+  return ['delivery', 'pickup']
+})
+
+const hasDeliveryOption = computed(() =>
+  availableFulfillmentTypes.value.includes('delivery'),
+)
+
+const hasPickupOption = computed(() =>
+  availableFulfillmentTypes.value.includes('pickup'),
+)
+
+const pickupIntroText = computed(() =>
+  pickupPoints.value.length > 1
+    ? 'Для самовывоза выберите ресторан. Мы отправим подтверждение и детали в Telegram после оформления заказа.'
+    : 'Самовывоз доступен из одного ресторана. Мы отправим подтверждение и детали в Telegram после оформления заказа.',
+)
+
 const canGoToAddress = computed(
   () => cartStore.items.length > 0,
 )
 
 const canGoToSummary = computed(() => {
+  if (state.fulfillmentType === 'pickup') {
+    return cartStore.items.length > 0 && !!selectedPickupPoint.value
+  }
   const hasHouseNumber = /\d/.test(addressLine.value.trim())
   return hasHouseNumber && cartStore.items.length > 0
 })
+
+const summaryDeliveryLabel = computed(() =>
+  state.fulfillmentType === 'pickup' ? 'Самовывоз' : 'Доставка',
+)
+
+const summaryDeliveryCost = computed(() =>
+  state.fulfillmentType === 'pickup' ? 0 : cartStore.deliveryCost,
+)
+
+const summaryGrandTotal = computed(() =>
+  cartStore.total + summaryDeliveryCost.value,
+)
+
+const step1NextButtonLabel = computed(() =>
+  hasDeliveryOption.value && hasPickupOption.value
+    ? 'Далее: способ получения'
+    : hasPickupOption.value
+      ? 'Далее: самовывоз'
+      : 'Далее: адрес доставки',
+)
 
 const isAuthorizedForOrder = computed(() => {
   // В TMA авторизацию обеспечивает initData, в вебе — Supabase-сессия
@@ -628,10 +810,12 @@ function serializeState() {
   return JSON.stringify({
     currentStep: state.currentStep,
     paymentMethod: state.paymentMethod,
+    fulfillmentType: state.fulfillmentType,
     addressLine: addressLine.value,
     flat: flat.value,
     comment: comment.value,
     changeFrom: changeFrom.value,
+    selectedPickupPointId: selectedPickupPointId.value,
   })
 }
 
@@ -644,6 +828,12 @@ function restoreFromPlainObject(obj: any) {
   if (obj.paymentMethod === 'cash' || obj.paymentMethod === 'card_courier' || obj.paymentMethod === 'online') {
     state.paymentMethod = obj.paymentMethod
   }
+  if (
+    (obj.fulfillmentType === 'delivery' || obj.fulfillmentType === 'pickup')
+    && availableFulfillmentTypes.value.includes(obj.fulfillmentType)
+  ) {
+    state.fulfillmentType = obj.fulfillmentType
+  }
   if (typeof obj.addressLine === 'string') {
     addressLine.value = obj.addressLine
   }
@@ -655,6 +845,9 @@ function restoreFromPlainObject(obj: any) {
   }
   if (typeof obj.changeFrom === 'string') {
     changeFrom.value = obj.changeFrom
+  }
+  if (typeof obj.selectedPickupPointId === 'string') {
+    selectedPickupPointId.value = obj.selectedPickupPointId
   }
 }
 
@@ -787,15 +980,36 @@ watch(
   () => ({
     currentStep: state.currentStep,
     paymentMethod: state.paymentMethod,
+    fulfillmentType: state.fulfillmentType,
     addressLine: addressLine.value,
     flat: flat.value,
     comment: comment.value,
+    selectedPickupPointId: selectedPickupPointId.value,
   }),
   () => {
     const data = serializeState()
     persistCheckoutStateCloud(data)
   },
   { deep: true },
+)
+
+watch(
+  pickupPoints,
+  (points) => {
+    const hasCurrent = points.some((point) => point.id === selectedPickupPointId.value)
+    if (hasCurrent) return
+    selectedPickupPointId.value = points.length === 1 ? points[0].id : ''
+  },
+  { immediate: true },
+)
+
+watch(
+  availableFulfillmentTypes,
+  (types) => {
+    if (types.includes(state.fulfillmentType)) return
+    state.fulfillmentType = types[0] ?? 'delivery'
+  },
+  { immediate: true },
 )
 
 onMounted(async () => {
@@ -822,12 +1036,23 @@ async function placeOrder() {
         price: item.price,
         quantity: item.quantity,
       })),
-      address: {
-        line: addressLine.value || null,
-        flat: flat.value || null,
-        comment: comment.value || null,
-        zone: cartStore.deliveryZone ?? null,
-      },
+      fulfillmentType: state.fulfillmentType,
+      address: state.fulfillmentType === 'delivery'
+        ? {
+            line: addressLine.value || null,
+            flat: flat.value || null,
+            comment: comment.value || null,
+            zone: cartStore.deliveryZone ?? null,
+          }
+        : {
+            line: null,
+            flat: null,
+            comment: comment.value || null,
+            zone: null,
+          },
+      pickupPoint: state.fulfillmentType === 'pickup' && selectedPickupPoint.value
+        ? selectedPickupPoint.value
+        : null,
       paymentMethod: state.paymentMethod,
       changeFrom: state.paymentMethod === 'cash' && Number.isFinite(Number.parseInt(changeFrom.value, 10))
         ? Number.parseInt(changeFrom.value, 10)
