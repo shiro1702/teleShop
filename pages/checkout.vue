@@ -106,8 +106,9 @@
       />
 
       <div class="space-y-6">
-        <!-- Шаг 1: корзина -->
-        <section v-if="state.currentStep === 1">
+        <Transition :name="stepTransitionName" mode="out-in" @after-enter="onStepTransitionAfterEnter">
+          <!-- Шаг 1: корзина -->
+          <section v-if="state.currentStep === 1" key="checkout-step-1">
           <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
             <div v-if="cartStore.items.length === 0" class="py-10 text-center">
               <p class="text-gray-500">
@@ -186,10 +187,10 @@
               </p>
             </div>
           </div>
-        </section>
+          </section>
 
-        <!-- Шаг 2: оформление (адрес + оплата + подтверждение) -->
-        <section v-else-if="state.currentStep === 2">
+          <!-- Шаг 2: оформление (адрес + оплата + подтверждение) -->
+          <section v-else key="checkout-step-2">
           <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
             <div class="space-y-3">
               <div
@@ -452,16 +453,18 @@
               </div>
             </div>
           </div>
-        </section>
+          </section>
+        </Transition>
       </div>
     </main>
 
     <!-- Нижняя панель (моб.) -->
-    <div
-      v-if="showBottomBar"
-      class="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur sm:hidden"
-      :class="isTelegram ? 'pb-20' : ''"
-    >
+    <Transition name="bottom-bar">
+      <div
+        v-if="showBottomBar"
+      class="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 px-4 pt-3 pb-10 backdrop-blur sm:hidden"
+        :class="isTelegram ? 'pb-20' : ''"
+      >
       <!-- Шаг 1: навигация -->
       <button
         v-if="state.currentStep === 1"
@@ -502,7 +505,8 @@
           </button>
         </template>
       </div>
-    </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -543,6 +547,11 @@ const step1InlineNavRef = ref<HTMLElement | null>(null)
 const step2ActionsRef = ref<HTMLElement | null>(null)
 const isStep1InlineNavVisible = ref(false)
 const isStep2ActionsVisible = ref(false)
+const stepDirection = ref<'forward' | 'backward'>('forward')
+
+const stepTransitionName = computed(() =>
+  stepDirection.value === 'forward' ? 'step-forward' : 'step-backward',
+)
 
 const showBottomBar = computed(() => {
   if (!cartStore.items.length) return false
@@ -579,6 +588,8 @@ const isAuthorizedForOrder = computed(() => {
 })
 
 function goToStep(step: 1 | 2) {
+  if (step === state.currentStep) return
+  stepDirection.value = step > state.currentStep ? 'forward' : 'backward'
   state.currentStep = step
 }
 
@@ -678,8 +689,15 @@ let cleanupInlineNavObservers: (() => void) | null = null
 async function refreshInlineNavObservers() {
   cleanupInlineNavObservers?.()
   cleanupInlineNavObservers = null
+  // Сбрасываем видимость, чтобы не залипали старые значения при смене шага
+  isStep1InlineNavVisible.value = false
+  isStep2ActionsVisible.value = false
   await nextTick()
   cleanupInlineNavObservers = setupInlineNavObservers()
+}
+
+async function onStepTransitionAfterEnter() {
+  await refreshInlineNavObservers()
 }
 
 onMounted(async () => {
@@ -693,8 +711,21 @@ onBeforeUnmount(() => {
 
 watch(
   [() => state.currentStep, () => cartStore.items.length],
-  async () => {
-    await refreshInlineNavObservers()
+  async ([, itemsCount], [, prevItemsCount]) => {
+    // На смене шага observer обновляем в after-enter Transition.
+    if (itemsCount === 0) {
+      cleanupInlineNavObservers?.()
+      cleanupInlineNavObservers = null
+      isStep1InlineNavVisible.value = false
+      isStep2ActionsVisible.value = false
+      return
+    }
+
+    // Если корзина появилась из пустой без переключения шага,
+    // нужно заново подписаться прямо сейчас (без ожидания transition).
+    if (prevItemsCount === 0 && itemsCount > 0) {
+      await refreshInlineNavObservers()
+    }
   },
 )
 
@@ -876,4 +907,36 @@ async function continueInTelegramFromCheckout() {
   }
 }
 </script>
+
+<style scoped>
+.bottom-bar-enter-active,
+.bottom-bar-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.bottom-bar-enter-from,
+.bottom-bar-leave-to {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+.step-forward-enter-active,
+.step-forward-leave-active,
+.step-backward-enter-active,
+.step-backward-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.step-forward-enter-from,
+.step-backward-leave-to {
+  opacity: 0;
+  transform: translateX(12px);
+}
+
+.step-forward-leave-to,
+.step-backward-enter-from {
+  opacity: 0;
+  transform: translateX(-12px);
+}
+</style>
 
