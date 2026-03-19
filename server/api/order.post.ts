@@ -1,15 +1,29 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — типы Node могут быть не подключены в проекте
 import crypto from 'node:crypto'
-import { MOCK_PRODUCTS } from '../../data/products'
+import type { H3Event } from 'h3'
 import type { DeliveryZoneProperties } from '../../utils/deliveryZones'
 import { serverSupabaseUser, serverSupabaseServiceRole } from '#supabase/server'
+import {
+  assertShopIdMatchesTenant,
+  requireRestaurantForShop,
+  requireRestaurantZoneForShop,
+  requireTenantShop,
+  type TenantRestaurant,
+  type TenantRestaurantZone,
+} from '~/server/utils/tenant'
 
 interface CartItemPayload {
   id: string
   name: string
   price: number
   quantity: number
+}
+
+interface ProductRow {
+  id: string
+  name: string
+  price: number
 }
 
 interface TelegramUser {
@@ -191,17 +205,57 @@ function buildClientOrderMessage(
   return lines.join('\n')
 }
 
+async function loadTenantProductsForOrder(
+  event: H3Event,
+  shopId: string,
+  productIds: string[],
+): Promise<Map<string, ProductRow>> {
+  const serviceClient = await serverSupabaseServiceRole(event)
+  const { data, error } = await serviceClient
+    .from('products')
+    .select('id,name,price')
+    .eq('shop_id', shopId)
+    .in('id', productIds)
+
+  if (error) {
+    console.error('Error querying products for order:', error)
+    throw createError({ statusCode: 500, message: 'Failed to load products for this shop' })
+  }
+
+  const rows = (Array.isArray(data) ? data : []) as ProductRow[]
+  const map = new Map<string, ProductRow>()
+  for (const row of rows) {
+    map.set(row.id, row)
+  }
+  return map
+}
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
-  const botToken = config.botToken as string
-  const managerChatId = config.managerChatId as string
-  const availableFulfillmentTypes = parseAvailableFulfillmentTypes(config.public?.fulfillmentTypes as string | undefined)
+  const { shopId: tenantShopId, shop: tenantShop } = await requireTenantShop(event)
+  const tenantIntegrationKeys = tenantShop.integration_keys ?? {}
+  const tenant = event.context.tenant
+  const botToken = tenant?.telegramBotToken || (config.botToken as string)
+  const managerChatId = (
+    typeof tenantShop.manager_chat_id === 'string' && tenantShop.manager_chat_id.trim()
+      ? tenantShop.manager_chat_id
+      : typeof tenantIntegrationKeys.manager_chat_id === 'string'
+        ? tenantIntegrationKeys.manager_chat_id
+        : config.managerChatId
+  ) as string
+  const tenantFulfillment = typeof tenantIntegrationKeys.fulfillment_types === 'string'
+    ? tenantIntegrationKeys.fulfillment_types
+    : (config.public?.fulfillmentTypes as string | undefined)
+  const availableFulfillmentTypes = parseAvailableFulfillmentTypes(tenantFulfillment)
 
   if (!botToken || !managerChatId) {
     throw createError({ statusCode: 500, message: 'Server config: bot token or manager chat ID missing' })
   }
 
   const body = await readBody<{
+    shopId?: string
+    shop_id?: string
+    restaurantId?: string | null
     items: CartItemPayload[]
     initData?: string | null
     address?: {
@@ -223,11 +277,29 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Expected { items }' })
   }
 
-  // Пересчитываем сумму на сервере по каталогу, не доверяя ценам с клиента
+  assertShopIdMatchesTenant(
+    typeof body.shopId === 'string'
+      ? body.shopId
+      : typeof body.shop_id === 'string'
+        ? body.shop_id
+        : null,
+    tenantShopId,
+  )
+
+  const restaurantId = typeof body.restaurantId === 'string' ? body.restaurantId.trim() : ''
+  const restaurant: TenantRestaurant = await requireRestaurantForShop(event, tenantShopId, restaurantId)
+
+  // Пересчитываем сумму на сервере по tenant-каталогу, не доверяя ценам с клиента
+  const uniqueProductIds = Array.from(new Set(body.items.map((item) => item.id)))
+  const productMap = await loadTenantProductsForOrder(event, tenantShopId, uniqueProductIds)
+
   const itemsWithServerPrice: CartItemPayload[] = body.items.map((item) => {
-    const product = MOCK_PRODUCTS.find((p) => p.id === item.id)
+    const product = productMap.get(item.id)
     if (!product) {
-      throw createError({ statusCode: 400, message: `Unknown product id: ${item.id}` })
+      throw createError({
+        statusCode: 400,
+        message: `Product ${item.id} not found in current shop`,
+      })
     }
     const quantity = item.quantity > 0 ? item.quantity : 0
     return {
@@ -243,13 +315,32 @@ export default defineEventHandler(async (event) => {
   if (!availableFulfillmentTypes.includes(fulfillmentType)) {
     throw createError({ statusCode: 400, message: `Fulfillment type "${fulfillmentType}" is disabled` })
   }
+  if (fulfillmentType === 'delivery' && !restaurant.supports_delivery) {
+    throw createError({ statusCode: 400, message: 'Delivery is not available for selected restaurant' })
+  }
+  if (fulfillmentType === 'pickup' && !restaurant.supports_pickup) {
+    throw createError({ statusCode: 400, message: 'Pickup is not available for selected restaurant' })
+  }
 
-  const deliveryZone: DeliveryZoneProperties | null = body.address?.zone ?? null
+  const incomingZone: DeliveryZoneProperties | null = body.address?.zone ?? null
+  const incomingZoneId = typeof incomingZone?.slug === 'string' ? incomingZone.slug.trim() : ''
+  const serverZone: TenantRestaurantZone | null = incomingZoneId
+    ? await requireRestaurantZoneForShop(event, tenantShopId, restaurant.id, incomingZoneId)
+    : null
+  const deliveryZone: DeliveryZoneProperties | null = serverZone
+    ? {
+        slug: serverZone.id,
+        name: serverZone.name,
+        minOrderAmount: serverZone.min_order_amount,
+        deliveryCost: serverZone.delivery_cost,
+        freeDeliveryThreshold: serverZone.free_delivery_threshold,
+      }
+    : null
   let deliveryCost = 0
   if (fulfillmentType === 'pickup') {
     deliveryCost = 0
   } else if (!deliveryZone) {
-    deliveryCost = itemsWithServerPrice.length ? 200 : 0
+    throw createError({ statusCode: 400, message: 'Delivery zone is required for selected restaurant' })
   } else if (total >= deliveryZone.freeDeliveryThreshold) {
     deliveryCost = 0
   } else {

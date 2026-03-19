@@ -1,6 +1,7 @@
-# teleShop — Telegram Mini App + бот (Nuxt 3)
+# teleShop — Multi-tenant Telegram Shop (Nuxt 3)
 
-Пет‑проект интернет‑магазина, который работает как **Telegram Bot + Telegram Mini App (WebApp)**: витрина, корзина, оформление заказа и отправка заказа менеджеру.
+SaaS-платформа интернет-магазинов на одной кодовой базе: **Telegram Bot + Telegram Mini App + Web checkout**.
+Данные изолируются по `shop_id` (tenant), каталог и рестораны хранятся в Supabase.
 
 ## Превью
 
@@ -18,6 +19,19 @@
 - **TailwindCSS**
 - **Supabase** (интеграция через `@nuxtjs/supabase`)
 - **Telegram Web Apps JS SDK** (`https://telegram.org/js/telegram-web-app.js`)
+
+## Текущая архитектура (кратко)
+
+- Multi-tenant контекст определяется через `shop_id` и `server/middleware/tenant.ts`.
+- Каталог, рестораны и зоны доставки читаются из Supabase:
+  - `products` (по `shop_id`)
+  - `restaurants` (по `shop_id`)
+  - `restaurant_delivery_zones` (по `shop_id + restaurant_id`)
+- Оформление заказа:
+  - клиент отправляет `shopId`, `restaurantId`, `items`, `fulfillmentType`, адрес/зону;
+  - сервер пересчитывает сумму только по Supabase-данным текущего tenant.
+- Telegram уведомления:
+  - токен бота и чат менеджера берутся из tenant-конфига (`shops`, `integration_keys`) с fallback на env.
 
 ## Быстрый старт (локально)
 
@@ -41,10 +55,13 @@ npm run dev
 Скопируйте `.env.example` в `.env` и заполните значения.
 
 - **Telegram**
-  - `NUXT_BOT_TOKEN` — токен бота от `@BotFather`
+  - `NUXT_BOT_TOKEN` — fallback токен бота от `@BotFather` (если у магазина не задан свой)
   - `NUXT_TELEGRAM_BOT_NAME` — username бота (без `@`)
-  - `NUXT_MANAGER_CHAT_ID` — chat id менеджера, куда прилетают заказы
+  - `NUXT_MANAGER_CHAT_ID` — fallback chat id менеджера
   - `NUXT_APP_URL` — публичный HTTPS URL WebApp (например Vercel), который бот отдаёт кнопкой
+- **Legacy fallback (опционально)**
+  - `NUXT_PICKUP_POINTS_JSON` — резервные точки самовывоза, если restaurants API пуст
+  - `NUXT_FULFILLMENT_TYPES` — резервные способы получения
 - **Карты/геокодинг (если используется в чекауте)**
   - `YANDEX_MAPS_API_KEY`
   - `YANDEX_GEOCODER_API_KEY`
@@ -69,4 +86,6 @@ npm run generate  # static generation (если применимо)
 
 - установите `NUXT_APP_URL` равным публичному HTTPS адресу (например `https://tele-shop-sigma.vercel.app/`)
 - убедитесь, что в Telegram Bot настройках WebApp указан тот же домен/URL (при необходимости)
+- подготовьте Supabase таблицы и миграции из `supabase/migrations`
+- добавьте записи в `shops`, `restaurants`, `restaurant_delivery_zones`, `products` с корректным `shop_id`
 

@@ -52,9 +52,8 @@ const CATEGORY_LABELS: Record<ProductCategory, string> = {
 
 export const useCartStore = defineStore('cart', {
   state: () => ({
-    products: MOCK_PRODUCTS,
+    products: [] as Product[],
     items: getStoredCartItems(),
-    isCartModalOpen: false,
     deliveryZone: null as DeliveryZoneProperties | null,
     // Базовая стоимость доставки по городу до уточнения зоны
     deliveryCost: 200,
@@ -68,13 +67,15 @@ export const useCartStore = defineStore('cart', {
     quantityById: (state) => (productId: string) =>
       state.items.find((i) => i.id === productId)?.quantity ?? 0,
     hasDeliveryZone: (state) => !!state.deliveryZone,
-    grandTotal: (state) => state.total + state.deliveryCost,
+    grandTotal(): number {
+      return this.total + this.deliveryCost
+    },
     canCheckout: (state): boolean => {
       if (!state.items.length) return false
       if (state.deliveryError) return false
       if (!state.deliveryZone) return false
       const zoneMin = state.deliveryZone.minOrderAmount
-      return state.total >= zoneMin
+      return state.items.reduce((sum, item) => sum + item.price * item.quantity, 0) >= zoneMin
     },
     deliverySummary: (state) => {
       if (!state.deliveryZone) {
@@ -89,7 +90,8 @@ export const useCartStore = defineStore('cart', {
       }
 
       const z = state.deliveryZone
-      const isFree = state.total >= z.freeDeliveryThreshold
+      const total = state.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+      const isFree = total >= z.freeDeliveryThreshold
       const cost = isFree ? 0 : z.deliveryCost
 
       return {
@@ -112,6 +114,9 @@ export const useCartStore = defineStore('cart', {
     },
   },
   actions: {
+    setProducts(products: Product[]) {
+      this.products = Array.isArray(products) ? products : []
+    },
     addItem(product: Product, quantity = 1) {
       const existing = this.items.find((i) => i.id === product.id)
       if (existing) {
@@ -150,22 +155,13 @@ export const useCartStore = defineStore('cart', {
       persistCart(this.items)
       this.deliveryCost = 0
     },
-    openCartModal() {
-      this.isCartModalOpen = true
-      // При первом открытии корзины, если зона ещё не выбрана,
-      // считаем доставку по базовому тарифу
-      if (!this.deliveryZone && this.items.length && !this.deliveryCost) {
-        this.deliveryCost = 200
-      }
-    },
-    closeCartModal() {
-      this.isCartModalOpen = false
-    },
     /** Восстановить корзину из localStorage (вызывать на клиенте после гидрации) */
     hydrateFromStorage() {
       if (typeof localStorage === 'undefined') return
       const stored = getStoredCartItems()
       if (stored.length > 0) this.items = stored
+      // Fallback для локальной разработки без tenant-базы.
+      if (!this.products.length) this.products = MOCK_PRODUCTS
     },
     setDeliveryZone(zone: DeliveryZoneProperties | null) {
       this.deliveryZone = zone

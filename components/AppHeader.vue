@@ -3,7 +3,7 @@
     class="fixed inset-x-0 top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur"
   >
     <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-      <NuxtLink to="/" class="flex min-w-0 items-center gap-3 text-gray-900">
+      <NuxtLink :to="homeLink" class="flex min-w-0 items-center gap-3 text-gray-900">
         <img
           src="/logo.webp"
           alt="Логотип"
@@ -90,11 +90,16 @@ const { isTelegram } = useTelegram()
 const user = useSupabaseUser()
 const config = useRuntimeConfig()
 const supabase = useSupabaseClient()
+const route = useRoute()
 
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() =>
   telegramBotName ? `https://t.me/${telegramBotName}` : null,
 )
+const homeLink = computed(() => {
+  const shopId = typeof route.query.shop_id === 'string' ? route.query.shop_id : null
+  return shopId ? { path: '/', query: { shop_id: shopId } } : { path: '/' }
+})
 
 const showUserMenu = ref(false)
 const userMenuRootRef = ref<HTMLElement | null>(null)
@@ -112,7 +117,8 @@ function onDocumentClickCapture(e: MouseEvent) {
 function openTelegramAuth() {
   if (!telegramBotUrl.value) return
   if (import.meta.client) {
-    const url = `${telegramBotUrl.value}?start=auth_link`
+    const shopId = typeof route.query.shop_id === 'string' ? route.query.shop_id : null
+    const url = `${telegramBotUrl.value}?start=auth_link${shopId ? `_${encodeURIComponent(shopId)}` : ''}`
     window.open(url, '_blank', 'noopener')
   }
 }

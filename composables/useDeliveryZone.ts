@@ -8,17 +8,19 @@ export interface UseDeliveryZoneResult {
   properties: ComputedRef<DeliveryZoneProperties | null>
   reason: Ref<'out_of_zone' | null>
   refresh: (lat: number, lon: number) => void
+  setZones: (zones: DeliveryZoneFeature[]) => void
 }
 
 export function useDeliveryZone(initialLat?: number, initialLon?: number): UseDeliveryZoneResult {
   const zone = ref<DeliveryZoneFeature | null>(null)
   const reason = ref<'out_of_zone' | null>(null)
+  const zonesRef = ref<DeliveryZoneFeature[]>(getDeliveryZones())
 
   const properties = computed(() => zone.value?.properties ?? null)
   const isInZone = computed(() => !!zone.value)
 
   function refresh(lat: number, lon: number) {
-    const zones = getDeliveryZones()
+    const zones = zonesRef.value
     zone.value = null
     reason.value = null
 
@@ -32,6 +34,12 @@ export function useDeliveryZone(initialLat?: number, initialLon?: number): UseDe
     reason.value = 'out_of_zone'
   }
 
+  function setZones(zones: DeliveryZoneFeature[]) {
+    zonesRef.value = Array.isArray(zones) ? zones : []
+    zone.value = null
+    reason.value = null
+  }
+
   if (typeof initialLat === 'number' && typeof initialLon === 'number') {
     refresh(initialLat, initialLon)
   }
@@ -42,6 +50,7 @@ export function useDeliveryZone(initialLat?: number, initialLon?: number): UseDe
     properties,
     reason,
     refresh,
+    setZones,
   }
 }
 

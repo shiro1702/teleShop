@@ -17,7 +17,7 @@
           <button
             type="button"
             class="hidden shrink-0 items-center gap-2 rounded-lg bg-gray-100 px-4 py-2.5 text-base font-medium text-gray-700 transition hover:bg-gray-200 sm:flex"
-            @click="router.push('/checkout')"
+            @click="goToCheckout"
           >
             <span>Корзина</span>
             <template v-if="cartStore.count > 0">
@@ -97,7 +97,7 @@
       <button
         type="button"
         class="flex w-full items-center justify-between gap-3 rounded-lg bg-primary px-4 py-3 text-base font-medium text-white shadow-md"
-        @click="router.push('/checkout')"
+        @click="goToCheckout"
       >
         <div class="flex items-center gap-2">
           <svg class="h-5 w-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -184,6 +184,7 @@ const route = useRoute()
 const selectedProduct = ref<import('~/data/products').Product | null>(null)
 const showOrderSuccess = ref(false)
 const lastOrderId = ref<string | null>(null)
+const isCatalogLoading = ref(false)
 
 function openProduct(product: import('~/data/products').Product) {
   selectedProduct.value = product
@@ -199,6 +200,14 @@ function addSelectedToCart() {
   selectedProduct.value = null
 }
 
+function goToCheckout() {
+  const shopId = typeof route.query.shop_id === 'string' ? route.query.shop_id : null
+  router.push({
+    path: '/checkout',
+    query: shopId ? { shop_id: shopId } : undefined,
+  })
+}
+
 function formatPrice(price: number) {
   return new Intl.NumberFormat('ru-RU', {
     style: 'currency',
@@ -208,6 +217,7 @@ function formatPrice(price: number) {
 }
 
 onMounted(() => {
+  void loadCatalog()
   const orderId = route.query.orderId
   if (typeof orderId === 'string' && orderId) {
     lastOrderId.value = orderId
@@ -215,6 +225,26 @@ onMounted(() => {
     router.replace({ query: { ...route.query, orderId: undefined } })
   }
 })
+
+async function loadCatalog() {
+  if (isCatalogLoading.value) return
+  isCatalogLoading.value = true
+  try {
+    const shopId = typeof route.query.shop_id === 'string' ? route.query.shop_id : null
+    const res = await $fetch<{ ok: boolean; items: import('~/data/products').Product[] }>('/api/products', {
+      query: shopId ? { shop_id: shopId } : undefined,
+      headers: shopId ? { 'x-shop-id': shopId } : undefined,
+    })
+    if (res?.ok && Array.isArray(res.items)) {
+      cartStore.setProducts(res.items)
+    }
+  } catch {
+    // fallback remains in store (MOCK_PRODUCTS) for local/dev compatibility
+    cartStore.hydrateFromStorage()
+  } finally {
+    isCatalogLoading.value = false
+  }
+}
 
 </script>
 

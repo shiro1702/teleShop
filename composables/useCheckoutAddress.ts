@@ -1,6 +1,7 @@
 import { dadataSuggest, type DadataSuggestItem } from '~/utils/dadataApi'
 import { useDeliveryZone } from '~/composables/useDeliveryZone'
 import { useTelegram } from '~/composables/useTelegram'
+import type { DeliveryZoneFeature } from '~/utils/deliveryZones'
 
 export type CheckoutAddressState = {
   addressLine: string
@@ -25,7 +26,7 @@ export function useCheckoutAddress() {
     }[]
   >([])
 
-  const { properties: deliveryZoneProps, reason, refresh: refreshZone } = useDeliveryZone()
+  const { properties: deliveryZoneProps, reason, refresh: refreshZone, setZones } = useDeliveryZone()
   const { isTelegram, webApp } = useTelegram()
 
   const STORAGE_KEY = 'teleshop_addresses'
@@ -172,6 +173,10 @@ export function useCheckoutAddress() {
     loadSavedAddresses()
   })
 
+  function setDeliveryZones(zones: DeliveryZoneFeature[]) {
+    setZones(zones)
+  }
+
   return {
     addressLine,
     flat,
@@ -181,6 +186,7 @@ export function useCheckoutAddress() {
     isSuggestLoading,
     savedAddresses,
     deliveryZoneProps,
+    setDeliveryZones,
     onAddressInput,
     selectSuggestion,
     applySavedAddress,

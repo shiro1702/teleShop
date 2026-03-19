@@ -194,6 +194,19 @@
           <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
             <div class="space-y-3">
               <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4">
+                <div class="space-y-2">
+                  <h2 class="text-sm font-semibold text-gray-900">
+                    Ресторан
+                  </h2>
+                  <select
+                    v-model="selectedRestaurantId"
+                    class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option v-for="r in restaurants" :key="r.id" :value="r.id">
+                      {{ r.name }} — {{ r.address }}
+                    </option>
+                  </select>
+                </div>
                 <h2 class="text-sm font-semibold text-gray-900">
                   Способ получения
                 </h2>
@@ -600,9 +613,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCheckoutAddress } from '~/composables/useCheckoutAddress'
+import { useCheckoutTenantRestaurants } from '~/composables/useCheckoutTenantRestaurants'
+import type { FulfillmentType } from '~/composables/useCheckoutTenantRestaurants'
 
 const cartStore = useCartStore()
 const route = useRoute()
@@ -618,12 +633,6 @@ const pickupPointsConfigRaw = (config.public.pickupPointsJson as string | undefi
 const fulfillmentTypesConfigRaw = (config.public.fulfillmentTypes as string | undefined) || ''
 
 type PaymentMethod = 'cash' | 'card_courier' | 'online'
-type FulfillmentType = 'delivery' | 'pickup'
-type PickupPoint = {
-  id: string
-  name: string
-  address: string
-}
 
 type CheckoutState = {
   currentStep: 1 | 2
@@ -642,7 +651,6 @@ const state = reactive<CheckoutState>({
 const isPlacing = ref(false)
 const changeFrom = ref<string>('')
 const showClearCartModal = ref(false)
-const selectedPickupPointId = ref<string>('')
 const step1InlineNavRef = ref<HTMLElement | null>(null)
 const step2ActionsRef = ref<HTMLElement | null>(null)
 const isStep1InlineNavVisible = ref(false)
@@ -667,70 +675,35 @@ const {
   suggestItems,
   isSuggestLoading,
   savedAddresses,
+  setDeliveryZones,
   onAddressInput,
   selectSuggestion,
   applySavedAddress,
   deleteSavedAddress,
 } = useCheckoutAddress()
 
-const pickupPoints = computed<PickupPoint[]>(() => {
-  try {
-    const parsed = JSON.parse(pickupPointsConfigRaw) as unknown
-    if (Array.isArray(parsed)) {
-      const normalized = parsed
-        .filter((x): x is { id?: unknown; name?: unknown; address?: unknown } => !!x && typeof x === 'object')
-        .map((x, idx) => {
-          const id = typeof x.id === 'string' && x.id.trim() ? x.id.trim() : `pickup-${idx + 1}`
-          const name = typeof x.name === 'string' && x.name.trim() ? x.name.trim() : `Ресторан ${idx + 1}`
-          const address = typeof x.address === 'string' ? x.address.trim() : ''
-          return { id, name, address }
-        })
-        .filter((x) => x.address.length > 0)
-      if (normalized.length) return normalized
-    }
-  } catch {
-    // ignore invalid JSON config and use fallback
-  }
+const shopIdFromRoute = computed(() =>
+  typeof route.query.shop_id === 'string' ? route.query.shop_id : null,
+)
 
-  return [
-    {
-      id: 'main',
-      name: 'Ресторан',
-      address: 'Адрес ресторана не указан',
-    },
-  ]
+const {
+  selectedPickupPointId,
+  selectedRestaurantId,
+  selectedPickupPoint,
+  restaurants,
+  pickupPoints,
+  availableFulfillmentTypes,
+  hasDeliveryOption,
+  hasPickupOption,
+  pickupIntroText,
+  loadRestaurants,
+} = useCheckoutTenantRestaurants({
+  shopIdFromRoute,
+  pickupPointsConfigRaw,
+  fulfillmentTypesConfigRaw,
+  currentFulfillmentType: toRef(state, 'fulfillmentType'),
+  setDeliveryZones,
 })
-
-const selectedPickupPoint = computed<PickupPoint | null>(() =>
-  pickupPoints.value.find((point) => point.id === selectedPickupPointId.value) ?? null,
-)
-
-const availableFulfillmentTypes = computed<FulfillmentType[]>(() => {
-  const parsed = fulfillmentTypesConfigRaw
-    .split(',')
-    .map((x) => x.trim().toLowerCase())
-    .filter((x): x is FulfillmentType => x === 'delivery' || x === 'pickup')
-
-  if (parsed.length) {
-    return Array.from(new Set(parsed))
-  }
-
-  return ['delivery', 'pickup']
-})
-
-const hasDeliveryOption = computed(() =>
-  availableFulfillmentTypes.value.includes('delivery'),
-)
-
-const hasPickupOption = computed(() =>
-  availableFulfillmentTypes.value.includes('pickup'),
-)
-
-const pickupIntroText = computed(() =>
-  pickupPoints.value.length > 1
-    ? 'Для самовывоза выберите ресторан. Мы отправим подтверждение и детали в Telegram после оформления заказа.'
-    : 'Самовывоз доступен из одного ресторана. Мы отправим подтверждение и детали в Telegram после оформления заказа.',
-)
 
 const canGoToAddress = computed(
   () => cartStore.items.length > 0,
@@ -741,7 +714,7 @@ const canGoToSummary = computed(() => {
     return cartStore.items.length > 0 && !!selectedPickupPoint.value
   }
   const hasHouseNumber = /\d/.test(addressLine.value.trim())
-  return hasHouseNumber && cartStore.items.length > 0
+  return hasHouseNumber && cartStore.items.length > 0 && !!cartStore.deliveryZone && !cartStore.deliveryError
 })
 
 const summaryDeliveryLabel = computed(() =>
@@ -816,6 +789,7 @@ function serializeState() {
     comment: comment.value,
     changeFrom: changeFrom.value,
     selectedPickupPointId: selectedPickupPointId.value,
+    selectedRestaurantId: selectedRestaurantId.value,
   })
 }
 
@@ -848,6 +822,9 @@ function restoreFromPlainObject(obj: any) {
   }
   if (typeof obj.selectedPickupPointId === 'string') {
     selectedPickupPointId.value = obj.selectedPickupPointId
+  }
+  if (typeof obj.selectedRestaurantId === 'string') {
+    selectedRestaurantId.value = obj.selectedRestaurantId
   }
 }
 
@@ -985,31 +962,13 @@ watch(
     flat: flat.value,
     comment: comment.value,
     selectedPickupPointId: selectedPickupPointId.value,
+    selectedRestaurantId: selectedRestaurantId.value,
   }),
   () => {
     const data = serializeState()
     persistCheckoutStateCloud(data)
   },
   { deep: true },
-)
-
-watch(
-  pickupPoints,
-  (points) => {
-    const hasCurrent = points.some((point) => point.id === selectedPickupPointId.value)
-    if (hasCurrent) return
-    selectedPickupPointId.value = points.length === 1 ? points[0].id : ''
-  },
-  { immediate: true },
-)
-
-watch(
-  availableFulfillmentTypes,
-  (types) => {
-    if (types.includes(state.fulfillmentType)) return
-    state.fulfillmentType = types[0] ?? 'delivery'
-  },
-  { immediate: true },
 )
 
 onMounted(async () => {
@@ -1022,6 +981,8 @@ onMounted(async () => {
   if (stepParam === 2 && cartStore.items.length > 0) {
     state.currentStep = 2
   }
+
+  await loadRestaurants()
 })
 
 async function placeOrder() {
@@ -1030,6 +991,8 @@ async function placeOrder() {
   isPlacing.value = true
   try {
     const body: any = {
+      shopId: shopIdFromRoute.value,
+      restaurantId: selectedRestaurantId.value || null,
       items: cartStore.items.map((item) => ({
         id: item.id,
         name: item.name,
@@ -1065,6 +1028,7 @@ async function placeOrder() {
 
     const res = await $fetch<{ ok: boolean; orderId?: string }>('/api/order', {
       method: 'POST',
+      headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
       body,
     })
 
@@ -1076,7 +1040,13 @@ async function placeOrder() {
         localStorage.removeItem(CHECKOUT_STORAGE_KEY)
       }
       // Пока просто редиректим на главную, позже можно сделать отдельную страницу успеха
-      await navigateTo({ path: '/', query: { orderId: res.orderId ?? undefined } })
+      await navigateTo({
+        path: '/',
+        query: {
+          orderId: res.orderId ?? undefined,
+          shop_id: shopIdFromRoute.value ?? undefined,
+        },
+      })
     } else if (isClient()) {
       window.alert('Не удалось оформить заказ. Попробуйте ещё раз.')
     }
@@ -1110,6 +1080,7 @@ async function continueInTelegramFromCheckout() {
   try {
     const res = await $fetch<{ ok: boolean; deepLink: string }>('/api/cart-bridge', {
       method: 'POST',
+      headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
       body: {
         items: cartStore.items.map((item) => ({
           id: item.id,
