@@ -50,13 +50,12 @@
 
 <script setup lang="ts">
 const props = defineProps<{
-  currentStep: 1 | 2 | 3
-  canGoToAddress?: boolean
-  canGoToSummary?: boolean
+  currentStep: 1 | 2
+  canGoToStep2?: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'go', step: 1 | 2 | 3): void
+  (e: 'go', step: 1 | 2): void
 }>()
 
 const steps = [
@@ -67,28 +66,22 @@ const steps = [
   },
   {
     id: 2,
-    title: 'Доставка',
-    subtitle: 'Адрес и стоимость доставки',
-  },
-  {
-    id: 3,
-    title: 'Оплата',
-    subtitle: 'Способ оплаты и итог',
+    title: 'Оформление',
+    subtitle: 'Адрес, оплата и подтверждение',
   },
 ] as const
 
-function isStepClickable(id: 1 | 2 | 3) {
+function isStepClickable(id: 1 | 2) {
   if (id === 1) return true
-  if (id === 2) return !!props.canGoToAddress
-  return !!props.canGoToSummary
+  return !!props.canGoToStep2
 }
 
-function onStepClick(id: 1 | 2 | 3) {
+function onStepClick(id: 1 | 2) {
   if (!isStepClickable(id)) return
   emit('go', id)
 }
 
-function stepButtonClass(id: 1 | 2 | 3) {
+function stepButtonClass(id: 1 | 2) {
   if (!isStepClickable(id)) {
     return 'cursor-not-allowed opacity-60'
   }

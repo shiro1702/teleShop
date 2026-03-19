@@ -47,23 +47,33 @@
 
     <header class="border-b border-gray-200 bg-white">
       <div class="mx-auto grid max-w-6xl grid-cols-3 items-center gap-3 px-4 py-4 sm:px-6">
-        <NuxtLink
-          to="/"
-          class="flex w-fit items-center gap-2 text-gray-600 transition hover:text-gray-900"
-          aria-label="Назад в магазин"
-        >
-          <span
-            class="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-gray-100"
-            aria-hidden="true"
+        <div class="flex w-24 items-center">
+          <button
+            v-if="state.currentStep > 1"
+            type="button"
+            class="flex w-fit items-center gap-2 text-gray-600 transition hover:text-gray-900"
+            aria-label="Назад"
+            @click="goBackStep"
           >
-            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-            </svg>
-          </span>
-          <span class="hidden text-sm sm:inline">
-            Назад в магазин
-          </span>
-        </NuxtLink>
+            <span
+              class="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-gray-100"
+              aria-hidden="true"
+            >
+              <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+              </svg>
+            </span>
+            <span class="hidden text-sm sm:inline">
+              Назад
+            </span>
+          </button>
+          <!-- Филлер вместо "Назад", чтобы заголовок оставался по центру -->
+          <span
+            v-else
+            class="h-10 w-10 sm:w-24"
+            aria-hidden="true"
+          />
+        </div>
 
         <h1 class="text-center text-xl font-bold text-gray-900">
           Оформление
@@ -85,11 +95,13 @@
       </div>
     </header>
 
-    <main class="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+    <main
+      class="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8"
+      :class="cartStore.items.length ? 'pb-28 sm:pb-8' : ''"
+    >
       <CheckoutSteps
         :current-step="state.currentStep"
-        :can-go-to-address="canGoToAddress"
-        :can-go-to-summary="canGoToSummary"
+        :can-go-to-step2="canGoToAddress"
         @go="goToStep"
       />
 
@@ -128,6 +140,7 @@
 
           <div
             v-if="cartStore.items.length > 0"
+            ref="step1InlineNavRef"
             class="mt-4 flex flex-col items-stretch justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:p-5"
           >
             <div class="space-y-1 text-sm">
@@ -175,7 +188,7 @@
           </div>
         </section>
 
-        <!-- Шаг 2: адрес/доставка -->
+        <!-- Шаг 2: оформление (адрес + оплата + подтверждение) -->
         <section v-else-if="state.currentStep === 2">
           <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
             <div class="space-y-3">
@@ -285,80 +298,7 @@
             </div>
           </div>
 
-          <div class="mt-4 flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center">
-            <button
-              type="button"
-              class="w-full rounded-lg border border-gray-300 px-4 py-3 text-base font-medium text-gray-700 transition hover:bg-gray-50 sm:w-auto"
-              @click="goToStep(1)"
-            >
-              Назад к корзине
-            </button>
-            <button
-              type="button"
-              class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
-              :disabled="!canGoToSummary"
-              @click="goToStep(3)"
-            >
-              Далее: оплата и подтверждение
-            </button>
-          </div>
-        </section>
-
-        <!-- Шаг 3: итог и оплата -->
-        <section v-else-if="state.currentStep === 3">
-          <div class="space-y-4">
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
-              <h2 class="mb-3 text-base font-semibold text-gray-900 sm:text-lg">
-                Состав заказа
-              </h2>
-              <ul class="divide-y divide-gray-100">
-                <li
-                  v-for="item in cartStore.items"
-                  :key="item.id"
-                  class="flex items-center justify-between py-2 text-sm"
-                >
-                  <div class="flex-1">
-                    <p class="font-medium text-gray-900">
-                      {{ item.name }}
-                    </p>
-                    <p class="text-xs text-gray-500">
-                      {{ item.quantity }} × {{ formatPrice(item.price) }}
-                    </p>
-                  </div>
-                  <p class="ml-2 text-sm font-semibold text-gray-900">
-                    {{ formatPrice(item.price * item.quantity) }}
-                  </p>
-                </li>
-              </ul>
-            </div>
-
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
-              <h2 class="mb-3 text-base font-semibold text-gray-900 sm:text-lg">
-                Адрес и доставка
-              </h2>
-              <p class="text-sm text-gray-800">
-                {{ addressLine || 'Адрес не указан' }}
-              </p>
-              <p
-                v-if="flat"
-                class="mt-1 text-xs text-gray-600"
-              >
-                {{ flat }}
-              </p>
-              <p
-                v-if="comment"
-                class="mt-1 text-xs text-gray-500"
-              >
-                {{ comment }}
-              </p>
-              <p
-                v-if="cartStore.deliverySummary.message"
-                class="mt-2 text-xs text-gray-500"
-              >
-                {{ cartStore.deliverySummary.message }}
-              </p>
-            </div>
-
+          <div class="mt-4 space-y-4">
             <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
               <h2 class="mb-3 text-base font-semibold text-gray-900 sm:text-lg">
                 Способ оплаты
@@ -469,18 +409,19 @@
               </div>
             </div>
 
-            <div class="flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+            <div
+              ref="step2ActionsRef"
+              class="flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center"
+            >
               <button
                 type="button"
                 class="w-full rounded-lg border border-gray-300 px-4 py-3 text-base font-medium text-gray-700 transition hover:bg-gray-50 sm:w-auto"
-                @click="goToStep(2)"
+                @click="goToStep(1)"
               >
-                Назад к адресу
+                Назад к корзине
               </button>
 
-              <!-- Блок кнопок оформления зависит от авторизации -->
               <div class="flex w-full flex-col gap-2 sm:w-auto">
-                <!-- Авторизован (Supabase) или TMA: сразу оформляем -->
                 <button
                   v-if="isAuthorizedForOrder"
                   type="button"
@@ -492,7 +433,6 @@
                   <span v-else>Оформить заказ</span>
                 </button>
 
-                <!-- Не авторизован в вебе: предлагаем авторизацию и TMA -->
                 <template v-else>
                   <button
                     type="button"
@@ -515,11 +455,59 @@
         </section>
       </div>
     </main>
+
+    <!-- Нижняя панель (моб.) -->
+    <div
+      v-if="showBottomBar"
+      class="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur sm:hidden"
+      :class="isTelegram ? 'pb-20' : ''"
+    >
+      <!-- Шаг 1: навигация -->
+      <button
+        v-if="state.currentStep === 1"
+        type="button"
+        class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+        :disabled="!canGoToAddress"
+        @click="goToStep(2)"
+      >
+        Далее
+      </button>
+
+      <!-- Шаг 2: кнопки оформления (скрываем, если виден обычный блок) -->
+      <div v-else class="flex flex-col gap-2">
+        <button
+          v-if="isAuthorizedForOrder"
+          type="button"
+          class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          :disabled="isPlacing || !cartStore.items.length || !canGoToSummary"
+          @click="placeOrder"
+        >
+          <span v-if="isPlacing">Оформляем заказ...</span>
+          <span v-else>Оформить заказ</span>
+        </button>
+        <template v-else>
+          <button
+            type="button"
+            class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
+            @click="authAndReturn"
+          >
+            Авторизоваться и оформить
+          </button>
+          <button
+            type="button"
+            class="w-full rounded-lg border border-primary px-4 py-3 text-base font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100"
+            @click="continueInTelegramFromCheckout"
+          >
+            Продолжить в Telegram‑боте
+          </button>
+        </template>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCheckoutAddress } from '~/composables/useCheckoutAddress'
 
@@ -537,7 +525,7 @@ const telegramBotUrl = computed(() =>
 type PaymentMethod = 'cash' | 'card_courier' | 'online'
 
 type CheckoutState = {
-  currentStep: 1 | 2 | 3
+  currentStep: 1 | 2
   paymentMethod: PaymentMethod
 }
 
@@ -551,6 +539,16 @@ const state = reactive<CheckoutState>({
 const isPlacing = ref(false)
 const changeFrom = ref<string>('')
 const showClearCartModal = ref(false)
+const step1InlineNavRef = ref<HTMLElement | null>(null)
+const step2ActionsRef = ref<HTMLElement | null>(null)
+const isStep1InlineNavVisible = ref(false)
+const isStep2ActionsVisible = ref(false)
+
+const showBottomBar = computed(() => {
+  if (!cartStore.items.length) return false
+  if (state.currentStep === 1) return !isStep1InlineNavVisible.value
+  return !isStep2ActionsVisible.value
+})
 
 const {
   addressLine,
@@ -580,8 +578,12 @@ const isAuthorizedForOrder = computed(() => {
   return isTelegram.value || !!supabaseUser.value
 })
 
-function goToStep(step: 1 | 2 | 3) {
+function goToStep(step: 1 | 2) {
   state.currentStep = step
+}
+
+function goBackStep() {
+  if (state.currentStep === 2) goToStep(1)
 }
 
 function openClearCartModal() {
@@ -625,8 +627,8 @@ function serializeState() {
 function restoreFromPlainObject(obj: any) {
   if (!obj || typeof obj !== 'object') return
 
-  if (obj.currentStep === 2 || obj.currentStep === 3) {
-    state.currentStep = obj.currentStep
+  if (obj.currentStep === 2) {
+    state.currentStep = 2
   }
   if (obj.paymentMethod === 'cash' || obj.paymentMethod === 'card_courier' || obj.paymentMethod === 'online') {
     state.paymentMethod = obj.paymentMethod
@@ -648,6 +650,53 @@ function restoreFromPlainObject(obj: any) {
 function isClient() {
   return typeof window !== 'undefined'
 }
+
+function setupInlineNavObservers() {
+  if (!isClient() || typeof IntersectionObserver === 'undefined') return () => {}
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.target === step1InlineNavRef.value) {
+          isStep1InlineNavVisible.value = entry.isIntersecting
+        } else if (entry.target === step2ActionsRef.value) {
+          isStep2ActionsVisible.value = entry.isIntersecting
+        }
+      }
+    },
+    { threshold: 0.15 },
+  )
+
+  if (step1InlineNavRef.value) observer.observe(step1InlineNavRef.value)
+  if (step2ActionsRef.value) observer.observe(step2ActionsRef.value)
+
+  return () => observer.disconnect()
+}
+
+let cleanupInlineNavObservers: (() => void) | null = null
+
+async function refreshInlineNavObservers() {
+  cleanupInlineNavObservers?.()
+  cleanupInlineNavObservers = null
+  await nextTick()
+  cleanupInlineNavObservers = setupInlineNavObservers()
+}
+
+onMounted(async () => {
+  await refreshInlineNavObservers()
+})
+
+onBeforeUnmount(() => {
+  cleanupInlineNavObservers?.()
+  cleanupInlineNavObservers = null
+})
+
+watch(
+  [() => state.currentStep, () => cartStore.items.length],
+  async () => {
+    await refreshInlineNavObservers()
+  },
+)
 
 function persistCheckoutStateLocal(data: string) {
   if (!isClient()) return
@@ -725,12 +774,8 @@ onMounted(async () => {
   }
 
   const stepParam = Number(route.query.step || 0)
-  if (stepParam === 2 || stepParam === 3) {
-    if (stepParam === 2 && cartStore.items.length > 0) {
-      state.currentStep = 2
-    } else if (stepParam === 3 && cartStore.items.length > 0 && canGoToSummary.value) {
-      state.currentStep = 3
-    }
+  if (stepParam === 2 && cartStore.items.length > 0) {
+    state.currentStep = 2
   }
 })
 

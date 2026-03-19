@@ -1,6 +1,5 @@
 <template>
   <header
-    v-if="!isTelegram"
     class="fixed inset-x-0 top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur"
   >
     <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
@@ -15,7 +14,10 @@
         </span>
       </NuxtLink>
 
-      <div class="flex items-center gap-2 sm:gap-3">
+      <div
+        v-if="!isTelegram"
+        class="flex items-center gap-2 sm:gap-3" 
+      >
         <!-- Авторизован: на мобилке — иконка, на десктопе — текстовая кнопка -->
         <div
           v-if="user"
