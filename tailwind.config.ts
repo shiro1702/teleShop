@@ -5,11 +5,11 @@ export default <Partial<Config>>{
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#E25E2D',
-          50: '#FFF7ED',
-          100: '#FFEDD5',
-          600: '#C84E24',
-          700: '#B2431F',
+          DEFAULT: 'var(--color-primary)',
+          50: 'var(--color-primary-50)',
+          100: 'var(--color-primary-100)',
+          600: 'var(--color-primary-600)',
+          700: 'var(--color-primary-700)',
         },
       },
     },

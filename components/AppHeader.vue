@@ -5,13 +5,21 @@
     <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
       <NuxtLink :to="homeLink" class="flex min-w-0 items-center gap-3 text-gray-900">
         <img
-          src="/logo.webp"
-          alt="Логотип"
+          :src="tenantLogoUrl"
+          :alt="tenantName"
           class="h-10 w-10 shrink-0 rounded-full object-cover"
         />
-        <span class="truncate text-sm font-semibold uppercase tracking-wide sm:text-base">
-          пибимпаб
-        </span>
+        <div class="min-w-0">
+          <span class="block truncate text-sm font-semibold tracking-wide sm:text-base">
+            {{ tenantName }}
+          </span>
+          <span
+            v-if="tenantDescription"
+            class="hidden truncate text-xs text-gray-500 md:block"
+          >
+            {{ tenantDescription }}
+          </span>
+        </div>
       </NuxtLink>
 
       <div
@@ -90,16 +98,16 @@ const { isTelegram } = useTelegram()
 const user = useSupabaseUser()
 const config = useRuntimeConfig()
 const supabase = useSupabaseClient()
-const route = useRoute()
+const { tenant, tenantKey, tenantPath } = useTenant()
 
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() =>
   telegramBotName ? `https://t.me/${telegramBotName}` : null,
 )
-const homeLink = computed(() => {
-  const shopId = typeof route.query.shop_id === 'string' ? route.query.shop_id : null
-  return shopId ? { path: '/', query: { shop_id: shopId } } : { path: '/' }
-})
+const homeLink = computed(() => tenantPath('/'))
+const tenantName = computed(() => tenant.value.shopName || 'teleShop')
+const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
+const tenantDescription = computed(() => tenant.value.description || '')
 
 const showUserMenu = ref(false)
 const userMenuRootRef = ref<HTMLElement | null>(null)
@@ -117,8 +125,7 @@ function onDocumentClickCapture(e: MouseEvent) {
 function openTelegramAuth() {
   if (!telegramBotUrl.value) return
   if (import.meta.client) {
-    const shopId = typeof route.query.shop_id === 'string' ? route.query.shop_id : null
-    const url = `${telegramBotUrl.value}?start=auth_link${shopId ? `_${encodeURIComponent(shopId)}` : ''}`
+    const url = `${telegramBotUrl.value}?start=auth_link${tenantKey.value ? `_${encodeURIComponent(tenantKey.value)}` : ''}`
     window.open(url, '_blank', 'noopener')
   }
 }

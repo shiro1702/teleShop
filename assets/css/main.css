@@ -1,2 +1,10 @@
 /* Глобальные стили проекта. Вся цветовая схема теперь единая
    для веб-версии и миниаппа, без привязки к Telegram theme-переменным. */
+
+:root {
+  --color-primary: #e25e2d;
+  --color-primary-50: #fff7ed;
+  --color-primary-100: #ffedd5;
+  --color-primary-600: #c84e24;
+  --color-primary-700: #b2431f;
+}

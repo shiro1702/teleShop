@@ -27,10 +27,12 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const tenant = event.context.tenant
   const botName = (config.public as any).telegramBotName as string | undefined
-  const appUrlBase = config.appUrl as string
-  const appUrl = tenant?.shopId
-    ? `${appUrlBase}${appUrlBase.includes('?') ? '&' : '?'}shop_id=${encodeURIComponent(tenant.shopId)}`
-    : appUrlBase
+  const appUrlBase = ((config.appUrl as string) || '').replace(/\/$/, '')
+  const appUrl = tenant?.shop?.custom_domain
+    ? `https://${tenant.shop.custom_domain}`
+    : tenant?.shop?.slug
+      ? `${appUrlBase}/${encodeURIComponent(tenant.shop.slug)}`
+      : appUrlBase
 
   if (!botName) {
     throw createError({ statusCode: 500, message: 'telegramBotName is not configured' })

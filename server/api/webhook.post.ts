@@ -79,10 +79,12 @@ export default defineEventHandler(async (event) => {
       ? tenant.shop.manager_chat_id
       : config.managerChatId
   ) as string
-  const appUrlBase = (config.appUrl as string) || ''
-  const appUrl = tenant?.shopId
-    ? `${appUrlBase}${appUrlBase.includes('?') ? '&' : '?'}shop_id=${encodeURIComponent(tenant.shopId)}`
-    : appUrlBase
+  const appUrlBase = ((config.appUrl as string) || '').replace(/\/$/, '')
+  const appUrl = tenant?.shop?.custom_domain
+    ? `https://${tenant.shop.custom_domain}`
+    : tenant?.shop?.slug
+      ? `${appUrlBase}/${encodeURIComponent(tenant.shop.slug)}`
+      : appUrlBase
 
   if (!botToken || !managerChatId) {
     throw createError({ statusCode: 500, message: 'Server config: bot token or manager chat ID missing' })
@@ -141,8 +143,8 @@ export default defineEventHandler(async (event) => {
 
         const baseUrl = appUrl.replace(/\/$/, '')
         // После привязки возвращаем пользователя на оформление заказа
-        const redirectPath = '/checkout?step=3'
-        const effectiveShopId = tenant?.shopId || startShopId || ''
+        const redirectPath = tenant?.shop?.custom_domain ? '/checkout' : `${tenant?.shop?.slug ? `/${tenant.shop.slug}` : ''}/checkout`
+        const effectiveShopId = tenant?.shop?.slug || startShopId || ''
         const link = `${baseUrl}/link-telegram?token=${token}&redirect=${encodeURIComponent(redirectPath)}${effectiveShopId ? `&shop_id=${encodeURIComponent(effectiveShopId)}` : ''}`
 
         await telegram(botToken, 'sendMessage', {
@@ -200,7 +202,7 @@ export default defineEventHandler(async (event) => {
       }
 
       const baseUrl = appUrl.replace(/\/$/, '')
-      const link = `${baseUrl}/link-telegram?token=${token}${tenant?.shopId ? `&shop_id=${encodeURIComponent(tenant.shopId)}` : ''}`
+      const link = `${baseUrl}/link-telegram?token=${token}${tenant?.shop?.slug ? `&shop_id=${encodeURIComponent(tenant.shop.slug)}` : ''}`
 
       await telegram(botToken, 'sendMessage', {
         chat_id: chatId,

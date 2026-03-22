@@ -7,6 +7,8 @@ export default defineEventHandler(async (event) => {
     return {
       ok: true,
       shopId: tenantFromContext.shopId,
+      tenantSlug: tenantFromContext.shop.slug,
+      isCustomDomain: !!tenantFromContext.isCustomDomain,
       shop: {
         id: tenantFromContext.shop.id,
         slug: tenantFromContext.shop.slug,
@@ -21,6 +23,8 @@ export default defineEventHandler(async (event) => {
   return {
     ok: true,
     shopId: shop.id,
+    tenantSlug: shop.slug,
+    isCustomDomain: false,
     shop: {
       id: shop.id,
       slug: shop.slug,

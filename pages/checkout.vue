@@ -115,7 +115,7 @@
                 Корзина пуста
               </p>
               <NuxtLink
-                to="/"
+                :to="tenantPath('/')"
                 class="mt-4 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
               >
                 Перейти к товарам
@@ -614,16 +614,18 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRef, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useCheckoutAddress } from '~/composables/useCheckoutAddress'
 import { useCheckoutTenantRestaurants } from '~/composables/useCheckoutTenantRestaurants'
 import type { FulfillmentType } from '~/composables/useCheckoutTenantRestaurants'
 
 const cartStore = useCartStore()
 const route = useRoute()
+const router = useRouter()
 const { isTelegram, webApp } = useTelegram()
 const supabaseUser = useSupabaseUser()
 const config = useRuntimeConfig()
+const { tenantKey, tenantPath } = useTenant()
 
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() =>
@@ -683,7 +685,7 @@ const {
 } = useCheckoutAddress()
 
 const shopIdFromRoute = computed(() =>
-  typeof route.query.shop_id === 'string' ? route.query.shop_id : null,
+  tenantKey.value,
 )
 
 const {
@@ -742,7 +744,14 @@ const isAuthorizedForOrder = computed(() => {
   return isTelegram.value || !!supabaseUser.value
 })
 
+const isCheckoutRoute = computed(() => route.path.endsWith('/checkout'))
+const isCartRoute = computed(() => route.path.endsWith('/cart'))
+
 function goToStep(step: 1 | 2) {
+  const targetPath = step === 2 ? tenantPath('/checkout') : tenantPath('/cart')
+  if (route.path !== targetPath) {
+    void router.push({ path: targetPath })
+  }
   if (step === state.currentStep) return
   stepDirection.value = step > state.currentStep ? 'forward' : 'backward'
   state.currentStep = step
@@ -978,7 +987,11 @@ onMounted(async () => {
   }
 
   const stepParam = Number(route.query.step || 0)
-  if (stepParam === 2 && cartStore.items.length > 0) {
+  if (isCheckoutRoute.value && cartStore.items.length > 0) {
+    state.currentStep = 2
+  } else if (isCartRoute.value) {
+    state.currentStep = 1
+  } else if (stepParam === 2 && cartStore.items.length > 0) {
     state.currentStep = 2
   }
 
@@ -1041,10 +1054,9 @@ async function placeOrder() {
       }
       // Пока просто редиректим на главную, позже можно сделать отдельную страницу успеха
       await navigateTo({
-        path: '/',
+        path: tenantPath('/'),
         query: {
           orderId: res.orderId ?? undefined,
-          shop_id: shopIdFromRoute.value ?? undefined,
         },
       })
     } else if (isClient()) {
@@ -1055,7 +1067,7 @@ async function placeOrder() {
     if (isClient() && !isTelegram.value && (status === 401 || status === 409)) {
       await navigateTo({
         path: '/link-telegram',
-        query: { redirect: '/checkout' },
+        query: { redirect: tenantPath('/checkout') },
       })
       return
     }
@@ -1070,7 +1082,7 @@ async function placeOrder() {
 function authAndReturn() {
   if (!telegramBotUrl.value) return
   if (!isClient()) return
-  const url = `${telegramBotUrl.value}?start=auth_link`
+  const url = `${telegramBotUrl.value}?start=auth_link${shopIdFromRoute.value ? `_${encodeURIComponent(shopIdFromRoute.value)}` : ''}`
   window.open(url, '_blank', 'noopener')
 }
 

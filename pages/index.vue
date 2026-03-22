@@ -35,6 +35,27 @@
 
     <main class="mx-auto max-w-6xl px-4 py-6 pb-24 sm:px-6 sm:py-8 sm:pb-10">
       <section
+        v-if="tenantDescription"
+        class="mb-8 overflow-hidden rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-primary-50/70 p-5 shadow-sm sm:p-6"
+      >
+        <div class="flex items-start gap-4">
+          <img
+            :src="tenantLogoUrl"
+            :alt="tenantName"
+            class="h-16 w-16 shrink-0 rounded-2xl border border-white/80 bg-white object-cover shadow-sm"
+          />
+          <div class="min-w-0">
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              {{ tenantName }}
+            </p>
+            <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-600 sm:text-base">
+              {{ tenantDescription }}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section
         v-for="section in cartStore.productsByCategory"
         :key="section.category"
         :id="section.category"
@@ -181,10 +202,14 @@ const cartStore = useCartStore()
 const { isTelegram } = useTelegram()
 const router = useRouter()
 const route = useRoute()
+const { tenant, tenantKey, tenantPath } = useTenant()
 const selectedProduct = ref<import('~/data/products').Product | null>(null)
 const showOrderSuccess = ref(false)
 const lastOrderId = ref<string | null>(null)
 const isCatalogLoading = ref(false)
+const tenantName = computed(() => tenant.value.shopName || 'Наш магазин')
+const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
+const tenantDescription = computed(() => tenant.value.description || '')
 
 function openProduct(product: import('~/data/products').Product) {
   selectedProduct.value = product
@@ -201,11 +226,7 @@ function addSelectedToCart() {
 }
 
 function goToCheckout() {
-  const shopId = typeof route.query.shop_id === 'string' ? route.query.shop_id : null
-  router.push({
-    path: '/checkout',
-    query: shopId ? { shop_id: shopId } : undefined,
-  })
+  router.push(tenantPath('/cart'))
 }
 
 function formatPrice(price: number) {
@@ -222,7 +243,7 @@ onMounted(() => {
   if (typeof orderId === 'string' && orderId) {
     lastOrderId.value = orderId
     showOrderSuccess.value = true
-    router.replace({ query: { ...route.query, orderId: undefined } })
+    router.replace({ path: route.path, query: { ...route.query, orderId: undefined } })
   }
 })
 
@@ -230,10 +251,9 @@ async function loadCatalog() {
   if (isCatalogLoading.value) return
   isCatalogLoading.value = true
   try {
-    const shopId = typeof route.query.shop_id === 'string' ? route.query.shop_id : null
     const res = await $fetch<{ ok: boolean; items: import('~/data/products').Product[] }>('/api/products', {
-      query: shopId ? { shop_id: shopId } : undefined,
-      headers: shopId ? { 'x-shop-id': shopId } : undefined,
+      query: tenantKey.value ? { shop_id: tenantKey.value } : undefined,
+      headers: tenantKey.value ? { 'x-shop-id': tenantKey.value } : undefined,
     })
     if (res?.ok && Array.isArray(res.items)) {
       cartStore.setProducts(res.items)

@@ -6,6 +6,7 @@ export type TenantShop = {
   id: string
   slug: string
   name: string
+  custom_domain?: string | null
   telegram_bot_token: string
   telegram_bot_id: number | null
   manager_chat_id: string | null
@@ -43,6 +44,8 @@ type CacheEntry = {
 const CACHE_TTL_MS = 60_000
 const shopCache = new Map<string, CacheEntry>()
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const SHOP_SELECT_WITH_DOMAIN = 'id,slug,name,custom_domain,telegram_bot_token,telegram_bot_id,manager_chat_id,integration_keys,ui_settings,is_active'
+const SHOP_SELECT_LEGACY = 'id,slug,name,telegram_bot_token,telegram_bot_id,manager_chat_id,integration_keys,ui_settings,is_active'
 
 function getCached(shopId: string): TenantShop | null {
   const hit = shopCache.get(shopId)
@@ -65,8 +68,8 @@ export function extractShopIdFromInitData(initData: string): string | null {
   const params = new URLSearchParams(initData)
   const startParam = params.get('start_param')
   if (!startParam) return null
-  const direct = startParam.match(/shop_([a-f0-9-]{36})/i)
-  if (direct?.[1]) return direct[1]
+  const direct = startParam.match(/shop_(.+)/i)
+  if (direct?.[1]) return decodeURIComponent(direct[1]).trim()
   return null
 }
 
@@ -102,12 +105,20 @@ export async function getShopById(event: H3Event, shopId: string): Promise<Tenan
   if (cached) return cached
 
   const client = await serverSupabaseServiceRole(event)
-  const baseQuery = client
-    .from('shops')
-    .select('id,slug,name,telegram_bot_token,telegram_bot_id,manager_chat_id,integration_keys,ui_settings,is_active')
-  const { data, error } = UUID_RE.test(shopRef)
-    ? await baseQuery.eq('id', shopRef).maybeSingle()
-    : await baseQuery.eq('slug', shopRef).maybeSingle()
+  const loadShop = async (selectClause: string) => {
+    const baseQuery = client
+      .from('shops')
+      .select(selectClause)
+    return UUID_RE.test(shopRef)
+      ? await baseQuery.eq('id', shopRef).maybeSingle()
+      : await baseQuery.eq('slug', shopRef).maybeSingle()
+  }
+  let { data, error } = await loadShop(SHOP_SELECT_WITH_DOMAIN)
+  if (error && /custom_domain/i.test(error.message)) {
+    const fallback = await loadShop(SHOP_SELECT_LEGACY)
+    data = fallback.data
+    error = fallback.error
+  }
 
   if (error) {
     throw createError({ statusCode: 500, message: 'Failed to read tenant shop config' })
@@ -119,22 +130,65 @@ export async function getShopById(event: H3Event, shopId: string): Promise<Tenan
   setCached(shopRef, shop)
   setCached(shop.id, shop)
   setCached(shop.slug, shop)
+  if (shop.custom_domain) setCached(shop.custom_domain, shop)
+  return shop
+}
+
+export async function getShopByCustomDomain(event: H3Event, host: string): Promise<TenantShop | null> {
+  const normalizedHost = host.trim().toLowerCase()
+  if (!normalizedHost) return null
+
+  const cached = getCached(normalizedHost)
+  if (cached) return cached
+
+  const client = await serverSupabaseServiceRole(event)
+  const { data, error } = await client
+    .from('shops')
+    .select(SHOP_SELECT_WITH_DOMAIN)
+    .eq('custom_domain', normalizedHost)
+    .maybeSingle()
+
+  if (error) {
+    if (/custom_domain/i.test(error.message)) {
+      return null
+    }
+    throw createError({ statusCode: 500, message: 'Failed to read tenant by custom domain' })
+  }
+  if (!data) return null
+
+  const shop = data as TenantShop
+  setCached(normalizedHost, shop)
+  setCached(shop.id, shop)
+  setCached(shop.slug, shop)
+  if (shop.custom_domain) setCached(shop.custom_domain, shop)
   return shop
 }
 
 export async function getShopByBotId(event: H3Event, botId: number): Promise<TenantShop | null> {
   const client = await serverSupabaseServiceRole(event)
-  const { data, error } = await client
-    .from('shops')
-    .select('id,slug,name,telegram_bot_token,telegram_bot_id,manager_chat_id,integration_keys,ui_settings,is_active')
-    .eq('telegram_bot_id', botId)
-    .maybeSingle()
+  const loadShop = async (selectClause: string) =>
+    client
+      .from('shops')
+      .select(selectClause)
+      .eq('telegram_bot_id', botId)
+      .maybeSingle()
+
+  let { data, error } = await loadShop(SHOP_SELECT_WITH_DOMAIN)
+  if (error && /custom_domain/i.test(error.message)) {
+    const fallback = await loadShop(SHOP_SELECT_LEGACY)
+    data = fallback.data
+    error = fallback.error
+  }
 
   if (error) {
     throw createError({ statusCode: 500, message: 'Failed to read tenant by bot id' })
   }
   if (!data) return null
-  return data as TenantShop
+  const shop = data as TenantShop
+  setCached(shop.id, shop)
+  setCached(shop.slug, shop)
+  if (shop.custom_domain) setCached(shop.custom_domain, shop)
+  return shop
 }
 
 export async function requireTenantShop(event: H3Event): Promise<{ shopId: string; shop: TenantShop }> {
