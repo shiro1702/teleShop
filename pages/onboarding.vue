@@ -1,12 +1,4 @@
 <template>
-  <section class="mx-auto max-w-2xl px-4 py-10">
-    <h1 class="text-2xl font-semibold">Онбординг ресторана</h1>
-    <p class="mt-2 text-sm text-gray-600">
-      TODO: шаги создания организации, бренда, города и первого филиала.
-    </p>
-  </section>
-</template>
-<template>
   <div class="mx-auto max-w-lg px-4 py-10">
     <h1 class="text-2xl font-bold text-gray-900">Создать магазин</h1>
     <p class="mt-2 text-sm text-gray-600">

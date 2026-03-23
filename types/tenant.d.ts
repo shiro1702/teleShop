@@ -7,6 +7,7 @@ declare module 'h3' {
       shop: TenantShop
       telegramBotToken: string
       integrationKeys: Record<string, unknown>
+      isCustomDomain?: boolean
       uiSettings: Record<string, unknown>
     }
   }

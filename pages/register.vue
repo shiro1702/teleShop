@@ -1,12 +1,4 @@
 <template>
-  <section class="mx-auto max-w-xl px-4 py-10">
-    <h1 class="text-2xl font-semibold">Регистрация</h1>
-    <p class="mt-2 text-sm text-gray-600">
-      TODO: форма регистрации владельца/менеджера и переход в онбординг.
-    </p>
-  </section>
-</template>
-<template>
   <div class="auth-page">
     <h1>Регистрация</h1>
 

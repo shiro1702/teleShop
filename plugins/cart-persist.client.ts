@@ -1,4 +1,5 @@
 export default defineNuxtPlugin(() => {
   const cart = useCartStore()
-  cart.hydrateFromStorage()
+  // Скоуп корзины выбирается на страницах из tenant context (shop/slug).
+  cart.hydrateFromStorage(null)
 })

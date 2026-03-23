@@ -1,4 +1,4 @@
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 type TenantTheme = Record<string, string>
@@ -106,16 +106,30 @@ export function useTenant() {
     typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug : null,
   )
 
+  const routeCitySlug = computed(() =>
+    typeof route.params.city_slug === 'string' ? route.params.city_slug : null,
+  )
+
   const tenantKey = computed(() =>
-    state.value.tenantSlug
-    || routeTenantSlug.value
-    || state.value.shopId
-    || (typeof route.query.shop_id === 'string' ? route.query.shop_id : null),
+    // Витрина ресторана SPA-навигация: приоритет должен быть у URL.
+    // Иначе tenantKey может не измениться (из-за tenantSlug в state),
+    // и тогда мы не перезагрузим theme/настройки нового ресторана.
+    state.value.isCustomDomain
+      ? (state.value.shopId
+          || state.value.tenantSlug
+          || (typeof route.query.shop_id === 'string' ? route.query.shop_id : null))
+      : (routeTenantSlug.value
+          || state.value.shopId
+          || state.value.tenantSlug
+          || (typeof route.query.shop_id === 'string' ? route.query.shop_id : null)),
   )
 
   const routePrefix = computed(() => {
-    const slug = state.value.tenantSlug || routeTenantSlug.value
+    const slug = routeTenantSlug.value || state.value.tenantSlug
     if (!slug || state.value.isCustomDomain) return ''
+
+    // Публичная restaurant-схема агрегатора: /{city_slug}/{tenant_slug}
+    if (routeCitySlug.value) return `/${routeCitySlug.value}/${slug}`
     return `/${slug}`
   })
 
@@ -158,6 +172,27 @@ export function useTenant() {
       }
     }
   }
+
+  // При клиентском переходе между ресторанами (NuxtLink) нужно перезагружать tenant-данные.
+  watch(
+    tenantKey,
+    async (key, prev) => {
+      if (!key || key === prev) return
+      state.value.loaded = false
+      // Сбрасываем старый контекст, чтобы UI и запросы к API не использовали
+      // tenantSlug/shopId предыдущего ресторана до загрузки новых данных.
+      state.value.tenantSlug = null
+      state.value.shopId = null
+      state.value.shopName = null
+      try {
+        await loadTenantSettings()
+      } finally {
+        // Если загрузка не удалась — оставим default theme, но сбросим loading флаг.
+        state.value.loading = false
+      }
+    },
+    { immediate: false },
+  )
 
   return {
     tenant: state,

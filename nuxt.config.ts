@@ -18,6 +18,7 @@ export default defineNuxtConfig({
     supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
     public: {
       platformBaseDomain: process.env.NUXT_PLATFORM_BASE_DOMAIN ?? '',
+      defaultCitySlug: process.env.NUXT_DEFAULT_CITY_SLUG ?? 'ulan-ude',
       yandexMapsApiKey: process.env.YANDEX_MAPS_API_KEY ?? '',
       telegramBotName: process.env.NUXT_TELEGRAM_BOT_NAME ?? '',
       pickupPointsJson: process.env.NUXT_PICKUP_POINTS_JSON ?? '',

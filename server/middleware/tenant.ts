@@ -44,11 +44,20 @@ function isPlatformHost(host: string | null, baseHost: string | null): boolean {
   return host === baseHost || host.endsWith(`.${baseHost}`)
 }
 
-function extractTenantSlugFromPath(path: string): string | null {
-  const [firstSegment] = path.split('?')[0].split('/').filter(Boolean)
+function extractTenantSlugFromPath(path: string, defaultCitySlug: string | null): string | null {
+  const segments = path.split('?')[0].split('/').filter(Boolean)
+  const [firstSegment, secondSegment] = segments
+
   if (!firstSegment) return null
   if (['api', '_nuxt', '__nuxt_error', 'profile', 'link-telegram'].includes(firstSegment)) return null
   if (/\.[a-z0-9]+$/i.test(firstSegment)) return null
+
+  // Поддержка URL-схемы агрегатора: /{city_slug}/{tenant_slug}/...
+  // Для restaurant-страниц tenant_slug должен браться из второго сегмента.
+  if (defaultCitySlug && firstSegment === defaultCitySlug) {
+    return secondSegment ?? null
+  }
+
   return firstSegment
 }
 
@@ -60,6 +69,8 @@ function shouldRewriteCustomDomainPath(path: string): boolean {
 export default defineEventHandler(async (event) => {
   const path = event.path || ''
   const isCartBridgeGet = path.startsWith('/api/cart-bridge') && event.method === 'GET'
+  const config = useRuntimeConfig()
+  const defaultCitySlug = typeof config.public?.defaultCitySlug === 'string' ? config.public.defaultCitySlug : null
   const requestHost = normalizeHost(getHeader(event, 'x-forwarded-host') || getHeader(event, 'host'))
   const platformBaseHost = getPlatformBaseHost()
   const isCustomDomain = !!requestHost && !isPlatformHost(requestHost, platformBaseHost)
@@ -76,7 +87,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (!shop && !path.startsWith('/api/')) {
-    const slugFromPath = extractTenantSlugFromPath(path)
+    const slugFromPath = extractTenantSlugFromPath(path, defaultCitySlug)
     if (slugFromPath) {
       shop = await getShopById(event, slugFromPath)
     }
@@ -108,14 +119,12 @@ export default defineEventHandler(async (event) => {
 
   event.context.tenant = {
     shopId: shop.id,
-    tenantSlug: shop.slug,
     shop,
     telegramBotToken: shop.telegram_bot_token,
     integrationKeys: shop.integration_keys ?? {},
     uiSettings: shop.ui_settings ?? {},
-    host: requestHost,
     isCustomDomain,
-  }
+  } as any
 
   if (!path.startsWith('/api/') && isCustomDomain && shouldRewriteCustomDomainPath(path)) {
     const url = new URL(event.node.req.url || path, 'http://internal.local')

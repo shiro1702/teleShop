@@ -5,10 +5,15 @@ import type { DeliveryZoneProperties } from '~/utils/deliveryZones'
 
 const CART_STORAGE_KEY = 'teleshop-cart'
 
-function getStoredCartItems(): CartItem[] {
+function buildCartStorageKey(scopeKey: string | null): string {
+  const scope = typeof scopeKey === 'string' ? scopeKey.trim() : ''
+  return scope ? `${CART_STORAGE_KEY}:${scope}` : CART_STORAGE_KEY
+}
+
+function getStoredCartItems(scopeKey: string | null): CartItem[] {
   if (typeof localStorage === 'undefined') return []
   try {
-    const raw = localStorage.getItem(CART_STORAGE_KEY)
+    const raw = localStorage.getItem(buildCartStorageKey(scopeKey))
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
@@ -29,10 +34,10 @@ function getStoredCartItems(): CartItem[] {
   }
 }
 
-function persistCart(items: CartItem[]) {
+function persistCart(scopeKey: string | null, items: CartItem[]) {
   if (typeof localStorage === 'undefined') return
   try {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
+    localStorage.setItem(buildCartStorageKey(scopeKey), JSON.stringify(items))
   } catch {
     // ignore quota / private mode
   }
@@ -53,7 +58,8 @@ const CATEGORY_LABELS: Record<ProductCategory, string> = {
 export const useCartStore = defineStore('cart', {
   state: () => ({
     products: [] as Product[],
-    items: getStoredCartItems(),
+    items: [] as CartItem[],
+    scopeKey: null as string | null,
     deliveryZone: null as DeliveryZoneProperties | null,
     // Базовая стоимость доставки по городу до уточнения зоны
     deliveryCost: 200,
@@ -114,6 +120,21 @@ export const useCartStore = defineStore('cart', {
     },
   },
   actions: {
+    setScope(nextScopeKey: string | null) {
+      const normalized = typeof nextScopeKey === 'string' && nextScopeKey.trim()
+        ? nextScopeKey.trim()
+        : null
+
+      if (this.scopeKey === normalized) return
+
+      this.scopeKey = normalized
+      this.items = getStoredCartItems(this.scopeKey)
+      this.deliveryZone = null
+      this.deliveryError = null
+      this.deliveryCost = this.items.length ? 200 : 0
+      // Каталог товаров должен загружаться заново для нового ресторана
+      this.products = []
+    },
     setProducts(products: Product[]) {
       this.products = Array.isArray(products) ? products : []
     },
@@ -124,7 +145,7 @@ export const useCartStore = defineStore('cart', {
       } else {
         this.items.push({ ...product, quantity })
       }
-      persistCart(this.items)
+      persistCart(this.scopeKey, this.items)
       // При изменении корзины пересчитаем стоимость доставки для текущей зоны
       if (this.deliveryZone) {
         this.setDeliveryZone(this.deliveryZone)
@@ -132,7 +153,7 @@ export const useCartStore = defineStore('cart', {
     },
     removeItem(id: string) {
       this.items = this.items.filter((i) => i.id !== id)
-      persistCart(this.items)
+      persistCart(this.scopeKey, this.items)
       if (this.deliveryZone) {
         this.setDeliveryZone(this.deliveryZone)
       }
@@ -143,7 +164,7 @@ export const useCartStore = defineStore('cart', {
         if (quantity <= 0) this.removeItem(id)
         else {
           item.quantity = quantity
-          persistCart(this.items)
+          persistCart(this.scopeKey, this.items)
           if (this.deliveryZone) {
             this.setDeliveryZone(this.deliveryZone)
           }
@@ -152,14 +173,19 @@ export const useCartStore = defineStore('cart', {
     },
     clear() {
       this.items = []
-      persistCart(this.items)
+      persistCart(this.scopeKey, this.items)
+      this.deliveryZone = null
+      this.deliveryError = null
       this.deliveryCost = 0
     },
     /** Восстановить корзину из localStorage (вызывать на клиенте после гидрации) */
-    hydrateFromStorage() {
+    hydrateFromStorage(scopeKey: string | null = null) {
       if (typeof localStorage === 'undefined') return
-      const stored = getStoredCartItems()
-      if (stored.length > 0) this.items = stored
+      this.scopeKey = typeof scopeKey === 'string' && scopeKey.trim() ? scopeKey.trim() : null
+      this.items = getStoredCartItems(this.scopeKey)
+      this.deliveryZone = null
+      this.deliveryError = null
+      this.deliveryCost = this.items.length ? 200 : 0
       // Fallback для локальной разработки без tenant-базы.
       if (!this.products.length) this.products = MOCK_PRODUCTS
     },

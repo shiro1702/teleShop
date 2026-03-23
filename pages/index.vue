@@ -211,6 +211,13 @@ const tenantName = computed(() => tenant.value.shopName || 'Наш магази�
 const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
 
+function applyCartScope() {
+  const scope = typeof tenantKey.value === 'string' && tenantKey.value.trim()
+    ? tenantKey.value.trim()
+    : null
+  cartStore.setScope(scope)
+}
+
 function openProduct(product: import('~/data/products').Product) {
   selectedProduct.value = product
 }
@@ -238,6 +245,7 @@ function formatPrice(price: number) {
 }
 
 onMounted(() => {
+  applyCartScope()
   void loadCatalog()
   const orderId = route.query.orderId
   if (typeof orderId === 'string' && orderId) {
@@ -245,6 +253,11 @@ onMounted(() => {
     showOrderSuccess.value = true
     router.replace({ path: route.path, query: { ...route.query, orderId: undefined } })
   }
+})
+
+watch(tenantKey, () => {
+  applyCartScope()
+  void loadCatalog()
 })
 
 async function loadCatalog() {

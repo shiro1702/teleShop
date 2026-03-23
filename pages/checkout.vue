@@ -688,6 +688,13 @@ const shopIdFromRoute = computed(() =>
   tenantKey.value,
 )
 
+function applyCartScope() {
+  const scope = typeof shopIdFromRoute.value === 'string' && shopIdFromRoute.value.trim()
+    ? shopIdFromRoute.value.trim()
+    : null
+  cartStore.setScope(scope)
+}
+
 const {
   selectedPickupPointId,
   selectedRestaurantId,
@@ -981,6 +988,7 @@ watch(
 )
 
 onMounted(async () => {
+  applyCartScope()
   const saved = await loadCheckoutStateCloud()
   if (saved) {
     restoreFromPlainObject(saved)
@@ -995,6 +1003,11 @@ onMounted(async () => {
     state.currentStep = 2
   }
 
+  await loadRestaurants()
+})
+
+watch(shopIdFromRoute, async () => {
+  applyCartScope()
   await loadRestaurants()
 })
 
