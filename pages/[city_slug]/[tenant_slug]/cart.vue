@@ -3,5 +3,5 @@
 </template>
 
 <script setup lang="ts">
-import CartPage from '../cart.vue'
+import CartPage from '../../cart.vue'
 </script>

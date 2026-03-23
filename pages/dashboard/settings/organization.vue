@@ -1,0 +1,10 @@
+<template>
+  <section>
+    <h1 class="text-2xl font-semibold">Настройки организации</h1>
+    <p class="mt-2 text-sm text-gray-600">TODO: бренд, лого, темы, Telegram webhook, реквизиты.</p>
+  </section>
+</template>
+
+<script setup lang="ts">
+definePageMeta({ layout: 'dashboard' })
+</script>

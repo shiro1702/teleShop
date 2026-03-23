@@ -1,7 +1,7 @@
 <template>
-  <CartPage />
+  <CatalogPage />
 </template>
 
 <script setup lang="ts">
-import CartPage from '../cart.vue'
+import CatalogPage from '../index.vue'
 </script>
