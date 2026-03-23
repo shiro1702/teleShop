@@ -70,7 +70,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 type ShopItem = {
@@ -84,14 +84,17 @@ type ShopItem = {
 const route = useRoute()
 const citySlug = computed(() => (typeof route.params.city_slug === 'string' ? route.params.city_slug : ''))
 
-function toCityNameRu(slug: string) {
-  // MVP: пока ограничиваемся базовыми городами.
-  // При добавлении новых городов можно заменить на загрузку из БД.
-  if (slug === 'ulan-ude') return 'Улан-Удэ'
-  return slug
+type CityResponse = {
+  ok: boolean
+  city: {
+    id: string
+    name: string
+    slug: string
+    isActive: boolean
+  } | null
 }
 
-const cityNameRu = computed(() => toCityNameRu(citySlug.value))
+const cityNameRu = ref('')
 
 const search = ref('')
 const pending = ref(true)
@@ -104,20 +107,47 @@ const filteredShops = computed(() => {
   return shops.value.filter((s) => s.name.toLowerCase().includes(q))
 })
 
-onMounted(async () => {
+async function loadCityAndShops() {
+  const slug = citySlug.value
+  if (!slug) {
+    cityNameRu.value = ''
+    shops.value = []
+    pending.value = false
+    errorMessage.value = 'Город не указан в URL'
+    return
+  }
+
   pending.value = true
   errorMessage.value = null
   try {
-    const res = await fetch('/api/shops')
-    if (!res.ok) {
+    const [cityHttpRes, shopsHttpRes] = await Promise.all([
+      fetch(`/api/cities?slug=${encodeURIComponent(slug)}`),
+      fetch(`/api/shops?city_slug=${encodeURIComponent(slug)}`),
+    ])
+
+    if (!cityHttpRes.ok) {
+      throw new Error('Не удалось загрузить город')
+    }
+    if (!shopsHttpRes.ok) {
       throw new Error('Не удалось загрузить рестораны')
     }
-    const json = await res.json() as { ok: boolean; items: ShopItem[] }
-    shops.value = json.items ?? []
+
+    const cityRes = await cityHttpRes.json() as CityResponse
+    const shopsRes = await shopsHttpRes.json() as { ok: boolean; items: ShopItem[] }
+
+    cityNameRu.value = cityRes.city?.name || slug
+    if (!shopsRes.ok) {
+      throw new Error('Не удалось загрузить рестораны')
+    }
+    shops.value = shopsRes.items ?? []
   } catch (err: any) {
     errorMessage.value = err?.message || 'Ошибка загрузки'
+    cityNameRu.value = slug
+    shops.value = []
   } finally {
     pending.value = false
   }
-})
+}
+
+watch(citySlug, loadCityAndShops, { immediate: true })
 </script>

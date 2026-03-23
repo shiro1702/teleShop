@@ -614,9 +614,10 @@ export default defineNuxtRouteMiddleware((to) => {
 
 ### 12.3. Следующие шаги разработки функционала
 
-- [ ] Добавить middleware `redirect-city.global.ts` (`/` -> `/${defaultCitySlug}`).
-- [ ] Добавить `public.defaultCitySlug` в `runtimeConfig`.
-- [ ] Реализовать данные города в БД (`cities`, `city_id`, фильтрация API).
+- [x] Добавить middleware `redirect-city.global.ts` (`/` -> `/${defaultCitySlug}`).
+- [x] Добавить `public.defaultCitySlug` в `runtimeConfig`.
+- [x] Реализовать данные города в БД (`cities`, `city_id`, фильтрация API).
+- [x] Добавить read-only экран `/platform/cities` (список + статус активности) на основе таблицы `cities`.
 - [ ] Подключить реальную навигацию между новыми страницами дашборда.
 - [ ] Реализовать формы на страницах `/onboarding`, `/dashboard/settings/organization`, `/dashboard/branches/new`.
 - [ ] Реализовать подключение webhook Telegram-бота через `/dashboard/settings/organization`.
