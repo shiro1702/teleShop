@@ -12,6 +12,9 @@
             <NuxtLink to="/dashboard/team" class="hover:text-gray-900">Команда и доступы</NuxtLink>
             <NuxtLink to="/dashboard/branches/new" class="hover:text-gray-900">Новый филиал</NuxtLink>
             <NuxtLink to="/dashboard/settings/organization" class="hover:text-gray-900">Настройки</NuxtLink>
+            <span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+              Аналитика: в разработке
+            </span>
           </nav>
         </div>
         <NuxtLink to="/" class="text-sm text-gray-600 hover:text-gray-900">
