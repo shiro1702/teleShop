@@ -12,6 +12,13 @@ export default <Partial<Config>>{
           700: 'var(--color-primary-700)',
         },
       },
+      borderRadius: {
+        // MVP: маппим существующие tailwind rounded-* классы на радиусы из настроек ресторана
+        // (чтобы без массового рефактора разом начать применять radius preset’ы).
+        lg: 'var(--radius-button, 10px)',
+        xl: 'var(--radius-modal, 16px)',
+        '2xl': 'var(--radius-card, 14px)',
+      },
     },
   },
 }

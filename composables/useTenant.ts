@@ -42,6 +42,19 @@ function buildCssVars(theme: TenantTheme): Record<string, string> {
     primary_100: '--color-primary-100',
     primary_600: '--color-primary-600',
     primary_700: '--color-primary-700',
+    secondary: '--color-secondary',
+    accent: '--color-accent',
+    surface_background: '--color-surface-bg',
+    surface_card: '--color-surface-card',
+    text_primary: '--color-text-primary',
+    text_muted: '--color-text-muted',
+    state_success: '--color-success',
+    state_warning: '--color-warning',
+    state_error: '--color-error',
+    radius_button: '--radius-button',
+    radius_modal: '--radius-modal',
+    radius_input: '--radius-input',
+    radius_card: '--radius-card',
   }
 
   for (const [key, value] of Object.entries(theme)) {
@@ -54,6 +67,27 @@ function buildCssVars(theme: TenantTheme): Record<string, string> {
 
   return vars
 }
+
+const GLOBAL_THEME_VAR_KEYS = [
+  '--color-primary',
+  '--color-primary-50',
+  '--color-primary-100',
+  '--color-primary-600',
+  '--color-primary-700',
+  '--color-secondary',
+  '--color-accent',
+  '--color-surface-bg',
+  '--color-surface-card',
+  '--color-text-primary',
+  '--color-text-muted',
+  '--color-success',
+  '--color-warning',
+  '--color-error',
+  '--radius-button',
+  '--radius-modal',
+  '--radius-input',
+  '--radius-card',
+] as const
 
 export function useTenant() {
   const route = useRoute()
@@ -123,6 +157,11 @@ export function useTenant() {
       uiSettings: event.context.tenant.uiSettings,
       isCustomDomain: !!event.context.tenant.isCustomDomain,
     })
+    // MVP: серверный tenant-контекст может не содержать все derived-настройки
+    // (например, primary/описание/лого, подмешанные из organization_style_settings).
+    // Поэтому форсим повторную загрузку через `/api/tenant`.
+    state.value.loaded = false
+    state.value.loading = false
   }
 
   const routeTenantSlug = computed(() =>
@@ -159,6 +198,24 @@ export function useTenant() {
   const cssVars = computed<Record<string, string>>(() => {
     return buildCssVars(state.value.theme)
   })
+
+  // Для элементов, которые рендерятся вне `.app-root` (например через `Teleport` в `body`),
+  // CSS-переменные не наследуются. Синхронизируем их на `document.documentElement`,
+  // чтобы `Tailwind colors` через `var(--color-primary*)` работали везде.
+  if (typeof window !== 'undefined') {
+    watch(
+      cssVars,
+      (vars) => {
+        for (const key of GLOBAL_THEME_VAR_KEYS) {
+          document.documentElement.style.removeProperty(key)
+        }
+        for (const [key, value] of Object.entries(vars)) {
+          document.documentElement.style.setProperty(key, value)
+        }
+      },
+      { immediate: true },
+    )
+  }
 
   function tenantPath(path = '/') {
     const normalized = path.startsWith('/') ? path : `/${path}`
@@ -215,6 +272,9 @@ export function useTenant() {
       state.value.tenantSlug = null
       state.value.shopId = null
       state.value.shopName = null
+      state.value.logoUrl = null
+      state.value.description = null
+      state.value.theme = {}
       try {
         await loadTenantSettings()
       } finally {

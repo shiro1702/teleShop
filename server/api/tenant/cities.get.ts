@@ -1,11 +1,13 @@
 import { defineEventHandler } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
+import { resolveShopIdFromEvent } from '~/server/utils/tenant'
 
 export default defineEventHandler(async (event) => {
-  const tenantShopId = event.context.tenant?.shopId as string | undefined
-  if (!tenantShopId) {
-    return { ok: true, items: [] }
-  }
+  // `AppHeader` calls this endpoint from the browser without a tenant context.
+  // MVP: fallback to resolving `shop_id` from headers/query/telegram init-data.
+  const tenantShopId = (event.context.tenant?.shopId as string | undefined)
+    || await resolveShopIdFromEvent(event)
+  if (!tenantShopId) return { ok: true, items: [] }
 
   const client = await serverSupabaseServiceRole(event)
   const { data, error } = await client

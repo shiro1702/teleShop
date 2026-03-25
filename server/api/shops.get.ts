@@ -1,5 +1,6 @@
 import { createError, defineEventHandler, getQuery } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
+import { getStyleRecord } from '~/server/utils/organizationStyle'
 
 type ShopRow = {
   id: string
@@ -53,15 +54,43 @@ export default defineEventHandler(async (event) => {
   }
 
   const rows = (data ?? []) as ShopRow[]
+  // Join с `restaurants` может возвращать дубликаты одного и того же shop (по числу ресторанов/филиалов).
+  // На странице города нужно показывать shop один раз.
+  const seen = new Set<string>()
+  const uniqueRows: ShopRow[] = []
+  for (const row of rows) {
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    uniqueRows.push(row)
+  }
+
+  // MVP: берём name/description/logo не из `shops.ui_settings`, а из `organization_style_settings`,
+  // чтобы карточки на странице города отражали настройку бренда.
+  const items = await Promise.all(uniqueRows.map(async (row) => {
+    try {
+      const record = await getStyleRecord(event, row.id)
+      const cfg = record.config
+
+      return {
+        id: row.id,
+        slug: row.slug,
+        name: cfg.identity.name || row.name,
+        logoUrl: cfg.identity.logoUrl || (typeof row.ui_settings?.logo_url === 'string' ? row.ui_settings?.logo_url : null),
+        description: cfg.identity.shortDescription || (typeof row.ui_settings?.description === 'string' ? row.ui_settings?.description : null),
+      }
+    } catch {
+      return {
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        logoUrl: typeof row.ui_settings?.logo_url === 'string' ? row.ui_settings?.logo_url : null,
+        description: typeof row.ui_settings?.description === 'string' ? row.ui_settings?.description : null,
+      }
+    }
+  }))
   return {
     ok: true,
-    items: rows.map((row) => ({
-      id: row.id,
-      slug: row.slug,
-      name: row.name,
-      logoUrl: typeof row.ui_settings?.logo_url === 'string' ? row.ui_settings?.logo_url : null,
-      description: typeof row.ui_settings?.description === 'string' ? row.ui_settings?.description : null,
-    })),
+    items,
   }
 })
 

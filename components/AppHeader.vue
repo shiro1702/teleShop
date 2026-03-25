@@ -1,9 +1,10 @@
 <template>
   <header
-    class="fixed inset-x-0 top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur"
+    class="fixed inset-x-0 top-0 z-50 border-b backdrop-blur"
+    :style="headerStyle"
   >
     <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-      <NuxtLink :to="homeLink" class="flex min-w-0 items-center gap-3 text-gray-900">
+      <NuxtLink :to="homeLink" class="flex min-w-0 items-center gap-3" :style="{ color: mainTextColor }">
         <img
           :src="tenantLogoUrl"
           :alt="tenantName"
@@ -15,7 +16,8 @@
           </span>
           <span
             v-if="tenantDescription"
-            class="hidden truncate text-xs text-gray-500 md:block"
+            class="hidden truncate text-xs md:block"
+            :style="{ color: mutedTextColor }"
           >
             {{ tenantDescription }}
           </span>
@@ -27,7 +29,8 @@
         <select
           id="city-selector"
           v-model="selectedCitySlug"
-          class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+          class="rounded-lg px-3 py-2 text-sm"
+          :style="selectStyle"
           @change="onCityChange"
         >
           <option v-for="city in availableCities" :key="city.slug" :value="city.slug">
@@ -42,7 +45,8 @@
       >
         <NuxtLink
           to="/partners"
-          class="hidden rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 sm:inline-flex"
+          class="hidden rounded-lg px-3 py-2 text-sm font-medium transition sm:inline-flex"
+          :style="ghostButtonStyle"
         >
           Партнёрам
         </NuxtLink>
@@ -55,7 +59,8 @@
         >
           <button
             type="button"
-            class="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 sm:hidden"
+            class="flex h-10 w-10 items-center justify-center rounded-full sm:hidden"
+            :style="iconButtonStyle"
             aria-label="Профиль"
             :aria-expanded="showUserMenu"
             @click="toggleUserMenu"
@@ -67,7 +72,8 @@
 
           <button
             type="button"
-            class="hidden items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:flex"
+            class="hidden items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium sm:flex"
+            :style="ghostButtonStyle"
             :aria-expanded="showUserMenu"
             @click="toggleUserMenu"
           >
@@ -80,11 +86,13 @@
 
           <div
             v-if="showUserMenu"
-            class="absolute right-0 mt-2 w-48 rounded-lg border border-gray-200 bg-white py-1 text-sm text-gray-700 shadow-lg"
+            class="absolute right-0 mt-2 w-48 rounded-lg py-1 text-sm shadow-lg"
+            :style="menuStyle"
           >
             <NuxtLink
               to="/profile"
-              class="block px-3 py-2 hover:bg-gray-50"
+              class="block px-3 py-2"
+              :style="{ color: mainTextColor }"
               @click="showUserMenu = false"
             >
               Профиль
@@ -115,6 +123,17 @@
 </template>
 
 <script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useTenant } from '../composables/useTenant'
+import { useTelegram } from '../composables/useTelegram'
+
+// Nuxt auto-imports may not be recognized by Vetur in this repo.
+// Keep editor types loose to avoid false-positive lints.
+declare const useSupabaseClient: any
+declare const useSupabaseUser: any
+declare const useRuntimeConfig: any
+
 const { isTelegram } = useTelegram()
 const user = useSupabaseUser()
 const config = useRuntimeConfig()
@@ -140,7 +159,7 @@ const selectedCitySlug = ref(defaultCitySlug.value)
 const isDashboardRoute = computed(() => {
   const routePath = typeof route.path === 'string' ? route.path : ''
   if (routePath.startsWith('/dashboard')) return true
-  if (import.meta.client) {
+  if (typeof window !== 'undefined') {
     return window.location.pathname.startsWith('/dashboard')
   }
   return false
@@ -162,6 +181,41 @@ const isNonTenantRoute = computed(() => {
 const showCitySelector = computed(() =>
   !isNonTenantRoute.value && availableCities.value.length > 1 && !!tenant.value.tenantSlug)
 
+const theme = computed(() => tenant.value.theme || {})
+const mainTextColor = computed(() => theme.value.text_primary || 'var(--color-text-primary)')
+const mutedTextColor = computed(() => theme.value.text_muted || 'var(--color-text-muted)')
+const surfaceCardColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
+const borderColor = computed(() => theme.value.primary_100 || '#e5e7eb')
+
+const headerStyle = computed(() => ({
+  borderColor: borderColor.value,
+  backgroundColor: `${surfaceCardColor.value}f2`,
+}))
+
+const selectStyle = computed(() => ({
+  border: `1px solid ${borderColor.value}`,
+  backgroundColor: surfaceCardColor.value,
+  color: mainTextColor.value,
+}))
+
+const ghostButtonStyle = computed(() => ({
+  border: `1px solid ${borderColor.value}`,
+  color: mainTextColor.value,
+  backgroundColor: 'transparent',
+}))
+
+const iconButtonStyle = computed(() => ({
+  border: `1px solid ${borderColor.value}`,
+  color: mainTextColor.value,
+  backgroundColor: 'transparent',
+}))
+
+const menuStyle = computed(() => ({
+  border: `1px solid ${borderColor.value}`,
+  backgroundColor: surfaceCardColor.value,
+  color: mainTextColor.value,
+}))
+
 const showUserMenu = ref(false)
 const userMenuRootRef = ref<HTMLElement | null>(null)
 
@@ -177,7 +231,7 @@ function onDocumentClickCapture(e: MouseEvent) {
 
 function openTelegramAuth() {
   if (!telegramBotUrl.value) return
-  if (import.meta.client) {
+  if (typeof window !== 'undefined') {
     const url = `${telegramBotUrl.value}?start=auth_link${tenantKey.value ? `_${encodeURIComponent(tenantKey.value)}` : ''}`
     window.open(url, '_blank', 'noopener')
   }
@@ -200,12 +254,23 @@ async function logout() {
 }
 
 onMounted(() => {
-  if (!import.meta.client) return
+  if (typeof window === 'undefined') return
   document.addEventListener('click', onDocumentClickCapture, true)
   if (isNonTenantRoute.value) return
   const routeCity = typeof route.params.city_slug === 'string' ? route.params.city_slug : ''
   selectedCitySlug.value = routeCity || defaultCitySlug.value
-  fetch('/api/tenant/cities')
+
+  // `AppHeader` может вызываться без уже загруженного `tenantKey`.
+  // Для `/[city_slug]/[tenant_slug]/...` берём tenant_slug напрямую.
+  const routeTenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  const shopRef = routeTenantSlug || (typeof tenantKey.value === 'string' ? tenantKey.value.trim() : '')
+  if (!shopRef) {
+    availableCities.value = []
+    return
+  }
+
+  const url = `/api/tenant/cities?shop_id=${encodeURIComponent(shopRef)}`
+  fetch(url)
     .then((response) => response.json() as Promise<{ ok: boolean; items?: Array<{ id: string; name: string; slug: string }> }>)
     .then((payload) => {
       availableCities.value = Array.isArray(payload.items) ? payload.items : []
@@ -220,7 +285,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  if (!import.meta.client) return
+  if (typeof window === 'undefined') return
   document.removeEventListener('click', onDocumentClickCapture, true)
 })
 

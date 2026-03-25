@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-50">
+  <div class="min-h-screen" :style="pageStyle">
     <!-- Модалка подтверждения очистки корзины -->
     <Teleport to="body">
       <Transition name="cart">
@@ -15,19 +15,21 @@
             @click="closeClearCartModal"
           />
           <div
-            class="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+            class="relative w-full max-w-sm rounded-2xl p-6 shadow-xl"
+            :style="cardStyle"
             @click.stop
           >
-            <h2 id="clear-cart-title" class="text-lg font-semibold text-gray-900">
+            <h2 id="clear-cart-title" class="text-lg font-semibold" :style="{ color: mainTextColor }">
               Очистить корзину?
             </h2>
-            <p class="mt-2 text-sm text-gray-600">
+            <p class="mt-2 text-sm" :style="{ color: mutedTextColor }">
               Все товары будут удалены из корзины.
             </p>
             <div class="mt-5 flex gap-3">
               <button
                 type="button"
-                class="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                class="flex-1 rounded-lg px-4 py-2 text-sm font-medium transition"
+                :style="secondaryButtonStyle"
                 @click="closeClearCartModal"
               >
                 Отмена
@@ -45,18 +47,20 @@
       </Transition>
     </Teleport>
 
-    <header class="border-b border-gray-200 bg-white">
+    <header class="border-b" :style="headerStyle">
       <div class="mx-auto grid max-w-6xl grid-cols-3 items-center gap-3 px-4 py-4 sm:px-6">
         <div class="flex w-24 items-center">
           <button
             v-if="state.currentStep > 1"
             type="button"
-            class="flex w-fit items-center gap-2 text-gray-600 transition hover:text-gray-900"
+            class="flex w-fit items-center gap-2 transition"
+            :style="{ color: mutedTextColor }"
             aria-label="Назад"
             @click="goBackStep"
           >
             <span
-              class="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-gray-100"
+              class="flex h-10 w-10 items-center justify-center rounded-lg"
+              :style="{ backgroundColor: 'transparent' }"
               aria-hidden="true"
             >
               <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -75,7 +79,7 @@
           />
         </div>
 
-        <h1 class="text-center text-xl font-bold text-gray-900">
+        <h1 class="text-center text-xl font-bold" :style="{ color: mainTextColor }">
           Оформление
         </h1>
 
@@ -84,7 +88,7 @@
             v-if="cartStore.count > 0"
             class="flex flex-col items-end leading-tight"
           >
-            <span class="text-sm font-medium text-gray-600">
+            <span class="text-sm font-medium" :style="{ color: mutedTextColor }">
               {{ cartStore.count }} шт.
             </span>
             <span class="text-sm font-semibold text-primary">
@@ -109,9 +113,9 @@
         <Transition :name="stepTransitionName" mode="out-in" @after-enter="onStepTransitionAfterEnter">
           <!-- Шаг 1: корзина -->
           <section v-if="state.currentStep === 1" key="checkout-step-1">
-          <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
+          <div class="rounded-2xl p-4 sm:p-6" :style="cardStyle">
             <div v-if="cartStore.items.length === 0" class="py-10 text-center">
-              <p class="text-gray-500">
+              <p :style="{ color: mutedTextColor }">
                 Корзина пуста
               </p>
               <NuxtLink
@@ -142,17 +146,18 @@
           <div
             v-if="cartStore.items.length > 0"
             ref="step1InlineNavRef"
-            class="mt-4 flex flex-col items-stretch justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:p-5"
+            class="mt-4 flex flex-col items-stretch justify-between gap-4 rounded-2xl p-4 sm:flex-row sm:items-center sm:p-5"
+            :style="cardStyle"
           >
             <div class="space-y-1 text-sm">
               <div class="flex items-center justify-between">
-                <span class="text-gray-600">Товары</span>
-                <span class="font-semibold text-gray-900">
+                <span :style="{ color: mutedTextColor }">Товары</span>
+                <span class="font-semibold" :style="{ color: mainTextColor }">
                   {{ formatPrice(cartStore.total) }}
                 </span>
               </div>
               <div class="flex items-center justify-between">
-                <span class="text-gray-600">Доставка</span>
+                <span :style="{ color: mutedTextColor }">Доставка</span>
                 <span
                   class="font-semibold"
                   :class="cartStore.deliveryCost === 0 ? 'text-emerald-600' : 'text-gray-900'"
@@ -160,8 +165,8 @@
                   {{ cartStore.deliveryCost === 0 ? '0 ₽' : formatPrice(cartStore.deliveryCost) }}
                 </span>
               </div>
-              <div class="flex items-center justify-between border-t border-dashed border-gray-200 pt-2">
-                <span class="font-semibold text-gray-900">
+              <div class="flex items-center justify-between border-t border-dashed pt-2" :style="{ borderColor }">
+                <span class="font-semibold" :style="{ color: mainTextColor }">
                   Итого
                 </span>
                 <span class="text-xl font-bold text-primary">
@@ -191,7 +196,7 @@
 
           <!-- Шаг 2: оформление (получение + адрес + оплата + подтверждение) -->
           <section v-else key="checkout-step-2">
-          <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
+          <div class="rounded-2xl p-4 sm:p-6" :style="cardStyle">
             <div class="space-y-3">
               <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4">
                 <div class="space-y-2">
@@ -625,12 +630,40 @@ const router = useRouter()
 const { isTelegram, webApp } = useTelegram()
 const supabaseUser = useSupabaseUser()
 const config = useRuntimeConfig()
-const { tenantKey, tenantPath } = useTenant()
+const { tenant, tenantKey, tenantPath } = useTenant()
 
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() =>
   telegramBotName ? `https://t.me/${telegramBotName}` : null,
 )
+const theme = computed(() => tenant.value.theme || {})
+const pageBgColor = computed(() => theme.value.surface_background || 'var(--color-surface-bg)')
+const cardBgColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
+const mainTextColor = computed(() => theme.value.text_primary || 'var(--color-text-primary)')
+const mutedTextColor = computed(() => theme.value.text_muted || 'var(--color-text-muted)')
+const borderColor = computed(() => theme.value.primary_100 || '#e5e7eb')
+
+const pageStyle = computed(() => ({
+  backgroundColor: pageBgColor.value,
+  color: mainTextColor.value,
+}))
+
+const headerStyle = computed(() => ({
+  borderColor: borderColor.value,
+  backgroundColor: cardBgColor.value,
+}))
+
+const cardStyle = computed(() => ({
+  border: `1px solid ${borderColor.value}`,
+  backgroundColor: cardBgColor.value,
+  color: mainTextColor.value,
+}))
+
+const secondaryButtonStyle = computed(() => ({
+  border: `1px solid ${borderColor.value}`,
+  color: mainTextColor.value,
+  backgroundColor: 'transparent',
+}))
 const pickupPointsConfigRaw = (config.public.pickupPointsJson as string | undefined) || ''
 const fulfillmentTypesConfigRaw = (config.public.fulfillmentTypes as string | undefined) || ''
 
