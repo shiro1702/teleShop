@@ -57,6 +57,29 @@ function buildCssVars(theme: TenantTheme): Record<string, string> {
 
 export function useTenant() {
   const route = useRoute()
+  const isDashboardRoute = computed(() => {
+    const routePath = typeof route.path === 'string' ? route.path : ''
+    if (routePath.startsWith('/dashboard')) return true
+    if (import.meta.client) {
+      return window.location.pathname.startsWith('/dashboard')
+    }
+    return false
+  })
+  const isNonTenantRoute = computed(() => {
+    const routePath = typeof route.path === 'string' ? route.path : ''
+    const nonTenantPrefixes = [
+      '/dashboard',
+      '/onboarding',
+      '/login',
+      '/register',
+      '/profile',
+      '/partners',
+      '/platform',
+      '/link-telegram',
+    ]
+    return nonTenantPrefixes.some((prefix) => routePath.startsWith(prefix))
+  })
+
   const event = import.meta.server ? useRequestEvent() : null
   const state = useState<TenantState>('tenant-state', () => ({
     loaded: false,
@@ -147,6 +170,14 @@ export function useTenant() {
 
   async function loadTenantSettings() {
     if (state.value.loading || state.value.loaded) return
+    const explicitTenantFromQuery = typeof route.query.shop_id === 'string' && route.query.shop_id.trim()
+      ? route.query.shop_id.trim()
+      : ''
+    if ((isDashboardRoute.value || isNonTenantRoute.value) && !explicitTenantFromQuery) {
+      state.value.loaded = true
+      state.value.loading = false
+      return
+    }
     state.value.loading = true
     try {
       const tenantRef = tenantKey.value || undefined

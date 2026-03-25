@@ -82,12 +82,24 @@ const supportsPickup = ref(true)
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
+const router = useRouter()
 
 async function submit() {
   loading.value = true
   errorMessage.value = null
   successMessage.value = null
   try {
+    const existing = await fetch('/api/dashboard/restaurants')
+    if (existing.ok) {
+      const payload = await existing.json() as { ok: boolean; items?: Array<{ name: string; address: string }> }
+      const duplicate = (payload.items || []).some((item) =>
+        item.name.trim().toLowerCase() === name.value.trim().toLowerCase()
+        && item.address.trim().toLowerCase() === address.value.trim().toLowerCase())
+      if (duplicate) {
+        throw new Error('Филиал с таким названием и адресом уже существует')
+      }
+    }
+
     const httpRes = await fetch('/api/dashboard/branches', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -98,15 +110,14 @@ async function submit() {
         supportsPickup: supportsPickup.value,
       }),
     })
-    const res = await httpRes.json() as { ok: boolean; item?: { name: string } }
+    const res = await httpRes.json() as { ok: boolean; item?: { id: string; name: string } }
     if (!res?.ok) {
       throw new Error('Не удалось создать филиал')
     }
     successMessage.value = `Филиал "${res.item?.name || name.value}" создан`
-    name.value = ''
-    address.value = ''
-    supportsDelivery.value = true
-    supportsPickup.value = true
+    if (res.item?.id) {
+      await router.push(`/dashboard/branches/${res.item.id}`)
+    }
   } catch (err: any) {
     errorMessage.value = err?.data?.statusMessage || err?.message || 'Ошибка создания филиала'
   } finally {

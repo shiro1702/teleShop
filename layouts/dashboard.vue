@@ -7,23 +7,43 @@
             TeleShop Dashboard
           </NuxtLink>
           <nav class="flex items-center gap-4 text-sm text-gray-600">
-            <NuxtLink to="/dashboard/orders" class="hover:text-gray-900">Заказы</NuxtLink>
-            <NuxtLink to="/dashboard/branches" class="hover:text-gray-900">Филиалы</NuxtLink>
-            <NuxtLink to="/dashboard/team" class="hover:text-gray-900">Команда и доступы</NuxtLink>
-            <NuxtLink to="/dashboard/branches/new" class="hover:text-gray-900">Новый филиал</NuxtLink>
-            <NuxtLink to="/dashboard/settings/organization" class="hover:text-gray-900">Настройки</NuxtLink>
-            <span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-              Аналитика: в разработке
-            </span>
+            <NuxtLink v-if="can('orders.view')" to="/dashboard/orders" class="hover:text-gray-900">Заказы</NuxtLink>
+            <NuxtLink v-if="can('menu.manage')" to="/dashboard/menu" class="hover:text-gray-900">Меню</NuxtLink>
+            <NuxtLink v-if="can('branches.view')" to="/dashboard/branches" class="hover:text-gray-900">Филиалы</NuxtLink>
+            <NuxtLink v-if="can('team.manage')" to="/dashboard/team" class="hover:text-gray-900">Команда</NuxtLink>
+            <NuxtLink v-if="can('settings.org.edit')" to="/dashboard/settings/organization" class="hover:text-gray-900">Настройки</NuxtLink>
+            <NuxtLink v-if="can('integrations.manage')" to="/dashboard/integrations" class="hover:text-gray-900">Интеграции</NuxtLink>
           </nav>
         </div>
-        <NuxtLink to="/" class="text-sm text-gray-600 hover:text-gray-900">
+        <NuxtLink :to="storefrontPath" class="text-sm text-gray-600 hover:text-gray-900">
           На витрину
         </NuxtLink>
       </div>
     </header>
     <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <p v-if="error" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+        Не удалось определить доступы. Разделы могут отображаться частично.
+      </p>
       <slot />
     </main>
   </div>
 </template>
+
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { useDashboardAccess } from '../composables/useDashboardAccess'
+
+const { can, load, error } = useDashboardAccess()
+const storefrontPath = ref('/')
+onMounted(() => {
+  load()
+  fetch('/api/dashboard/storefront')
+    .then((response) => response.json() as Promise<{ ok: boolean; path: string }>)
+    .then((payload) => {
+      storefrontPath.value = payload.path || '/'
+    })
+    .catch(() => {
+      storefrontPath.value = '/'
+    })
+})
+</script>

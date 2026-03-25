@@ -22,6 +22,20 @@
         </div>
       </NuxtLink>
 
+      <div v-if="showCitySelector" class="hidden md:block">
+        <label class="sr-only" for="city-selector">Город</label>
+        <select
+          id="city-selector"
+          v-model="selectedCitySlug"
+          class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+          @change="onCityChange"
+        >
+          <option v-for="city in availableCities" :key="city.slug" :value="city.slug">
+            {{ city.name }}
+          </option>
+        </select>
+      </div>
+
       <div
         v-if="!isTelegram"
         class="flex items-center gap-2 sm:gap-3" 
@@ -104,6 +118,8 @@
 const { isTelegram } = useTelegram()
 const user = useSupabaseUser()
 const config = useRuntimeConfig()
+const route = useRoute()
+const router = useRouter()
 const supabase = useSupabaseClient()
 const { tenant, tenantKey, tenantPath } = useTenant()
 
@@ -115,6 +131,36 @@ const homeLink = computed(() => tenantPath('/'))
 const tenantName = computed(() => tenant.value.shopName || 'teleShop')
 const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
+const defaultCitySlug = computed(() =>
+  (typeof config.public?.defaultCitySlug === 'string' && config.public.defaultCitySlug.trim())
+    ? config.public.defaultCitySlug.trim()
+    : 'ulan-ude')
+const availableCities = ref<Array<{ id: string; name: string; slug: string }>>([])
+const selectedCitySlug = ref(defaultCitySlug.value)
+const isDashboardRoute = computed(() => {
+  const routePath = typeof route.path === 'string' ? route.path : ''
+  if (routePath.startsWith('/dashboard')) return true
+  if (import.meta.client) {
+    return window.location.pathname.startsWith('/dashboard')
+  }
+  return false
+})
+const isNonTenantRoute = computed(() => {
+  const routePath = typeof route.path === 'string' ? route.path : ''
+  const nonTenantPrefixes = [
+    '/dashboard',
+    '/onboarding',
+    '/login',
+    '/register',
+    '/profile',
+    '/partners',
+    '/platform',
+    '/link-telegram',
+  ]
+  return nonTenantPrefixes.some((prefix) => routePath.startsWith(prefix))
+})
+const showCitySelector = computed(() =>
+  !isNonTenantRoute.value && availableCities.value.length > 1 && !!tenant.value.tenantSlug)
 
 const showUserMenu = ref(false)
 const userMenuRootRef = ref<HTMLElement | null>(null)
@@ -156,11 +202,32 @@ async function logout() {
 onMounted(() => {
   if (!import.meta.client) return
   document.addEventListener('click', onDocumentClickCapture, true)
+  if (isNonTenantRoute.value) return
+  const routeCity = typeof route.params.city_slug === 'string' ? route.params.city_slug : ''
+  selectedCitySlug.value = routeCity || defaultCitySlug.value
+  fetch('/api/tenant/cities')
+    .then((response) => response.json() as Promise<{ ok: boolean; items?: Array<{ id: string; name: string; slug: string }> }>)
+    .then((payload) => {
+      availableCities.value = Array.isArray(payload.items) ? payload.items : []
+      if (availableCities.value.length > 0) {
+        const hasSelected = availableCities.value.some((city) => city.slug === selectedCitySlug.value)
+        if (!hasSelected) selectedCitySlug.value = availableCities.value[0].slug
+      }
+    })
+    .catch(() => {
+      availableCities.value = []
+    })
 })
 
 onBeforeUnmount(() => {
   if (!import.meta.client) return
   document.removeEventListener('click', onDocumentClickCapture, true)
 })
+
+function onCityChange() {
+  const tenantSlug = tenant.value.tenantSlug
+  if (!tenantSlug) return
+  router.push(`/${selectedCitySlug.value}/${tenantSlug}`)
+}
 </script>
 

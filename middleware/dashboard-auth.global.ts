@@ -13,15 +13,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
     })
   }
 
-  const metadataShopId = typeof (session.user as any)?.user_metadata?.active_shop_id === 'string'
-    ? ((session.user as any).user_metadata.active_shop_id as string).trim()
-    : ''
-  if (metadataShopId) {
-    // Быстрый локальный допуск: shop уже известен из JWT metadata.
-    // API-check всё равно остаётся ниже как основной источник прав.
-    return
-  }
-
   try {
     const access = await $fetch<{ ok: boolean; shopId?: string }>('/api/dashboard/access')
     if (!access?.ok || !access.shopId) {
