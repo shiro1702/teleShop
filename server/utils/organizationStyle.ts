@@ -3,6 +3,7 @@ import { serverSupabaseServiceRole } from '#supabase/server'
 import type {
   OrganizationStyleAuditEntry,
   OrganizationStyleConfig,
+  OrganizationSettings,
   OrganizationStylePreset,
 } from '~/types/organization-style'
 
@@ -19,10 +20,19 @@ type DbStyleRow = {
   audit_log: unknown
 }
 
+type DbPresetRow = {
+  id: string
+  title: string
+  mood: string
+  config: unknown
+}
+
 const TABLE_NAME = 'organization_style_settings'
+const PRESETS_TABLE_NAME = 'organization_style_presets'
 const MAX_AUDIT_ITEMS = 25
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/
 const memoryStoreKey = '__organization_style_memory_store__'
+const presetsMemoryStoreKey = '__organization_style_presets_memory_store__'
 
 export const SYSTEM_STYLE_PRESETS: OrganizationStylePreset[] = [
   {
@@ -115,8 +125,9 @@ export function getDefaultStyleConfig(): OrganizationStyleConfig {
       shortDescription: '',
       fullDescription: '',
       logoUrl: '',
-      darkLogoUrl: '',
       faviconUrl: '',
+      restaurantCardImageUrl: '',
+      heroImageUrl: '',
     },
     tokens: { ...first.config.tokens },
     radii: { ...first.config.radii },
@@ -163,11 +174,46 @@ async function getIdentityFromExistingData(event: any, shopId: string): Promise<
       shortDescription: description,
       fullDescription: description,
       logoUrl,
-      darkLogoUrl: '',
       faviconUrl: '',
+      restaurantCardImageUrl: '',
+      heroImageUrl: '',
     }
   } catch (e) {
     return getDefaultStyleConfig().identity
+  }
+}
+
+export function getDefaultOrganizationSettings(): OrganizationSettings {
+  return {
+    slug: '',
+    displayName: '',
+    tagline: '',
+    cuisine: '',
+    contacts: {
+      phone: '',
+      max: '',
+      telegram: '',
+      email: '',
+    },
+    ops: {
+      status: 'open',
+      minOrderAmount: 500,
+      prepTimeMinutes: 30,
+      deliveryFee: 150,
+      freeDeliveryFrom: 1000,
+      fulfillmentTypes: ['delivery', 'pickup'],
+      orderAcceptanceMode: 'manual',
+      ordersPaused: false,
+      ordersPausedReason: '',
+    },
+    locale: {
+      currency: 'RUB',
+      timezone: 'Asia/Irkutsk',
+      languages: ['ru'],
+    },
+    tax: {
+      vatMode: 'none',
+    },
   }
 }
 
@@ -179,6 +225,14 @@ function getMemoryStore(): Map<string, PersistedStyleRecord> {
   return root[memoryStoreKey] as Map<string, PersistedStyleRecord>
 }
 
+function getPresetsMemoryStore(): Map<string, OrganizationStylePreset[]> {
+  const root = globalThis as any
+  if (!root[presetsMemoryStoreKey]) {
+    root[presetsMemoryStoreKey] = new Map<string, OrganizationStylePreset[]>()
+  }
+  return root[presetsMemoryStoreKey] as Map<string, OrganizationStylePreset[]>
+}
+
 function cloneConfig(config: OrganizationStyleConfig): OrganizationStyleConfig {
   return JSON.parse(JSON.stringify(config)) as OrganizationStyleConfig
 }
@@ -187,7 +241,7 @@ function normalizeAuditEntry(raw: any): OrganizationStyleAuditEntry | null {
   if (!raw || typeof raw !== 'object') return null
   if (typeof raw.at !== 'string' || typeof raw.actorUserId !== 'string') return null
   if (raw.action !== 'save' && raw.action !== 'rollback') return null
-  const notes = Array.isArray(raw.notes) ? raw.notes.filter((item) => typeof item === 'string') : []
+  const notes = Array.isArray(raw.notes) ? raw.notes.filter((item: unknown) => typeof item === 'string') : []
   return { at: raw.at, actorUserId: raw.actorUserId, action: raw.action, notes }
 }
 
@@ -200,8 +254,13 @@ function normalizeConfig(raw: any): OrganizationStyleConfig {
       shortDescription: typeof config.identity?.shortDescription === 'string' ? config.identity.shortDescription : defaults.identity.shortDescription,
       fullDescription: typeof config.identity?.fullDescription === 'string' ? config.identity.fullDescription : defaults.identity.fullDescription,
       logoUrl: typeof config.identity?.logoUrl === 'string' ? config.identity.logoUrl : defaults.identity.logoUrl,
-      darkLogoUrl: typeof config.identity?.darkLogoUrl === 'string' ? config.identity.darkLogoUrl : defaults.identity.darkLogoUrl,
       faviconUrl: typeof config.identity?.faviconUrl === 'string' ? config.identity.faviconUrl : defaults.identity.faviconUrl,
+      restaurantCardImageUrl: typeof config.identity?.restaurantCardImageUrl === 'string'
+        ? config.identity.restaurantCardImageUrl
+        : defaults.identity.restaurantCardImageUrl,
+      heroImageUrl: typeof config.identity?.heroImageUrl === 'string'
+        ? config.identity.heroImageUrl
+        : defaults.identity.heroImageUrl,
     },
     tokens: {
       brandPrimary: typeof config.tokens?.brandPrimary === 'string' ? config.tokens.brandPrimary : defaults.tokens.brandPrimary,
@@ -222,6 +281,67 @@ function normalizeConfig(raw: any): OrganizationStyleConfig {
       card: Number.isFinite(config.radii?.card) ? Number(config.radii.card) : defaults.radii.card,
     },
     presetId: typeof config.presetId === 'string' ? config.presetId : null,
+  }
+}
+
+function asString(input: unknown, fallback = ''): string {
+  return typeof input === 'string' ? input : fallback
+}
+
+function asNullableNumber(input: unknown): number | null {
+  if (input === null || input === undefined || input === '') return null
+  const value = Number(input)
+  return Number.isFinite(value) ? value : null
+}
+
+function normalizeSettings(raw: unknown): OrganizationSettings {
+  const defaults = getDefaultOrganizationSettings()
+  const source = raw && typeof raw === 'object' ? raw as any : {}
+  const contacts = source.contacts && typeof source.contacts === 'object' ? source.contacts : {}
+  const ops = source.ops && typeof source.ops === 'object' ? source.ops : {}
+  const locale = source.locale && typeof source.locale === 'object' ? source.locale : {}
+  const tax = source.tax && typeof source.tax === 'object' ? source.tax : {}
+  const status = ['open', 'closed', 'coming_soon', 'temporarily_unavailable'].includes(ops.status) ? ops.status : defaults.ops.status
+  const orderAcceptanceMode = ['auto', 'manual'].includes(ops.orderAcceptanceMode) ? ops.orderAcceptanceMode : defaults.ops.orderAcceptanceMode
+  const vatMode = ['none', 'included', 'excluded'].includes(tax.vatMode) ? tax.vatMode : defaults.tax.vatMode
+  const fulfillmentRaw = Array.isArray(ops.fulfillmentTypes) ? ops.fulfillmentTypes : defaults.ops.fulfillmentTypes
+  const fulfillmentTypes = fulfillmentRaw.filter(
+    (item: unknown) => ['delivery', 'pickup', 'dine-in', 'qr-menu', 'showcase-order'].includes(String(item)),
+  ) as Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>
+  return {
+    slug: asString(source.slug, defaults.slug),
+    displayName: asString(source.displayName, defaults.displayName),
+    tagline: asString(source.tagline, defaults.tagline),
+    cuisine: asString(source.cuisine, defaults.cuisine),
+    contacts: {
+      phone: asString(contacts.phone, defaults.contacts.phone),
+      max: asString(contacts.max ?? contacts.whatsapp, defaults.contacts.max),
+      telegram: asString(contacts.telegram, defaults.contacts.telegram),
+      email: asString(contacts.email, defaults.contacts.email),
+    },
+    ops: {
+      status,
+      minOrderAmount: asNullableNumber(ops.minOrderAmount),
+      prepTimeMinutes: asNullableNumber(ops.prepTimeMinutes),
+      deliveryFee: asNullableNumber(ops.deliveryFee),
+      freeDeliveryFrom: asNullableNumber(ops.freeDeliveryFrom),
+      fulfillmentTypes: fulfillmentTypes.length ? fulfillmentTypes : defaults.ops.fulfillmentTypes,
+      orderAcceptanceMode,
+      ordersPaused: Boolean(ops.ordersPaused),
+      ordersPausedReason: asString(ops.ordersPausedReason, defaults.ops.ordersPausedReason),
+    },
+    locale: {
+      currency: asString(locale.currency, defaults.locale.currency).toUpperCase().slice(0, 3) || defaults.locale.currency,
+      timezone: asString(locale.timezone, defaults.locale.timezone),
+      languages: Array.isArray(locale.languages)
+        ? locale.languages
+          .filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
+          .map((item: string) => item.trim().toLowerCase())
+        : defaults.locale.languages,
+    },
+    tax: {
+      vatMode,
+    },
   }
 }
 
@@ -307,6 +427,142 @@ export async function getStyleRecord(event: any, shopId: string): Promise<Persis
   })
 }
 
+export async function getOrganizationSettings(event: any, shopId: string): Promise<OrganizationSettings> {
+  const client = await serverSupabaseServiceRole(event)
+  const { data, error } = await client
+    .from('shops')
+    .select('slug,name,ui_settings')
+    .eq('id', shopId)
+    .maybeSingle<{ slug: string; name: string; ui_settings: Record<string, unknown> | null }>()
+  if (error || !data) {
+    throw createError({ statusCode: 500, statusMessage: 'Failed to load organization settings' })
+  }
+  const ui = (data.ui_settings ?? {}) as Record<string, unknown>
+  const org = normalizeSettings(ui.organization)
+  const displayName = org.displayName || data.name || ''
+  return {
+    ...org,
+    slug: data.slug || '',
+    displayName,
+  }
+}
+
+export async function persistOrganizationSettings(event: any, shopId: string, settings: OrganizationSettings) {
+  const client = await serverSupabaseServiceRole(event)
+  const { data, error } = await client
+    .from('shops')
+    .select('ui_settings,name')
+    .eq('id', shopId)
+    .maybeSingle<{ ui_settings: Record<string, unknown> | null; name: string }>()
+  if (error || !data) {
+    throw createError({ statusCode: 500, statusMessage: 'Failed to load current shop settings' })
+  }
+  const currentUi = (data.ui_settings ?? {}) as Record<string, unknown>
+  const normalized = normalizeSettings(settings)
+  const nextUi: Record<string, unknown> = {
+    ...currentUi,
+    organization: normalized,
+    logo_url: normalized.displayName ? currentUi.logo_url : currentUi.logo_url,
+    description: currentUi.description,
+  }
+  const payload: Record<string, unknown> = {
+    slug: normalized.slug,
+    ui_settings: nextUi,
+  }
+  if (normalized.displayName) payload.name = normalized.displayName
+  const update = await client
+    .from('shops')
+    .update(payload)
+    .eq('id', shopId)
+    .select('id')
+  if (update.error) {
+    throw createError({ statusCode: 500, statusMessage: update.error.message || 'Failed to save organization settings' })
+  }
+}
+
+function normalizePreset(raw: any): OrganizationStylePreset | null {
+  if (!raw || typeof raw !== 'object') return null
+  if (typeof raw.id !== 'string' || typeof raw.title !== 'string') return null
+  return {
+    id: raw.id,
+    title: raw.title,
+    mood: typeof raw.mood === 'string' ? raw.mood : '',
+    isSystem: Boolean(raw.isSystem),
+    config: {
+      tokens: normalizeConfig({ tokens: raw.config?.tokens }).tokens,
+      radii: normalizeConfig({ radii: raw.config?.radii }).radii,
+    },
+  }
+}
+
+export async function getCustomPresets(event: any, shopId: string): Promise<OrganizationStylePreset[]> {
+  const client = await serverSupabaseServiceRole(event)
+  const { data, error } = await client
+    .from(PRESETS_TABLE_NAME)
+    .select('id,title,mood,config')
+    .eq('shop_id', shopId)
+    .order('created_at', { ascending: false })
+    .returns<DbPresetRow[]>()
+  if (error) {
+    if (canUseFallback(error)) {
+      return (getPresetsMemoryStore().get(shopId) ?? []).map((item) => ({ ...item, isSystem: false }))
+    }
+    throw createError({ statusCode: 500, statusMessage: 'Failed to load custom presets' })
+  }
+  return (data ?? [])
+    .map((row) => normalizePreset({ ...row, isSystem: false }))
+    .filter((item): item is OrganizationStylePreset => !!item)
+}
+
+export async function createCustomPreset(
+  event: any,
+  shopId: string,
+  actorUserId: string,
+  payload: Pick<OrganizationStylePreset, 'title' | 'mood' | 'config'>,
+): Promise<OrganizationStylePreset> {
+  const title = payload.title.trim()
+  if (!title || title.length > 60) {
+    throw createError({ statusCode: 400, statusMessage: 'Preset title must be between 1 and 60 chars' })
+  }
+  const mood = payload.mood.trim().slice(0, 160)
+  const config = {
+    tokens: normalizeConfig({ tokens: payload.config.tokens }).tokens,
+    radii: normalizeConfig({ radii: payload.config.radii }).radii,
+  }
+  const client = await serverSupabaseServiceRole(event)
+  const insert = await client
+    .from(PRESETS_TABLE_NAME)
+    .insert({
+      shop_id: shopId,
+      title,
+      mood,
+      config,
+      created_by: actorUserId,
+    })
+    .select('id,title,mood,config')
+    .maybeSingle<DbPresetRow>()
+  if (insert.error || !insert.data) {
+    if (canUseFallback(insert.error)) {
+      const fallback: OrganizationStylePreset = {
+        id: `custom-${Date.now()}`,
+        title,
+        mood,
+        config,
+        isSystem: false,
+      }
+      const existing = getPresetsMemoryStore().get(shopId) ?? []
+      getPresetsMemoryStore().set(shopId, [fallback, ...existing].slice(0, 50))
+      return fallback
+    }
+    throw createError({ statusCode: 500, statusMessage: insert.error?.message || 'Failed to create custom preset' })
+  }
+  const normalized = normalizePreset({ ...insert.data, isSystem: false })
+  if (!normalized) {
+    throw createError({ statusCode: 500, statusMessage: 'Invalid custom preset payload' })
+  }
+  return normalized
+}
+
 export async function persistStyleRecord(event: any, shopId: string, record: PersistedStyleRecord) {
   const normalized = normalizeRecord(record)
   const saved = await saveToDb(event, shopId, normalized)
@@ -322,6 +578,39 @@ export function applyPresetToConfig(config: OrganizationStyleConfig, presetId: s
     radii: { ...preset.config.radii },
     presetId: preset.id,
   }
+}
+
+export function getSystemPresets(): OrganizationStylePreset[] {
+  return SYSTEM_STYLE_PRESETS.map((item) => ({ ...item, isSystem: true }))
+}
+
+export function validateOrganizationSettings(settings: OrganizationSettings): string[] {
+  const errors: string[] = []
+  const slug = settings.slug.trim().toLowerCase()
+  if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    errors.push('Slug должен быть в формате lowercase-kebab-case.')
+  }
+  if (settings.displayName.trim().length < 2 || settings.displayName.trim().length > 60) {
+    errors.push('Публичное название должно быть от 2 до 60 символов.')
+  }
+  if (settings.tagline.trim().length > 120) errors.push('Короткий слоган под названием не должен превышать 120 символов.')
+  if (settings.cuisine.trim().length > 80) errors.push('Категория кухни не должна превышать 80 символов.')
+  if (settings.contacts.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.contacts.email)) {
+    errors.push('Некорректный email в контактах.')
+  }
+  const numericChecks: Array<[string, number | null]> = [
+    ['minOrderAmount', settings.ops.minOrderAmount],
+    ['prepTimeMinutes', settings.ops.prepTimeMinutes],
+    ['deliveryFee', settings.ops.deliveryFee],
+    ['freeDeliveryFrom', settings.ops.freeDeliveryFrom],
+  ]
+  for (const [key, value] of numericChecks) {
+    if (value !== null && value < 0) errors.push(`Поле ${key} не может быть отрицательным.`)
+  }
+  if (settings.locale.languages.length === 0) {
+    errors.push('Нужен минимум один язык витрины.')
+  }
+  return errors
 }
 
 export function validateStyleConfig(config: OrganizationStyleConfig): string[] {

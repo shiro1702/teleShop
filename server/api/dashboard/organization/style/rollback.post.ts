@@ -1,6 +1,6 @@
 import { createError, defineEventHandler } from 'h3'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
-import { getStyleRecord, persistStyleRecord, withAuditEntry } from '~/server/utils/organizationStyle'
+import { getOrganizationSettings, getStyleRecord, persistStyleRecord, withAuditEntry } from '~/server/utils/organizationStyle'
 
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
@@ -24,10 +24,12 @@ export default defineEventHandler(async (event) => {
     ['Выполнен rollback стиля организации'],
   )
   await persistStyleRecord(event, access.shopId, nextRecord)
+  const settings = await getOrganizationSettings(event, access.shopId)
 
   return {
     ok: true,
     role: access.role,
+    settings,
     data: nextRecord.config,
     hasRollback: !!nextRecord.prevConfig,
     auditLog: nextRecord.auditLog,

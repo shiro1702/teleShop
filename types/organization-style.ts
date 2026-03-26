@@ -3,8 +3,9 @@ export type OrganizationStyleIdentity = {
   shortDescription: string
   fullDescription: string
   logoUrl: string
-  darkLogoUrl: string
   faviconUrl: string
+  restaurantCardImageUrl: string
+  heroImageUrl: string
 }
 
 export type OrganizationStyleTokens = {
@@ -34,10 +35,51 @@ export type OrganizationStyleConfig = {
   presetId: string | null
 }
 
+export type OrganizationContactSettings = {
+  phone: string
+  max: string
+  telegram: string
+  email: string
+}
+
+export type OrganizationOpsSettings = {
+  status: 'open' | 'closed' | 'coming_soon' | 'temporarily_unavailable'
+  minOrderAmount: number | null
+  prepTimeMinutes: number | null
+  deliveryFee: number | null
+  freeDeliveryFrom: number | null
+  fulfillmentTypes: Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>
+  orderAcceptanceMode: 'auto' | 'manual'
+  ordersPaused: boolean
+  ordersPausedReason: string
+}
+
+export type OrganizationLocaleSettings = {
+  currency: string
+  timezone: string
+  languages: string[]
+}
+
+export type OrganizationTaxSettings = {
+  vatMode: 'none' | 'included' | 'excluded'
+}
+
+export type OrganizationSettings = {
+  slug: string
+  displayName: string
+  tagline: string
+  cuisine: string
+  contacts: OrganizationContactSettings
+  ops: OrganizationOpsSettings
+  locale: OrganizationLocaleSettings
+  tax: OrganizationTaxSettings
+}
+
 export type OrganizationStylePreset = {
   id: string
   title: string
   mood: string
+  isSystem?: boolean
   config: Pick<OrganizationStyleConfig, 'tokens' | 'radii'>
 }
 
@@ -51,6 +93,7 @@ export type OrganizationStyleAuditEntry = {
 export type OrganizationStyleResponse = {
   ok: true
   role: 'owner' | 'manager'
+  settings: OrganizationSettings
   data: OrganizationStyleConfig
   hasRollback: boolean
   auditLog: OrganizationStyleAuditEntry[]
