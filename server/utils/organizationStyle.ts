@@ -1,5 +1,6 @@
 import { createError } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
+import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
 import type {
   OrganizationStyleAuditEntry,
   OrganizationStyleConfig,
@@ -202,6 +203,7 @@ export function getDefaultOrganizationSettings(): OrganizationSettings {
       deliveryFee: 150,
       freeDeliveryFrom: 1000,
       fulfillmentTypes: ['delivery', 'pickup'],
+      showcaseOrderFulfillment: 'to-table',
       orderAcceptanceMode: 'manual',
       ordersPaused: false,
       ordersPausedReason: '',
@@ -294,6 +296,14 @@ function asNullableNumber(input: unknown): number | null {
   return Number.isFinite(value) ? value : null
 }
 
+function normalizeCuisineValue(input: unknown): string {
+  if (typeof input === 'string') return input
+  if (Array.isArray(input)) {
+    return input.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).join(', ')
+  }
+  return ''
+}
+
 function normalizeSettings(raw: unknown): OrganizationSettings {
   const defaults = getDefaultOrganizationSettings()
   const source = raw && typeof raw === 'object' ? raw as any : {}
@@ -303,6 +313,9 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
   const tax = source.tax && typeof source.tax === 'object' ? source.tax : {}
   const status = ['open', 'closed', 'coming_soon', 'temporarily_unavailable'].includes(ops.status) ? ops.status : defaults.ops.status
   const orderAcceptanceMode = ['auto', 'manual'].includes(ops.orderAcceptanceMode) ? ops.orderAcceptanceMode : defaults.ops.orderAcceptanceMode
+  const showcaseOrderFulfillment = ['to-table', 'pickup-point'].includes(ops.showcaseOrderFulfillment)
+    ? ops.showcaseOrderFulfillment
+    : defaults.ops.showcaseOrderFulfillment
   const vatMode = ['none', 'included', 'excluded'].includes(tax.vatMode) ? tax.vatMode : defaults.tax.vatMode
   const fulfillmentRaw = Array.isArray(ops.fulfillmentTypes) ? ops.fulfillmentTypes : defaults.ops.fulfillmentTypes
   const fulfillmentTypes = fulfillmentRaw.filter(
@@ -312,7 +325,7 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
     slug: asString(source.slug, defaults.slug),
     displayName: asString(source.displayName, defaults.displayName),
     tagline: asString(source.tagline, defaults.tagline),
-    cuisine: asString(source.cuisine, defaults.cuisine),
+    cuisine: normalizeCuisineValue(source.cuisine) || defaults.cuisine,
     contacts: {
       phone: asString(contacts.phone, defaults.contacts.phone),
       max: asString(contacts.max ?? contacts.whatsapp, defaults.contacts.max),
@@ -326,6 +339,7 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
       deliveryFee: asNullableNumber(ops.deliveryFee),
       freeDeliveryFrom: asNullableNumber(ops.freeDeliveryFrom),
       fulfillmentTypes: fulfillmentTypes.length ? fulfillmentTypes : defaults.ops.fulfillmentTypes,
+      showcaseOrderFulfillment,
       orderAcceptanceMode,
       ordersPaused: Boolean(ops.ordersPaused),
       ordersPausedReason: asString(ops.ordersPausedReason, defaults.ops.ordersPausedReason),
@@ -440,10 +454,15 @@ export async function getOrganizationSettings(event: any, shopId: string): Promi
   const ui = (data.ui_settings ?? {}) as Record<string, unknown>
   const org = normalizeSettings(ui.organization)
   const displayName = org.displayName || data.name || ''
+  const modes = await applyGlobalFulfillmentPolicy(event, shopId, org.ops.fulfillmentTypes)
   return {
     ...org,
     slug: data.slug || '',
     displayName,
+    ops: {
+      ...org.ops,
+      fulfillmentTypes: modes.length ? modes : [],
+    },
   }
 }
 
@@ -594,7 +613,7 @@ export function validateOrganizationSettings(settings: OrganizationSettings): st
     errors.push('Публичное название должно быть от 2 до 60 символов.')
   }
   if (settings.tagline.trim().length > 120) errors.push('Короткий слоган под названием не должен превышать 120 символов.')
-  if (settings.cuisine.trim().length > 80) errors.push('Категория кухни не должна превышать 80 символов.')
+  if (settings.cuisine.trim().length > 300) errors.push('Категория кухни не должна превышать 300 символов.')
   if (settings.contacts.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.contacts.email)) {
     errors.push('Некорректный email в контактах.')
   }

@@ -49,6 +49,7 @@ export type OrganizationOpsSettings = {
   deliveryFee: number | null
   freeDeliveryFrom: number | null
   fulfillmentTypes: Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>
+  showcaseOrderFulfillment: 'to-table' | 'pickup-point'
   orderAcceptanceMode: 'auto' | 'manual'
   ordersPaused: boolean
   ordersPausedReason: string

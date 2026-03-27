@@ -7,6 +7,9 @@ type CreateBranchBody = {
   address?: string
   supportsDelivery?: boolean
   supportsPickup?: boolean
+  supportsDineIn?: boolean
+  supportsQrMenu?: boolean
+  supportsShowcaseOrder?: boolean
 }
 
 export default defineEventHandler(async (event) => {
@@ -39,9 +42,12 @@ export default defineEventHandler(async (event) => {
       address,
       supports_delivery: body?.supportsDelivery !== false,
       supports_pickup: body?.supportsPickup !== false,
+      supports_dine_in: body?.supportsDineIn === true,
+      supports_qr_menu: body?.supportsQrMenu === true,
+      supports_showcase_order: body?.supportsShowcaseOrder === true,
       is_active: true,
     })
-    .select('id,name,address,supports_delivery,supports_pickup,is_active')
+    .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active')
     .single()
 
   if (error) {

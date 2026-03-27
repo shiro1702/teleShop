@@ -20,14 +20,53 @@
         <input v-model="form.address" class="w-full rounded-lg border border-gray-300 px-2 py-2" :disabled="!canEditCritical">
       </label>
       <label class="inline-flex items-center gap-2 text-sm text-gray-700">
-        <input v-model="form.supportsDelivery" type="checkbox" class="rounded border-gray-300">
+        <input v-model="form.supportsDelivery" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical || !allowedModesSet.has('delivery')">
         Доставка
       </label>
       <label class="inline-flex items-center gap-2 text-sm text-gray-700">
-        <input v-model="form.supportsPickup" type="checkbox" class="rounded border-gray-300">
+        <input v-model="form.supportsPickup" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical || !allowedModesSet.has('pickup')">
         Самовывоз
       </label>
+      <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+        <input v-model="form.supportsDineIn" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical || !allowedModesSet.has('dine-in')">
+        В зале
+      </label>
+      <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+        <input v-model="form.supportsQrMenu" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical || !allowedModesSet.has('qr-menu')">
+        QR-меню
+      </label>
+      <label class="inline-flex items-center gap-2 text-sm text-gray-700 md:col-span-2">
+        <input v-model="form.supportsShowcaseOrder" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical || !allowedModesSet.has('showcase-order')">
+        Витрина + к столу
+      </label>
+      <div v-if="form.supportsShowcaseOrder" class="md:col-span-2 rounded border border-gray-200 bg-gray-50 p-3">
+        <p class="text-sm font-medium text-gray-700">Режим "Витрина + к столу"</p>
+        <p class="mt-1 text-xs text-gray-500">Радиокнопки становятся disabled, если режим не разрешен на уровне организации или у пользователя нет прав Owner.</p>
+        <div class="mt-2 grid gap-2 md:grid-cols-2">
+          <label class="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
+            <input
+              v-model="showcaseOrderFulfillment"
+              type="radio"
+              value="to-table"
+              :disabled="!canEditCritical || !allowedModesSet.has('showcase-order') || !form.supportsShowcaseOrder"
+            >
+            До столика
+          </label>
+          <label class="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
+            <input
+              v-model="showcaseOrderFulfillment"
+              type="radio"
+              value="pickup-point"
+              :disabled="!canEditCritical || !allowedModesSet.has('showcase-order') || !form.supportsShowcaseOrder"
+            >
+            На выдачу
+          </label>
+        </div>
+      </div>
       <div class="md:col-span-2">
+        <p class="mb-2 text-xs text-gray-500">
+          В филиале доступны только те способы работы, которые включены в общих настройках ресторана.
+        </p>
         <p v-if="!canEditCritical" class="mb-2 text-xs text-amber-700">Критичные поля доступны только Owner.</p>
         <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50" :disabled="!canEditCritical" @click="save">
           Сохранить
@@ -56,7 +95,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useDashboardAccess } from '../../../../composables/useDashboardAccess'
 
+declare const definePageMeta: (meta: Record<string, unknown>) => void
+declare const useRoute: () => { params: Record<string, string | string[] | undefined> }
 definePageMeta({ layout: 'dashboard' })
 
 const route = useRoute()
@@ -69,6 +111,9 @@ type Branch = {
   address: string
   supportsDelivery: boolean
   supportsPickup: boolean
+  supportsDineIn: boolean
+  supportsQrMenu: boolean
+  supportsShowcaseOrder: boolean
   isActive: boolean
 }
 
@@ -78,21 +123,49 @@ const form = ref({
   address: '',
   supportsDelivery: false,
   supportsPickup: false,
+  supportsDineIn: false,
+  supportsQrMenu: false,
+  supportsShowcaseOrder: false,
 })
 const logs = ref<Array<{ action: string; at: string }>>([])
+const allowedModes = ref<Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>>(['delivery', 'pickup'])
+const allowedModesSet = computed(() => new Set(allowedModes.value))
+const showcaseOrderFulfillment = ref<'to-table' | 'pickup-point'>('to-table')
 
 onMounted(async () => {
-  const res = await fetch('/api/dashboard/restaurants')
-  if (!res.ok) return
-  const payload = await res.json() as { items?: Branch[] }
+  const [restaurantsRes, orgRes] = await Promise.all([
+    fetch('/api/dashboard/restaurants'),
+    fetch('/api/dashboard/organization/style'),
+  ])
+  if (!restaurantsRes.ok) return
+  const payload = await restaurantsRes.json() as { items?: Branch[] }
   const found = (payload.items || []).find((item) => item.id === String(route.params.id)) || null
   branch.value = found
+  if (orgRes.ok) {
+    const orgPayload = await orgRes.json() as {
+      settings?: {
+        ops?: {
+          fulfillmentTypes?: Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>
+          showcaseOrderFulfillment?: 'to-table' | 'pickup-point'
+        }
+      }
+    }
+    const modes = orgPayload.settings?.ops?.fulfillmentTypes
+    if (Array.isArray(modes) && modes.length) allowedModes.value = modes
+    const orgShowcaseOrderFulfillment = orgPayload.settings?.ops?.showcaseOrderFulfillment
+    if (orgShowcaseOrderFulfillment === 'pickup-point' || orgShowcaseOrderFulfillment === 'to-table') {
+      showcaseOrderFulfillment.value = orgShowcaseOrderFulfillment
+    }
+  }
   if (found) {
     form.value = {
       name: found.name,
       address: found.address,
-      supportsDelivery: found.supportsDelivery,
-      supportsPickup: found.supportsPickup,
+      supportsDelivery: found.supportsDelivery && allowedModesSet.value.has('delivery'),
+      supportsPickup: found.supportsPickup && allowedModesSet.value.has('pickup'),
+      supportsDineIn: found.supportsDineIn && allowedModesSet.value.has('dine-in'),
+      supportsQrMenu: found.supportsQrMenu && allowedModesSet.value.has('qr-menu'),
+      supportsShowcaseOrder: found.supportsShowcaseOrder && allowedModesSet.value.has('showcase-order'),
     }
   }
 })
@@ -102,19 +175,49 @@ function now() {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function save() {
+async function save() {
   if (!branch.value || !canEditCritical.value) return
-  branch.value.name = form.value.name.trim()
-  branch.value.address = form.value.address.trim()
-  branch.value.supportsDelivery = form.value.supportsDelivery
-  branch.value.supportsPickup = form.value.supportsPickup
+  const res = await fetch(`/api/dashboard/branches/${branch.value.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: form.value.name.trim(),
+      address: form.value.address.trim(),
+      supportsDelivery: allowedModesSet.value.has('delivery') && form.value.supportsDelivery,
+      supportsPickup: allowedModesSet.value.has('pickup') && form.value.supportsPickup,
+      supportsDineIn: allowedModesSet.value.has('dine-in') && form.value.supportsDineIn,
+      supportsQrMenu: allowedModesSet.value.has('qr-menu') && form.value.supportsQrMenu,
+      supportsShowcaseOrder: allowedModesSet.value.has('showcase-order') && form.value.supportsShowcaseOrder,
+    }),
+  })
+  if (!res.ok) {
+    logs.value.unshift({ action: 'Ошибка сохранения настроек филиала', at: now() })
+    return
+  }
+  const payload = await res.json() as { item?: Branch }
+  if (!payload.item) return
+  branch.value = payload.item
+  form.value = {
+    name: payload.item.name,
+    address: payload.item.address,
+    supportsDelivery: payload.item.supportsDelivery,
+    supportsPickup: payload.item.supportsPickup,
+    supportsDineIn: payload.item.supportsDineIn,
+    supportsQrMenu: payload.item.supportsQrMenu,
+    supportsShowcaseOrder: payload.item.supportsShowcaseOrder,
+  }
   logs.value.unshift({ action: 'Обновлены данные филиала', at: now() })
 }
 
-function deactivate() {
+async function deactivate() {
   if (!branch.value || !canEditCritical.value) return
   const confirmed = window.confirm(`Деактивировать филиал "${branch.value.name}"?`)
   if (!confirmed) return
+  const res = await fetch(`/api/dashboard/branches/${branch.value.id}/deactivate`, { method: 'POST' })
+  if (!res.ok) {
+    logs.value.unshift({ action: 'Ошибка деактивации филиала', at: now() })
+    return
+  }
   branch.value.isActive = false
   logs.value.unshift({ action: 'Филиал деактивирован', at: now() })
 }

@@ -58,7 +58,6 @@
                 <button
                   type="button"
                   class="text-gray-500 hover:text-gray-700"
-                  :disabled="isReadonly"
                   @click="removeCuisineTag(tag)"
                 >
                   x
@@ -78,7 +77,6 @@
                 :key="tag"
                 type="button"
                 class="rounded-full border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50 disabled:opacity-50"
-                :disabled="isReadonly"
                 @click="addCuisineTag(tag)"
               >
                 {{ tag }}
@@ -87,7 +85,6 @@
                 v-if="canAddCuisineTag"
                 type="button"
                 class="rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-                :disabled="isReadonly"
                 @click="addCuisineTagFromInput"
               >
                 Добавить "{{ normalizedCuisineSearch }}"
@@ -199,6 +196,30 @@
               </span>
             </label>
           </div>
+          <div v-if="settings.ops.fulfillmentTypes.includes('showcase-order')" class="mt-3 rounded border border-gray-200 bg-gray-50 p-3">
+            <p class="text-sm font-medium text-gray-700">Режим для "Витрина + к столу"</p>
+            <p class="mt-1 text-xs text-gray-500">Переключает сценарий выдачи заказа: официант доносит до столика или гость забирает на выдаче.</p>
+            <div class="mt-2 grid gap-2 md:grid-cols-2">
+              <label class="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
+                <input
+                  v-model="settings.ops.showcaseOrderFulfillment"
+                  type="radio"
+                  value="to-table"
+                  :disabled="isReadonly"
+                >
+                До столика
+              </label>
+              <label class="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
+                <input
+                  v-model="settings.ops.showcaseOrderFulfillment"
+                  type="radio"
+                  value="pickup-point"
+                  :disabled="isReadonly"
+                >
+                На выдачу
+              </label>
+            </div>
+          </div>
         </div>
         <label class="text-sm"><span class="mb-1 block text-gray-600">Принятие заказов</span>
           <select v-model="settings.ops.orderAcceptanceMode" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly">
@@ -221,6 +242,39 @@
       </div>
 
       <template v-if="activeMainTab === 'styles'">
+      <div class="grid gap-4 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-2">
+        <div>
+          <h2 class="text-sm font-semibold text-gray-900">Предпросмотр стилей</h2>
+          <div class="mt-3 rounded-lg border border-gray-200 p-3" :style="{ backgroundColor: form.tokens.surfaceBackground, color: form.tokens.textPrimary }">
+            <OrganizationProductPreviewCard
+              title="Паста с трюфельным соусом"
+              description="Товарное превью с текущими цветами и скруглениями."
+              :image-url="form.identity.heroImageUrl"
+              :price="490"
+              :style-config="{ tokens: form.tokens, radii: form.radii }"
+            />
+            <div class="mt-3 rounded border p-3" :style="{ backgroundColor: form.tokens.surfaceCard, borderRadius: `${form.radii.modal}px` }">
+              <p class="text-sm font-semibold">Кнопки</p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button class="px-3 py-1.5 text-xs text-white" :style="{ backgroundColor: form.tokens.brandPrimary, borderRadius: `${form.radii.button}px` }">Primary</button>
+                <button class="px-3 py-1.5 text-xs" :style="{ backgroundColor: form.tokens.brandSecondary, color: form.tokens.textPrimary, borderRadius: `${form.radii.button}px` }">Secondary</button>
+                <button class="px-3 py-1.5 text-xs text-white" :style="{ backgroundColor: form.tokens.brandAccent, borderRadius: `${form.radii.button}px` }">Accent</button>
+              </div>
+            </div>
+          </div>
+          <p v-if="!isContrastOk" class="mt-2 text-xs text-amber-700">
+            Предупреждение: контраст `textPrimary` к `surfaceBackground` может быть ниже AA.
+          </p>
+        </div>
+        <div>
+          <h2 class="text-sm font-semibold text-gray-900">Что изменилось</h2>
+          <ul class="mt-2 space-y-1 text-sm">
+            <li v-for="item in diffItems" :key="item" class="rounded bg-gray-50 px-2 py-1">{{ item }}</li>
+            <li v-if="!diffItems.length" class="text-gray-500">Изменений нет</li>
+          </ul>
+        </div>
+      </div>
+
       <div class="rounded-xl border border-gray-200 bg-white p-4">
         <h2 class="text-sm font-semibold text-gray-900">Готовые пресеты</h2>
         <div class="mt-3 grid gap-3 md:grid-cols-2">
@@ -292,38 +346,6 @@
         </label>
       </div>
 
-      <div class="grid gap-4 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-2">
-        <div>
-          <h2 class="text-sm font-semibold text-gray-900">Предпросмотр стилей</h2>
-          <div class="mt-3 rounded-lg border border-gray-200 p-3" :style="{ backgroundColor: form.tokens.surfaceBackground, color: form.tokens.textPrimary }">
-            <OrganizationProductPreviewCard
-              title="Паста с трюфельным соусом"
-              description="Товарное превью с текущими цветами и скруглениями."
-              :image-url="form.identity.heroImageUrl"
-              :price="490"
-              :style-config="{ tokens: form.tokens, radii: form.radii }"
-            />
-            <div class="mt-3 rounded border p-3" :style="{ backgroundColor: form.tokens.surfaceCard, borderRadius: `${form.radii.modal}px` }">
-              <p class="text-sm font-semibold">Кнопки</p>
-              <div class="mt-2 flex flex-wrap gap-2">
-                <button class="px-3 py-1.5 text-xs text-white" :style="{ backgroundColor: form.tokens.brandPrimary, borderRadius: `${form.radii.button}px` }">Primary</button>
-                <button class="px-3 py-1.5 text-xs" :style="{ backgroundColor: form.tokens.brandSecondary, color: form.tokens.textPrimary, borderRadius: `${form.radii.button}px` }">Secondary</button>
-                <button class="px-3 py-1.5 text-xs text-white" :style="{ backgroundColor: form.tokens.brandAccent, borderRadius: `${form.radii.button}px` }">Accent</button>
-              </div>
-            </div>
-          </div>
-          <p v-if="!isContrastOk" class="mt-2 text-xs text-amber-700">
-            Предупреждение: контраст `textPrimary` к `surfaceBackground` может быть ниже AA.
-          </p>
-        </div>
-        <div>
-          <h2 class="text-sm font-semibold text-gray-900">Что изменилось</h2>
-          <ul class="mt-2 space-y-1 text-sm">
-            <li v-for="item in diffItems" :key="item" class="rounded bg-gray-50 px-2 py-1">{{ item }}</li>
-            <li v-if="!diffItems.length" class="text-gray-500">Изменений нет</li>
-          </ul>
-        </div>
-      </div>
       <div class="flex flex-wrap gap-2">
         <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="save('Стили сохранены.')">
           {{ saving ? 'Сохраняем...' : 'Сохранить стили' }}
@@ -437,6 +459,7 @@ const settings = reactive<OrganizationSettings>({
     deliveryFee: 150,
     freeDeliveryFrom: 1000,
     fulfillmentTypes: ['delivery', 'pickup'],
+    showcaseOrderFulfillment: 'to-table',
     orderAcceptanceMode: 'manual',
     ordersPaused: false,
     ordersPausedReason: '',
@@ -667,6 +690,7 @@ function resetForm() {
 
 async function save(successText = 'Настройки сохранены.') {
   if (isReadonly.value || validationErrors.value.length) return
+  syncCuisineToSettings()
   saving.value = true
   errorMessage.value = ''
   successMessage.value = ''

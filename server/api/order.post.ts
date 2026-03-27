@@ -12,6 +12,7 @@ import {
   type TenantRestaurant,
   type TenantRestaurantZone,
 } from '~/server/utils/tenant'
+import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
 
 interface CartItemPayload {
   id: string
@@ -247,6 +248,7 @@ export default defineEventHandler(async (event) => {
     ? tenantIntegrationKeys.fulfillment_types
     : (config.public?.fulfillmentTypes as string | undefined)
   const availableFulfillmentTypes = parseAvailableFulfillmentTypes(tenantFulfillment)
+  const globallyAllowed = await applyGlobalFulfillmentPolicy(event, tenantShopId, availableFulfillmentTypes)
 
   if (!botToken || !managerChatId) {
     throw createError({ statusCode: 500, message: 'Server config: bot token or manager chat ID missing' })
@@ -312,7 +314,7 @@ export default defineEventHandler(async (event) => {
 
   const total = itemsWithServerPrice.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const fulfillmentType: FulfillmentType = body.fulfillmentType === 'pickup' ? 'pickup' : 'delivery'
-  if (!availableFulfillmentTypes.includes(fulfillmentType)) {
+  if (!globallyAllowed.includes(fulfillmentType)) {
     throw createError({ statusCode: 400, message: `Fulfillment type "${fulfillmentType}" is disabled` })
   }
   if (fulfillmentType === 'delivery' && !restaurant.supports_delivery) {
