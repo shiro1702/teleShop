@@ -26,6 +26,13 @@
         v-if="!isTelegram"
         class="flex items-center gap-2 sm:gap-3" 
       >
+        <NuxtLink
+          to="/partners"
+          class="hidden rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 sm:inline-flex"
+        >
+          Партнёрам
+        </NuxtLink>
+
         <!-- Авторизован: на мобилке — иконка, на десктопе — текстовая кнопка -->
         <div
           v-if="user"

@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter, useSupabaseClient } from '#imports'
 
 const route = useRoute()
@@ -80,7 +80,39 @@ const successMessage = ref<string | null>(null)
 
 const redirectAfterLogin = computed(() => {
   const r = route.query.redirect
-  return typeof r === 'string' ? r : '/'
+  if (typeof r === 'string' && r.startsWith('/')) return r
+  return ''
+})
+
+async function resolveDefaultRedirectPath(): Promise<string> {
+  try {
+    const accessRes = await fetch('/api/dashboard/access')
+    if (!accessRes.ok) return '/dashboard'
+    const access = await accessRes.json() as { ok: boolean; shopId?: string }
+    if (!access?.ok || !access.shopId) return '/dashboard'
+
+    const restaurantsRes = await fetch(`/api/restaurants?shop_id=${encodeURIComponent(access.shopId)}`)
+    if (!restaurantsRes.ok) return '/dashboard'
+    const restaurants = await restaurantsRes.json() as { ok: boolean; items?: unknown[] }
+    if (restaurants?.ok && Array.isArray(restaurants.items) && restaurants.items.length > 0) {
+      return '/dashboard/branches'
+    }
+  } catch {
+    // fallback below
+  }
+  return '/dashboard'
+}
+
+async function goAfterAuth() {
+  const path = redirectAfterLogin.value || await resolveDefaultRedirectPath()
+  await router.replace({ path })
+}
+
+onMounted(async () => {
+  const { data } = await supabase.auth.getSession()
+  if (data.session) {
+    await goAfterAuth()
+  }
 })
 
 const onSubmit = async () => {
@@ -105,9 +137,7 @@ const onSubmit = async () => {
     }
 
     if (data.session) {
-      await router.replace({
-        path: redirectAfterLogin.value,
-      })
+      await goAfterAuth()
       return
     }
 

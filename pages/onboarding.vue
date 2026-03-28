@@ -106,15 +106,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useSupabaseClient } from '#imports'
-
-definePageMeta({
-  middleware: 'auth',
-})
+import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
-const supabase = useSupabaseClient()
 
 const shopName = ref('')
 const slug = ref('')
@@ -130,9 +125,11 @@ const errorMsg = ref<string | null>(null)
 
 onMounted(async () => {
   try {
-    const me = await $fetch<{ ok: boolean; shops: unknown[] }>('/api/admin/me-shops')
-    if (me?.ok && Array.isArray(me.shops) && me.shops.length > 0) {
-      const redir = typeof route.query.redirect === 'string' ? route.query.redirect : '/admin/restaurants'
+    const accessRes = await fetch('/api/dashboard/access')
+    if (!accessRes.ok) return
+    const access = await accessRes.json() as { ok: boolean; shopId?: string }
+    if (access?.ok && access.shopId) {
+      const redir = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
       await router.replace(redir)
     }
   } catch {
@@ -144,13 +141,10 @@ async function submit() {
   errorMsg.value = null
   loading.value = true
   try {
-    const res = await $fetch<{
-      ok: boolean
-      shopId: string
-      shopSlug: string
-    }>('/api/onboarding/create-shop', {
+    const resRaw = await fetch('/api/onboarding/create-shop', {
       method: 'POST',
-      body: {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         shopName: shopName.value,
         slug: slug.value.trim().toLowerCase(),
         shopDescription: shopDescription.value.trim() || undefined,
@@ -159,20 +153,19 @@ async function submit() {
         supportsDelivery: supportsDelivery.value,
         supportsPickup: supportsPickup.value,
         telegramBotToken: telegramBotToken.value.trim() || undefined,
-      },
+      }),
     })
+    const res = await resRaw.json() as {
+      ok: boolean
+      shopId: string
+      shopSlug: string
+    }
 
     if (!res?.ok || !res.shopId) {
       throw new Error('Некорректный ответ сервера')
     }
 
-    await $fetch('/api/admin/set-active-shop', {
-      method: 'POST',
-      body: { shopId: res.shopId },
-    })
-    await supabase.auth.refreshSession()
-
-    const redir = typeof route.query.redirect === 'string' ? route.query.redirect : '/admin/restaurants'
+    const redir = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
     await router.push(redir)
   } catch (e: unknown) {
     const err = e as { data?: { message?: string }; message?: string }

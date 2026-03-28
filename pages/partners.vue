@@ -4,7 +4,7 @@
     <p class="mt-3 text-gray-600">
       TODO: рассказ о платформе, тарифах и подключении ресторанов.
     </p>
-    <NuxtLink to="/register" class="mt-6 inline-flex rounded-lg bg-primary px-4 py-2 text-white">
+    <NuxtLink to="/dashboard" class="mt-6 inline-flex rounded-lg bg-primary px-4 py-2 text-white">
       Подключить ресторан
     </NuxtLink>
   </section>
