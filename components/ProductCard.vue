@@ -1,83 +1,98 @@
 <template>
   <article
-    class="flex h-full w-full cursor-pointer flex-col overflow-hidden rounded-xl border border-gray-200 bg-white text-gray-900 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+    class="flex h-full w-full cursor-pointer flex-col overflow-hidden rounded-xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+    :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }"
     @click="emit('open', product)"
   >
-    <div
-      class="aspect-square w-full shrink-0 overflow-hidden bg-gray-100"
-    >
+    <div class="aspect-square w-full shrink-0 overflow-hidden bg-gray-100 relative">
       <img
         :src="product.image"
         :alt="product.name"
         class="h-full w-full object-cover"
         @error="onImageError"
       />
+      <div class="absolute top-2 right-2 flex flex-col gap-1 items-end">
+        <div v-if="quantity > 0" class="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-white shadow-sm">
+          {{ quantity }} шт
+        </div>
+        <div v-if="product.modifiers && product.modifiers.length > 0" class="rounded-full bg-white/90 backdrop-blur px-2 py-1 text-[10px] font-medium text-gray-700 shadow-sm">
+          Настраиваемый
+        </div>
+      </div>
     </div>
     <div class="flex min-h-0 flex-1 flex-col p-4">
       <div class="min-h-0 flex-1">
-        <h3
-          class="line-clamp-2 font-semibold text-gray-900"
-        >
+        <h3 class="line-clamp-2 font-semibold" :style="{ color: mainTextColor }">
           {{ product.name }}
         </h3>
-        <p
-          v-if="product.description"
-          class="mt-2 line-clamp-3 text-sm text-gray-500"
-        >
+        <p v-if="product.description" class="mt-2 line-clamp-3 text-sm" :style="{ color: mutedTextColor }">
           {{ product.description }}
         </p>
       </div>
       <div class="mt-3 shrink-0 space-y-3">
-        <p
-          class="text-lg font-medium text-primary"
-        >
-          {{ formatPrice(product.price) }}
+        <p class="text-lg font-medium text-primary">
+          {{ displayPrice }}
         </p>
 
-        <!-- Товар не в корзине — одна кнопка -->
+        <!-- Если есть модификаторы, всегда показываем кнопку "Выбрать" (открывает модалку) -->
         <button
-          v-if="quantity === 0"
+          v-if="product.modifiers && product.modifiers.length > 0"
           type="button"
-          class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
-          @click.stop="cartStore.addItem(product)"
+          class="w-full rounded-lg px-4 py-3 text-base font-medium transition"
+          :style="{ backgroundColor: theme.primary_50 || '#f3f4f6', color: theme.primary_700 || '#111827' }"
+          @click.stop="emit('open', product)"
         >
-          В корзину
+          Выбрать
         </button>
 
-        <!-- Товар в корзине — счётчик и кнопки +/- -->
-        <div
-          v-else
-          class="flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1"
-        >
+        <!-- Если нет модификаторов, стандартная логика корзины -->
+        <template v-else>
           <button
+            v-if="quantity === 0"
             type="button"
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-gray-700 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-50"
-            aria-label="Убавить"
-            @click.stop="cartStore.updateQuantity(product.id, quantity - 1)"
-          >
-            −
-          </button>
-          <span
-            class="grow min-w-[2rem] text-center text-base font-medium text-gray-900"
-          >
-            {{ quantity }}
-          </span>
-          <button
-            type="button"
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-white transition hover:bg-primary-600 active:bg-primary-700"
-            aria-label="Добавить"
+            class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
             @click.stop="cartStore.addItem(product)"
           >
-            +
+            В корзину
           </button>
-        </div>
+
+          <div
+            v-else
+            class="flex items-center justify-center gap-1 rounded-lg border p-1"
+            :style="{ borderColor: theme.primary_100 || '#e5e7eb' }"
+          >
+            <button
+              type="button"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md transition hover:bg-gray-100/10"
+              :style="{ color: mainTextColor }"
+              aria-label="Убавить"
+              @click.stop="cartStore.updateQuantity(product.id, quantity - 1)"
+            >
+              −
+            </button>
+            <span class="grow min-w-[2rem] text-center text-base font-medium" :style="{ color: mainTextColor }">
+              {{ quantity }}
+            </span>
+            <button
+              type="button"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-white transition hover:opacity-90"
+              aria-label="Добавить"
+              @click.stop="cartStore.addItem(product)"
+            >
+              +
+            </button>
+          </div>
+        </template>
       </div>
     </div>
   </article>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Product } from '~/data/products'
+import { useCartStore } from '~/stores/cart'
+import { useTenant } from '~/composables/useTenant'
 
 const props = defineProps<{
   product: Product
@@ -88,7 +103,48 @@ const emit = defineEmits<{
 }>()
 
 const cartStore = useCartStore()
-const quantity = computed(() => cartStore.quantityById(props.product.id))
+const { tenant } = useTenant()
+
+const theme = computed(() => tenant.value.theme || {})
+const cardBgColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
+const mainTextColor = computed(() => theme.value.text_primary || 'var(--color-text-primary)')
+const mutedTextColor = computed(() => theme.value.text_muted || 'var(--color-text-muted)')
+
+// Для товаров без модификаторов cartItemId совпадает с product.id
+const quantity = computed(() => cartStore.quantityByProductId(props.product.id))
+
+const displayPrice = computed(() => {
+  if (!props.product.modifiers || props.product.modifiers.length === 0) {
+    return formatPrice(props.product.price)
+  }
+  
+  let minPrice = props.product.price
+  for (const group of props.product.modifiers) {
+    if (group.isRequired && group.minSelect > 0) {
+      const options = [...group.options]
+      for (let i = 0; i < Math.min(group.minSelect, options.length); i++) {
+        let bestIndex = -1
+        let bestPrice = Number.POSITIVE_INFINITY
+        for (let idx = 0; idx < options.length; idx++) {
+          const opt = options[idx]
+          const candidate =
+            opt.pricingType === 'multiplier'
+              ? Math.round(minPrice * (opt.priceMultiplier ?? 1))
+              : minPrice + (opt.priceDelta || 0)
+          if (candidate < bestPrice) {
+            bestPrice = candidate
+            bestIndex = idx
+          }
+        }
+        if (bestIndex >= 0) {
+          minPrice = bestPrice
+          options.splice(bestIndex, 1)
+        }
+      }
+    }
+  }
+  return `от ${formatPrice(minPrice)}`
+})
 
 function formatPrice(price: number) {
   return new Intl.NumberFormat('ru-RU', {

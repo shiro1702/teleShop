@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-50">
+  <div class="min-h-screen" :style="pageStyle">
     <!-- Модалка подтверждения очистки корзины -->
     <Teleport to="body">
       <Transition name="cart">
@@ -15,19 +15,21 @@
             @click="closeClearCartModal"
           />
           <div
-            class="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+            class="relative w-full max-w-sm rounded-2xl p-6 shadow-xl"
+            :style="cardStyle"
             @click.stop
           >
-            <h2 id="clear-cart-title" class="text-lg font-semibold text-gray-900">
+            <h2 id="clear-cart-title" class="text-lg font-semibold" :style="{ color: mainTextColor }">
               Очистить корзину?
             </h2>
-            <p class="mt-2 text-sm text-gray-600">
+            <p class="mt-2 text-sm" :style="{ color: mutedTextColor }">
               Все товары будут удалены из корзины.
             </p>
             <div class="mt-5 flex gap-3">
               <button
                 type="button"
-                class="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                class="flex-1 rounded-lg px-4 py-2 text-sm font-medium transition"
+                :style="secondaryButtonStyle"
                 @click="closeClearCartModal"
               >
                 Отмена
@@ -45,18 +47,20 @@
       </Transition>
     </Teleport>
 
-    <header class="border-b border-gray-200 bg-white">
+    <header class="border-b" :style="headerStyle">
       <div class="mx-auto grid max-w-6xl grid-cols-3 items-center gap-3 px-4 py-4 sm:px-6">
         <div class="flex w-24 items-center">
           <button
             v-if="state.currentStep > 1"
             type="button"
-            class="flex w-fit items-center gap-2 text-gray-600 transition hover:text-gray-900"
+            class="flex w-fit items-center gap-2 transition"
+            :style="{ color: mutedTextColor }"
             aria-label="Назад"
             @click="goBackStep"
           >
             <span
-              class="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-gray-100"
+              class="flex h-10 w-10 items-center justify-center rounded-lg"
+              :style="{ backgroundColor: 'transparent' }"
               aria-hidden="true"
             >
               <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -75,7 +79,7 @@
           />
         </div>
 
-        <h1 class="text-center text-xl font-bold text-gray-900">
+        <h1 class="text-center text-xl font-bold" :style="{ color: mainTextColor }">
           Оформление
         </h1>
 
@@ -84,7 +88,7 @@
             v-if="cartStore.count > 0"
             class="flex flex-col items-end leading-tight"
           >
-            <span class="text-sm font-medium text-gray-600">
+            <span class="text-sm font-medium" :style="{ color: mutedTextColor }">
               {{ cartStore.count }} шт.
             </span>
             <span class="text-sm font-semibold text-primary">
@@ -109,13 +113,13 @@
         <Transition :name="stepTransitionName" mode="out-in" @after-enter="onStepTransitionAfterEnter">
           <!-- Шаг 1: корзина -->
           <section v-if="state.currentStep === 1" key="checkout-step-1">
-          <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
+          <div class="rounded-2xl p-4 sm:p-6" :style="cardStyle">
             <div v-if="cartStore.items.length === 0" class="py-10 text-center">
-              <p class="text-gray-500">
+              <p :style="{ color: mutedTextColor }">
                 Корзина пуста
               </p>
               <NuxtLink
-                to="/"
+                :to="tenantPath('/')"
                 class="mt-4 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
               >
                 Перейти к товарам
@@ -142,17 +146,18 @@
           <div
             v-if="cartStore.items.length > 0"
             ref="step1InlineNavRef"
-            class="mt-4 flex flex-col items-stretch justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:p-5"
+            class="mt-4 flex flex-col items-stretch justify-between gap-4 rounded-2xl p-4 sm:flex-row sm:items-center sm:p-5"
+            :style="cardStyle"
           >
             <div class="space-y-1 text-sm">
               <div class="flex items-center justify-between">
-                <span class="text-gray-600">Товары</span>
-                <span class="font-semibold text-gray-900">
+                <span :style="{ color: mutedTextColor }">Товары</span>
+                <span class="font-semibold" :style="{ color: mainTextColor }">
                   {{ formatPrice(cartStore.total) }}
                 </span>
               </div>
               <div class="flex items-center justify-between">
-                <span class="text-gray-600">Доставка</span>
+                <span :style="{ color: mutedTextColor }">Доставка</span>
                 <span
                   class="font-semibold"
                   :class="cartStore.deliveryCost === 0 ? 'text-emerald-600' : 'text-gray-900'"
@@ -160,8 +165,8 @@
                   {{ cartStore.deliveryCost === 0 ? '0 ₽' : formatPrice(cartStore.deliveryCost) }}
                 </span>
               </div>
-              <div class="flex items-center justify-between border-t border-dashed border-gray-200 pt-2">
-                <span class="font-semibold text-gray-900">
+              <div class="flex items-center justify-between border-t border-dashed pt-2" :style="{ borderColor }">
+                <span class="font-semibold" :style="{ color: mainTextColor }">
                   Итого
                 </span>
                 <span class="text-xl font-bold text-primary">
@@ -191,9 +196,22 @@
 
           <!-- Шаг 2: оформление (получение + адрес + оплата + подтверждение) -->
           <section v-else key="checkout-step-2">
-          <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
+          <div class="rounded-2xl p-4 sm:p-6" :style="cardStyle">
             <div class="space-y-3">
               <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4">
+                <div class="space-y-2">
+                  <h2 class="text-sm font-semibold text-gray-900">
+                    Ресторан
+                  </h2>
+                  <select
+                    v-model="selectedRestaurantId"
+                    class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option v-for="r in restaurants" :key="r.id" :value="r.id">
+                      {{ r.name }} — {{ r.address }}
+                    </option>
+                  </select>
+                </div>
                 <h2 class="text-sm font-semibold text-gray-900">
                   Способ получения
                 </h2>
@@ -600,30 +618,56 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRef, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useCheckoutAddress } from '~/composables/useCheckoutAddress'
+import { useCheckoutTenantRestaurants } from '~/composables/useCheckoutTenantRestaurants'
+import type { FulfillmentType } from '~/composables/useCheckoutTenantRestaurants'
 
 const cartStore = useCartStore()
 const route = useRoute()
+const router = useRouter()
 const { isTelegram, webApp } = useTelegram()
 const supabaseUser = useSupabaseUser()
 const config = useRuntimeConfig()
+const { tenant, tenantKey, tenantPath } = useTenant()
 
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() =>
   telegramBotName ? `https://t.me/${telegramBotName}` : null,
 )
+const theme = computed(() => tenant.value.theme || {})
+const pageBgColor = computed(() => theme.value.surface_background || 'var(--color-surface-bg)')
+const cardBgColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
+const mainTextColor = computed(() => theme.value.text_primary || 'var(--color-text-primary)')
+const mutedTextColor = computed(() => theme.value.text_muted || 'var(--color-text-muted)')
+const borderColor = computed(() => theme.value.primary_100 || '#e5e7eb')
+
+const pageStyle = computed(() => ({
+  backgroundColor: pageBgColor.value,
+  color: mainTextColor.value,
+}))
+
+const headerStyle = computed(() => ({
+  borderColor: borderColor.value,
+  backgroundColor: cardBgColor.value,
+}))
+
+const cardStyle = computed(() => ({
+  border: `1px solid ${borderColor.value}`,
+  backgroundColor: cardBgColor.value,
+  color: mainTextColor.value,
+}))
+
+const secondaryButtonStyle = computed(() => ({
+  border: `1px solid ${borderColor.value}`,
+  color: mainTextColor.value,
+  backgroundColor: 'transparent',
+}))
 const pickupPointsConfigRaw = (config.public.pickupPointsJson as string | undefined) || ''
 const fulfillmentTypesConfigRaw = (config.public.fulfillmentTypes as string | undefined) || ''
 
 type PaymentMethod = 'cash' | 'card_courier' | 'online'
-type FulfillmentType = 'delivery' | 'pickup'
-type PickupPoint = {
-  id: string
-  name: string
-  address: string
-}
 
 type CheckoutState = {
   currentStep: 1 | 2
@@ -642,7 +686,6 @@ const state = reactive<CheckoutState>({
 const isPlacing = ref(false)
 const changeFrom = ref<string>('')
 const showClearCartModal = ref(false)
-const selectedPickupPointId = ref<string>('')
 const step1InlineNavRef = ref<HTMLElement | null>(null)
 const step2ActionsRef = ref<HTMLElement | null>(null)
 const isStep1InlineNavVisible = ref(false)
@@ -667,70 +710,42 @@ const {
   suggestItems,
   isSuggestLoading,
   savedAddresses,
+  setDeliveryZones,
   onAddressInput,
   selectSuggestion,
   applySavedAddress,
   deleteSavedAddress,
 } = useCheckoutAddress()
 
-const pickupPoints = computed<PickupPoint[]>(() => {
-  try {
-    const parsed = JSON.parse(pickupPointsConfigRaw) as unknown
-    if (Array.isArray(parsed)) {
-      const normalized = parsed
-        .filter((x): x is { id?: unknown; name?: unknown; address?: unknown } => !!x && typeof x === 'object')
-        .map((x, idx) => {
-          const id = typeof x.id === 'string' && x.id.trim() ? x.id.trim() : `pickup-${idx + 1}`
-          const name = typeof x.name === 'string' && x.name.trim() ? x.name.trim() : `Ресторан ${idx + 1}`
-          const address = typeof x.address === 'string' ? x.address.trim() : ''
-          return { id, name, address }
-        })
-        .filter((x) => x.address.length > 0)
-      if (normalized.length) return normalized
-    }
-  } catch {
-    // ignore invalid JSON config and use fallback
-  }
+const shopIdFromRoute = computed(() =>
+  tenantKey.value,
+)
 
-  return [
-    {
-      id: 'main',
-      name: 'Ресторан',
-      address: 'Адрес ресторана не указан',
-    },
-  ]
+function applyCartScope() {
+  const scope = typeof shopIdFromRoute.value === 'string' && shopIdFromRoute.value.trim()
+    ? shopIdFromRoute.value.trim()
+    : null
+  cartStore.setScope(scope)
+}
+
+const {
+  selectedPickupPointId,
+  selectedRestaurantId,
+  selectedPickupPoint,
+  restaurants,
+  pickupPoints,
+  availableFulfillmentTypes,
+  hasDeliveryOption,
+  hasPickupOption,
+  pickupIntroText,
+  loadRestaurants,
+} = useCheckoutTenantRestaurants({
+  shopIdFromRoute,
+  pickupPointsConfigRaw,
+  fulfillmentTypesConfigRaw,
+  currentFulfillmentType: toRef(state, 'fulfillmentType'),
+  setDeliveryZones,
 })
-
-const selectedPickupPoint = computed<PickupPoint | null>(() =>
-  pickupPoints.value.find((point) => point.id === selectedPickupPointId.value) ?? null,
-)
-
-const availableFulfillmentTypes = computed<FulfillmentType[]>(() => {
-  const parsed = fulfillmentTypesConfigRaw
-    .split(',')
-    .map((x) => x.trim().toLowerCase())
-    .filter((x): x is FulfillmentType => x === 'delivery' || x === 'pickup')
-
-  if (parsed.length) {
-    return Array.from(new Set(parsed))
-  }
-
-  return ['delivery', 'pickup']
-})
-
-const hasDeliveryOption = computed(() =>
-  availableFulfillmentTypes.value.includes('delivery'),
-)
-
-const hasPickupOption = computed(() =>
-  availableFulfillmentTypes.value.includes('pickup'),
-)
-
-const pickupIntroText = computed(() =>
-  pickupPoints.value.length > 1
-    ? 'Для самовывоза выберите ресторан. Мы отправим подтверждение и детали в Telegram после оформления заказа.'
-    : 'Самовывоз доступен из одного ресторана. Мы отправим подтверждение и детали в Telegram после оформления заказа.',
-)
 
 const canGoToAddress = computed(
   () => cartStore.items.length > 0,
@@ -741,7 +756,7 @@ const canGoToSummary = computed(() => {
     return cartStore.items.length > 0 && !!selectedPickupPoint.value
   }
   const hasHouseNumber = /\d/.test(addressLine.value.trim())
-  return hasHouseNumber && cartStore.items.length > 0
+  return hasHouseNumber && cartStore.items.length > 0 && !!cartStore.deliveryZone && !cartStore.deliveryError
 })
 
 const summaryDeliveryLabel = computed(() =>
@@ -769,7 +784,14 @@ const isAuthorizedForOrder = computed(() => {
   return isTelegram.value || !!supabaseUser.value
 })
 
+const isCheckoutRoute = computed(() => route.path.endsWith('/checkout'))
+const isCartRoute = computed(() => route.path.endsWith('/cart'))
+
 function goToStep(step: 1 | 2) {
+  const targetPath = step === 2 ? tenantPath('/checkout') : tenantPath('/cart')
+  if (route.path !== targetPath) {
+    void router.push({ path: targetPath })
+  }
   if (step === state.currentStep) return
   stepDirection.value = step > state.currentStep ? 'forward' : 'backward'
   state.currentStep = step
@@ -816,6 +838,7 @@ function serializeState() {
     comment: comment.value,
     changeFrom: changeFrom.value,
     selectedPickupPointId: selectedPickupPointId.value,
+    selectedRestaurantId: selectedRestaurantId.value,
   })
 }
 
@@ -848,6 +871,9 @@ function restoreFromPlainObject(obj: any) {
   }
   if (typeof obj.selectedPickupPointId === 'string') {
     selectedPickupPointId.value = obj.selectedPickupPointId
+  }
+  if (typeof obj.selectedRestaurantId === 'string') {
+    selectedRestaurantId.value = obj.selectedRestaurantId
   }
 }
 
@@ -985,6 +1011,7 @@ watch(
     flat: flat.value,
     comment: comment.value,
     selectedPickupPointId: selectedPickupPointId.value,
+    selectedRestaurantId: selectedRestaurantId.value,
   }),
   () => {
     const data = serializeState()
@@ -993,35 +1020,28 @@ watch(
   { deep: true },
 )
 
-watch(
-  pickupPoints,
-  (points) => {
-    const hasCurrent = points.some((point) => point.id === selectedPickupPointId.value)
-    if (hasCurrent) return
-    selectedPickupPointId.value = points.length === 1 ? points[0].id : ''
-  },
-  { immediate: true },
-)
-
-watch(
-  availableFulfillmentTypes,
-  (types) => {
-    if (types.includes(state.fulfillmentType)) return
-    state.fulfillmentType = types[0] ?? 'delivery'
-  },
-  { immediate: true },
-)
-
 onMounted(async () => {
+  applyCartScope()
   const saved = await loadCheckoutStateCloud()
   if (saved) {
     restoreFromPlainObject(saved)
   }
 
   const stepParam = Number(route.query.step || 0)
-  if (stepParam === 2 && cartStore.items.length > 0) {
+  if (isCheckoutRoute.value && cartStore.items.length > 0) {
+    state.currentStep = 2
+  } else if (isCartRoute.value) {
+    state.currentStep = 1
+  } else if (stepParam === 2 && cartStore.items.length > 0) {
     state.currentStep = 2
   }
+
+  await loadRestaurants()
+})
+
+watch(shopIdFromRoute, async () => {
+  applyCartScope()
+  await loadRestaurants()
 })
 
 async function placeOrder() {
@@ -1030,6 +1050,8 @@ async function placeOrder() {
   isPlacing.value = true
   try {
     const body: any = {
+      shopId: shopIdFromRoute.value,
+      restaurantId: selectedRestaurantId.value || null,
       items: cartStore.items.map((item) => ({
         id: item.id,
         name: item.name,
@@ -1065,6 +1087,7 @@ async function placeOrder() {
 
     const res = await $fetch<{ ok: boolean; orderId?: string }>('/api/order', {
       method: 'POST',
+      headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
       body,
     })
 
@@ -1076,7 +1099,12 @@ async function placeOrder() {
         localStorage.removeItem(CHECKOUT_STORAGE_KEY)
       }
       // Пока просто редиректим на главную, позже можно сделать отдельную страницу успеха
-      await navigateTo({ path: '/', query: { orderId: res.orderId ?? undefined } })
+      await navigateTo({
+        path: tenantPath('/'),
+        query: {
+          orderId: res.orderId ?? undefined,
+        },
+      })
     } else if (isClient()) {
       window.alert('Не удалось оформить заказ. Попробуйте ещё раз.')
     }
@@ -1085,7 +1113,7 @@ async function placeOrder() {
     if (isClient() && !isTelegram.value && (status === 401 || status === 409)) {
       await navigateTo({
         path: '/link-telegram',
-        query: { redirect: '/checkout' },
+        query: { redirect: tenantPath('/checkout') },
       })
       return
     }
@@ -1100,7 +1128,7 @@ async function placeOrder() {
 function authAndReturn() {
   if (!telegramBotUrl.value) return
   if (!isClient()) return
-  const url = `${telegramBotUrl.value}?start=auth_link`
+  const url = `${telegramBotUrl.value}?start=auth_link${shopIdFromRoute.value ? `_${encodeURIComponent(shopIdFromRoute.value)}` : ''}`
   window.open(url, '_blank', 'noopener')
 }
 
@@ -1110,6 +1138,7 @@ async function continueInTelegramFromCheckout() {
   try {
     const res = await $fetch<{ ok: boolean; deepLink: string }>('/api/cart-bridge', {
       method: 'POST',
+      headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
       body: {
         items: cartStore.items.map((item) => ({
           id: item.id,

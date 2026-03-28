@@ -1,0 +1,30 @@
+---
+description: Prevent Nuxt internal paths runtime error after tasks
+alwaysApply: true
+---
+
+# Nuxt Runtime Restart Check
+
+After finishing any substantial task in this repo, always verify the app does not fail with:
+
+`Package import specifier "#internal/nuxt/paths" is not defined ... .nuxt/dist/server/server.mjs`
+
+## Required post-task check
+
+1. Check dev-server output for this exact error.
+2. If present, perform a clean dev restart:
+   - stop conflicting Nuxt/node processes (`3000`, `24678`);
+   - remove `.nuxt` and `.output`;
+   - start `npm run dev` again.
+3. Re-check target route (or at least `/dashboard`) and confirm no `#internal/nuxt/paths` error.
+
+## Quick fix command
+
+Use this recovery sequence when the error appears:
+
+```bash
+lsof -nP -iTCP:3000 -sTCP:LISTEN; lsof -nP -iTCP:24678 -sTCP:LISTEN
+kill <pid...>
+rm -rf .nuxt .output
+npm run dev
+```

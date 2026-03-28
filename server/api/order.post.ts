@@ -1,15 +1,42 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — типы Node могут быть не подключены в проекте
 import crypto from 'node:crypto'
-import { MOCK_PRODUCTS } from '../../data/products'
+import type { H3Event } from 'h3'
 import type { DeliveryZoneProperties } from '../../utils/deliveryZones'
 import { serverSupabaseUser, serverSupabaseServiceRole } from '#supabase/server'
+import {
+  assertShopIdMatchesTenant,
+  requireRestaurantForShop,
+  requireRestaurantZoneForShop,
+  requireTenantShop,
+  type TenantRestaurant,
+  type TenantRestaurantZone,
+} from '~/server/utils/tenant'
+import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
+
+interface SelectedModifierPayload {
+  groupId: string
+  groupName: string
+  optionId: string
+  optionName: string
+  pricingType?: 'delta' | 'multiplier'
+  priceDelta: number
+  priceMultiplier?: number | null
+}
 
 interface CartItemPayload {
   id: string
+  cartItemId?: string
   name: string
   price: number
   quantity: number
+  selectedModifiers?: SelectedModifierPayload[]
+}
+
+interface ProductRow {
+  id: string
+  name: string
+  price: number
 }
 
 interface TelegramUser {
@@ -97,11 +124,26 @@ function buildOrderMessage(
   const username = user.username ? `@${user.username}` : [user.first_name, user.last_name].filter(Boolean).join(' ') || `ID ${user.id}`
   const grandTotal = total + deliveryCost
   const isPickup = options.fulfillmentType === 'pickup'
+  
+  const formattedItems = items.flatMap((item) => {
+    const lines = [`  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`]
+    if (item.selectedModifiers && item.selectedModifiers.length > 0) {
+      item.selectedModifiers.forEach(mod => {
+        if (mod.pricingType === 'multiplier') {
+          lines.push(`    - ${mod.optionName} (×${mod.priceMultiplier ?? 1})`)
+        } else {
+          lines.push(`    - ${mod.optionName}${mod.priceDelta > 0 ? ` (+${formatPrice(mod.priceDelta)})` : mod.priceDelta < 0 ? ` (${formatPrice(mod.priceDelta)})` : ''}`)
+        }
+      })
+    }
+    return lines
+  })
+
   const lines: string[] = [
     `📦 Заказ #${orderId}`,
     '',
     'Состав:',
-    ...items.map((item) => `  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`),
+    ...formattedItems,
     '',
     `💰 Товары: ${formatPrice(total)}`,
     isPickup
@@ -155,11 +197,26 @@ function buildClientOrderMessage(
 ): string {
   const grandTotal = total + deliveryCost
   const isPickup = options.fulfillmentType === 'pickup'
+  
+  const formattedItems = items.flatMap((item) => {
+    const lines = [`  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`]
+    if (item.selectedModifiers && item.selectedModifiers.length > 0) {
+      item.selectedModifiers.forEach(mod => {
+        if (mod.pricingType === 'multiplier') {
+          lines.push(`    - ${mod.optionName} (×${mod.priceMultiplier ?? 1})`)
+        } else {
+          lines.push(`    - ${mod.optionName}${mod.priceDelta > 0 ? ` (+${formatPrice(mod.priceDelta)})` : mod.priceDelta < 0 ? ` (${formatPrice(mod.priceDelta)})` : ''}`)
+        }
+      })
+    }
+    return lines
+  })
+
   const lines: string[] = [
     `🧾 Ваш заказ #${orderId} принят!`,
     '',
     'Состав заказа:',
-    ...items.map((item) => `  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`),
+    ...formattedItems,
     '',
     `💰 Товары: ${formatPrice(total)}`,
     isPickup
@@ -191,17 +248,58 @@ function buildClientOrderMessage(
   return lines.join('\n')
 }
 
+async function loadTenantProductsForOrder(
+  event: H3Event,
+  shopId: string,
+  productIds: string[],
+): Promise<Map<string, ProductRow>> {
+  const serviceClient = await serverSupabaseServiceRole(event)
+  const { data, error } = await serviceClient
+    .from('products')
+    .select('id,name,price')
+    .eq('shop_id', shopId)
+    .in('id', productIds)
+
+  if (error) {
+    console.error('Error querying products for order:', error)
+    throw createError({ statusCode: 500, message: 'Failed to load products for this shop' })
+  }
+
+  const rows = (Array.isArray(data) ? data : []) as ProductRow[]
+  const map = new Map<string, ProductRow>()
+  for (const row of rows) {
+    map.set(row.id, row)
+  }
+  return map
+}
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
-  const botToken = config.botToken as string
-  const managerChatId = config.managerChatId as string
-  const availableFulfillmentTypes = parseAvailableFulfillmentTypes(config.public?.fulfillmentTypes as string | undefined)
+  const { shopId: tenantShopId, shop: tenantShop } = await requireTenantShop(event)
+  const tenantIntegrationKeys = tenantShop.integration_keys ?? {}
+  const tenant = event.context.tenant
+  const botToken = tenant?.telegramBotToken || (config.botToken as string)
+  const managerChatId = (
+    typeof tenantShop.manager_chat_id === 'string' && tenantShop.manager_chat_id.trim()
+      ? tenantShop.manager_chat_id
+      : typeof tenantIntegrationKeys.manager_chat_id === 'string'
+        ? tenantIntegrationKeys.manager_chat_id
+        : config.managerChatId
+  ) as string
+  const tenantFulfillment = typeof tenantIntegrationKeys.fulfillment_types === 'string'
+    ? tenantIntegrationKeys.fulfillment_types
+    : (config.public?.fulfillmentTypes as string | undefined)
+  const availableFulfillmentTypes = parseAvailableFulfillmentTypes(tenantFulfillment)
+  const globallyAllowed = await applyGlobalFulfillmentPolicy(event, tenantShopId, availableFulfillmentTypes)
 
   if (!botToken || !managerChatId) {
     throw createError({ statusCode: 500, message: 'Server config: bot token or manager chat ID missing' })
   }
 
   const body = await readBody<{
+    shopId?: string
+    shop_id?: string
+    restaurantId?: string | null
     items: CartItemPayload[]
     initData?: string | null
     address?: {
@@ -223,33 +321,87 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Expected { items }' })
   }
 
-  // Пересчитываем сумму на сервере по каталогу, не доверяя ценам с клиента
+  assertShopIdMatchesTenant(
+    typeof body.shopId === 'string'
+      ? body.shopId
+      : typeof body.shop_id === 'string'
+        ? body.shop_id
+        : null,
+    tenantShopId,
+  )
+
+  const restaurantId = typeof body.restaurantId === 'string' ? body.restaurantId.trim() : ''
+  const restaurant: TenantRestaurant = await requireRestaurantForShop(event, tenantShopId, restaurantId)
+
+  // Пересчитываем сумму на сервере по tenant-каталогу, не доверяя ценам с клиента
+  const uniqueProductIds = Array.from(new Set(body.items.map((item) => item.id)))
+  const productMap = await loadTenantProductsForOrder(event, tenantShopId, uniqueProductIds)
+
+  // TODO: В идеале нужно также валидировать цены модификаторов на сервере
   const itemsWithServerPrice: CartItemPayload[] = body.items.map((item) => {
-    const product = MOCK_PRODUCTS.find((p) => p.id === item.id)
+    const product = productMap.get(item.id)
     if (!product) {
-      throw createError({ statusCode: 400, message: `Unknown product id: ${item.id}` })
+      throw createError({
+        statusCode: 400,
+        message: `Product ${item.id} not found in current shop`,
+      })
     }
     const quantity = item.quantity > 0 ? item.quantity : 0
+    
+    let multiplier = 1
+    let delta = 0
+    if (item.selectedModifiers && item.selectedModifiers.length > 0) {
+      for (const mod of item.selectedModifiers) {
+        if (mod.pricingType === 'multiplier') {
+          multiplier *= (mod.priceMultiplier ?? 1)
+        } else {
+          delta += (mod.priceDelta || 0)
+        }
+      }
+    }
+    const unitPrice = Math.round(product.price * multiplier + delta)
+    
     return {
       id: product.id,
+      cartItemId: item.cartItemId,
       name: product.name,
-      price: product.price,
+      price: unitPrice,
       quantity,
+      selectedModifiers: item.selectedModifiers
     }
   })
 
   const total = itemsWithServerPrice.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const fulfillmentType: FulfillmentType = body.fulfillmentType === 'pickup' ? 'pickup' : 'delivery'
-  if (!availableFulfillmentTypes.includes(fulfillmentType)) {
+  if (!globallyAllowed.includes(fulfillmentType)) {
     throw createError({ statusCode: 400, message: `Fulfillment type "${fulfillmentType}" is disabled` })
   }
+  if (fulfillmentType === 'delivery' && !restaurant.supports_delivery) {
+    throw createError({ statusCode: 400, message: 'Delivery is not available for selected restaurant' })
+  }
+  if (fulfillmentType === 'pickup' && !restaurant.supports_pickup) {
+    throw createError({ statusCode: 400, message: 'Pickup is not available for selected restaurant' })
+  }
 
-  const deliveryZone: DeliveryZoneProperties | null = body.address?.zone ?? null
+  const incomingZone: DeliveryZoneProperties | null = body.address?.zone ?? null
+  const incomingZoneId = typeof incomingZone?.slug === 'string' ? incomingZone.slug.trim() : ''
+  const serverZone: TenantRestaurantZone | null = incomingZoneId
+    ? await requireRestaurantZoneForShop(event, tenantShopId, restaurant.id, incomingZoneId)
+    : null
+  const deliveryZone: DeliveryZoneProperties | null = serverZone
+    ? {
+        slug: serverZone.id,
+        name: serverZone.name,
+        minOrderAmount: serverZone.min_order_amount,
+        deliveryCost: serverZone.delivery_cost,
+        freeDeliveryThreshold: serverZone.free_delivery_threshold,
+      }
+    : null
   let deliveryCost = 0
   if (fulfillmentType === 'pickup') {
     deliveryCost = 0
   } else if (!deliveryZone) {
-    deliveryCost = itemsWithServerPrice.length ? 200 : 0
+    throw createError({ statusCode: 400, message: 'Delivery zone is required for selected restaurant' })
   } else if (total >= deliveryZone.freeDeliveryThreshold) {
     deliveryCost = 0
   } else {

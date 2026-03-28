@@ -72,9 +72,19 @@ function withStatusLine(baseText: string, statusLabel: string): string {
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
-  const botToken = config.botToken as string
-  const managerChatId = config.managerChatId as string
-  const appUrl = (config.appUrl as string) || ''
+  const tenant = event.context.tenant
+  const botToken = tenant?.telegramBotToken || (config.botToken as string)
+  const managerChatId = (
+    typeof tenant?.shop?.manager_chat_id === 'string' && tenant.shop.manager_chat_id.trim()
+      ? tenant.shop.manager_chat_id
+      : config.managerChatId
+  ) as string
+  const appUrlBase = ((config.appUrl as string) || '').replace(/\/$/, '')
+  const appUrl = tenant?.shop?.custom_domain
+    ? `https://${tenant.shop.custom_domain}`
+    : tenant?.shop?.slug
+      ? `${appUrlBase}/${encodeURIComponent(tenant.shop.slug)}`
+      : appUrlBase
 
   if (!botToken || !managerChatId) {
     throw createError({ statusCode: 500, message: 'Server config: bot token or manager chat ID missing' })
@@ -106,9 +116,12 @@ export default defineEventHandler(async (event) => {
 
     if (isStart) {
       const startParam = paramRaw || ''
+      const startParts = startParam.split('_')
+      const startKey = startParts.slice(0, 2).join('_')
+      const startShopId = startParts.length > 2 ? startParts.slice(2).join('_') : ''
 
       // Специальный сценарий: старт с параметром для авторизации с возвратом на сайт
-      if (startParam === 'auth_link' && appUrl) {
+      if (startKey === 'auth_link' && appUrl) {
         const supabase = await serverSupabaseServiceRole(event)
         const token = randomUUID()
 
@@ -130,8 +143,9 @@ export default defineEventHandler(async (event) => {
 
         const baseUrl = appUrl.replace(/\/$/, '')
         // После привязки возвращаем пользователя на оформление заказа
-        const redirectPath = '/checkout?step=3'
-        const link = `${baseUrl}/link-telegram?token=${token}&redirect=${encodeURIComponent(redirectPath)}`
+        const redirectPath = tenant?.shop?.custom_domain ? '/checkout' : `${tenant?.shop?.slug ? `/${tenant.shop.slug}` : ''}/checkout`
+        const effectiveShopId = tenant?.shop?.slug || startShopId || ''
+        const link = `${baseUrl}/link-telegram?token=${token}&redirect=${encodeURIComponent(redirectPath)}${effectiveShopId ? `&shop_id=${encodeURIComponent(effectiveShopId)}` : ''}`
 
         await telegram(botToken, 'sendMessage', {
           chat_id: chatId,
@@ -188,7 +202,7 @@ export default defineEventHandler(async (event) => {
       }
 
       const baseUrl = appUrl.replace(/\/$/, '')
-      const link = `${baseUrl}/link-telegram?token=${token}`
+      const link = `${baseUrl}/link-telegram?token=${token}${tenant?.shop?.slug ? `&shop_id=${encodeURIComponent(tenant.shop.slug)}` : ''}`
 
       await telegram(botToken, 'sendMessage', {
         chat_id: chatId,

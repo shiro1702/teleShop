@@ -11,22 +11,22 @@
 │                           КАНАЛЫ ВХОДА                                   │
 ├──────────────────────────────┬──────────────────────────────────────────┤
 │   Telegram Mini App (TMA)    │   Внешний веб-сайт (Web)                 │
-│   • initData от WebApp       │   • Сессия (cookie tg_session)           │
-│   • MainButton → заказ       │   • Кнопка «Оформить заказ» в корзине    │
+│   • initData от WebApp       │   • Supabase-сессия + profiles.telegram_id│
+│   • shop_id tenant context   │   • checkout page (без CartModal)        │
 └──────────────────────────────┴──────────────────────────────────────────┘
                                         │
                                         ▼
                         ┌───────────────────────────────┐
                         │   POST /api/order              │
                         │   • items (id, name, price, qty)│
-                        │   • initData (TMA) или cookie  │
+│   │   • initData (TMA) или Supabase profile (Web)│
                         └───────────────────────────────┘
                                         │
                                         ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │   БЭКЕНД (Nuxt / Nitro)                                                  │
-│   • Валидация пользователя (initData или сессия)                         │
-│   • Пересчёт суммы по каталогу (data/products)                           │
+│   • Валидация пользователя (initData или Supabase profile)               │
+│   • Пересчёт суммы по Supabase products (tenant shop_id)                 │
 │   • Формирование сообщения менеджеру                                    │
 │   • sendMessage в Telegram → чат менеджера                              │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -45,12 +45,12 @@
 
 ```
 teleShop/
-├── data/
-│   └── products.ts              # Каталог товаров (источник цен для пересчёта)
 ├── stores/
-│   └── cart.ts                  # Корзина (товары, total, модалка)
+│   └── cart.ts                  # Корзина (товары, total, доставка)
+├── pages/
+│   ├── index.vue                # Витрина с загрузкой каталога по shop_id
+│   └── checkout.vue             # Оформление заказа (доставка/самовывоз, ресторан)
 ├── components/
-│   ├── CartModal.vue             # Модалка корзины + кнопка «Оформить» + модалка успеха
 │   └── CartItem.vue             # Одна позиция в корзине
 ├── composables/
 │   └── useTelegram.ts           # isTelegram, webApp, MainButton (для TMA)
@@ -58,14 +58,19 @@ teleShop/
 │   └── telegram.client.ts      # Подписка корзины на MainButton в TMA
 ├── server/
 │   ├── api/
-│   │   ├── order.post.ts       # Создание заказа (Web + TMA)
+│   │   ├── order.post.ts       # Создание заказа (tenant-aware)
+│   │   ├── products.get.ts     # Каталог магазина по shop_id
+│   │   ├── restaurants.get.ts  # Рестораны магазина
+│   │   ├── restaurant-zones.get.ts # Зоны доставки ресторана
 │   │   ├── webhook.post.ts     # Обработка апдейтов бота (команды, callback_query)
 │   │   └── auth/
-│   │       └── telegram.post.ts # Логин через Telegram Login Widget, установка cookie
+│   │       ├── exchange-telegram-session.post.ts
+│   │       └── link-telegram.post.ts
+│   ├── middleware/
+│   │   └── tenant.ts           # tenant resolution (shop_id -> event.context.tenant)
 │   └── utils/
-│       ├── session.ts          # Создание/проверка сессионного токена (HMAC)
-│       └── getTelegramUserFromEvent.ts  # Чтение пользователя из cookie в API
-└── nuxt.config.ts              # runtimeConfig: botToken, managerChatId, appUrl, sessionSecret
+│       └── tenant.ts           # lookup магазинов и резолв shop context
+└── nuxt.config.ts              # runtimeConfig + Supabase
 ```
 
 ---
@@ -81,7 +86,9 @@ teleShop/
 | Поле      | Тип     | Обязательно | Описание |
 |-----------|---------|-------------|----------|
 | `items`   | массив  | да          | Позиции корзины |
-| `initData`| строка  | условно     | Обязателен в TMA; в Web не передаётся (используется сессия) |
+| `initData`| строка  | условно     | Обязателен в TMA |
+| `shopId`  | строка  | да          | Tenant магазин (`shop_id`) |
+| `restaurantId` | строка | да      | Выбранный ресторан |
 
 Элемент `items[]`:
 
@@ -93,23 +100,26 @@ teleShop/
 **Авторизация:**
 
 - **Telegram Mini App:** в теле передаётся `initData` (Telegram WebApp). Сервер проверяет подпись через `validateInitData(initData, botToken)` и извлекает пользователя.
-- **Веб:** `initData` не передаётся. Пользователь определяется по cookie `tg_session` (устанавливается после `POST /api/auth/telegram`). Если cookie нет или токен невалиден — **401 Unauthorized**.
+- **Веб:** `initData` не передаётся. Пользователь определяется по Supabase-сессии и `profiles.telegram_id`. Если Telegram не привязан — **409**.
 
 **Логика на сервере:**
 
 1. Проверка наличия `items`.
-2. Пересчёт позиций и суммы по каталогу `MOCK_PRODUCTS` (цены с клиента не доверяются).
-3. Определение пользователя (initData или сессия).
-4. Генерация `orderId` (например, 4-значный номер).
-5. Формирование текста сообщения для менеджера (номер заказа, состав, итог, клиент).
-6. Отправка в Telegram чат менеджера (`NUXT_MANAGER_CHAT_ID`) с inline-кнопкой «Принять в работу» и `callback_data = work_<userId>_<orderId>`.
+2. Проверка tenant-контекста (`shop_id`) и соответствия payload.
+3. Пересчёт позиций и суммы по Supabase `products` текущего магазина.
+4. Проверка ресторана и доступности способа получения.
+5. Для доставки: валидация зоны по `restaurant_delivery_zones` текущего ресторана.
+6. Определение пользователя (initData или Supabase+profile).
+7. Формирование текста сообщения для менеджера и клиента.
+8. Отправка в Telegram чат менеджера магазина.
 7. Ответ: `{ ok: true, orderId }`.
 
 **Ответы:**
 
 - `200` — `{ ok: true, orderId: string }`
-- `400` — неверное тело или неизвестный товар
-- `401` — не авторизован (нет/неверный initData или сессия)
+- `400` — неверное тело, чужой `shop_id`, неизвестный товар/ресторан/зона
+- `401` — не авторизован (нет/неверный initData или Supabase-сессия)
+- `409` — Telegram не привязан у веб-пользователя
 - `502` — ошибка отправки в Telegram
 
 ---
@@ -141,13 +151,13 @@ teleShop/
 
 ---
 
-### 3.3. `POST /api/auth/telegram`
+### 3.3. `POST /api/auth/exchange-telegram-session`
 
-**Назначение:** авторизация на **внешнем сайте** через Telegram Login Widget. Устанавливает httpOnly cookie `tg_session` с подписанным токеном сессии.
+**Назначение:** обмен одноразового токена Telegram-link на рабочую Supabase-сессию.
 
-**Тело запроса:** объект от Telegram Login Widget (id, first_name, last_name, username, photo_url, auth_date, hash).
+**Тело запроса:** `{ token }` из ссылки `link-telegram`.
 
-**Логика:** проверка `hash` по документации Telegram (data-check-string, SHA256(bot_token), HMAC); проверка свежести `auth_date`; создание сессионного токена (см. `server/utils/session.ts`) и установка cookie.
+**Логика:** чтение `auth_tokens`, создание/поиск Supabase-пользователя по `telegram_id`, выдача `access_token`/`refresh_token`.
 
 **Ответ:** `200 { ok: true, user }` или `401` при неверных данных.
 
@@ -155,9 +165,9 @@ teleShop/
 
 ## 4. Жизненный цикл заказа (кратко)
 
-1. **Клиент** (Web или TMA) собирает корзину и нажимает «Оформить заказ».
-2. **Фронт** отправляет `POST /api/order` (в TMA с `initData`, в Web без него, с cookie).
-3. **Сервер** проверяет пользователя, пересчитывает сумму, шлёт сообщение менеджеру в Telegram с кнопкой «Принять в работу».
+1. **Клиент** (Web или TMA) собирает корзину в tenant-контексте (`shop_id`).
+2. **Фронт** отправляет `POST /api/order` (в TMA с `initData`, в Web через Supabase-сессию).
+3. **Сервер** валидирует tenant/ресторан/зону, пересчитывает сумму, шлёт сообщение менеджеру в Telegram.
 4. **Менеджер** нажимает кнопки по цепочке: Принять в работу → Передать курьеру → Доставлен.
 5. **Webhook** на каждое нажатие обновляет сообщение у менеджера и отправляет уведомление клиенту в личку в Telegram.
 6. **Клиент** в Web после успешного ответа видит модалку успеха с зелёной галочкой и номером заказа; в TMA — alert и закрытие окна (по текущей реализации).
@@ -166,9 +176,9 @@ teleShop/
 
 ## 5. Безопасность
 
-- Цены и итог пересчитываются на сервере по каталогу; данные с клиента не используются для суммы.
-- Токен бота и секрет сессии хранятся только в переменных окружения (`NUXT_BOT_TOKEN`, `NUXT_SESSION_SECRET`).
-- Cookie сессии: `httpOnly`, в production `secure`, `sameSite: 'lax'`, ограниченный `maxAge`.
+- Цены и итог пересчитываются на сервере по `products` текущего `shop_id`; данные с клиента не используются для суммы.
+- Токен бота и manager chat берутся из tenant-конфигурации магазина (`shops` + `integration_keys`) с fallback на env.
+- Изоляция данных обеспечивается tenant middleware + RLS по `shop_id`.
 
 ---
 
@@ -176,8 +186,8 @@ teleShop/
 
 | Переменная             | Описание |
 |------------------------|----------|
-| `NUXT_BOT_TOKEN`       | Токен Telegram-бота (отправка сообщений, проверка initData/hash). |
-| `NUXT_MANAGER_CHAT_ID` | ID чата, куда приходят заказы (личный или групповой). |
+| `NUXT_BOT_TOKEN`       | Fallback токен Telegram-бота, если у магазина нет собственного. |
+| `NUXT_MANAGER_CHAT_ID` | Fallback чат менеджера, если не задан в `shops`. |
 | `NUXT_APP_URL`         | URL Mini App / сайта (для кнопки «Открыть магазин» и Login Widget). |
 | `NUXT_SESSION_SECRET`  | Секрет для подписи сессионного токена (Web-логин). |
 

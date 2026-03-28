@@ -1,14 +1,36 @@
 import { defineStore } from 'pinia'
-import type { Product, ProductCategory } from '~/data/products'
+import type { Product } from '~/data/products'
 import { MOCK_PRODUCTS } from '~/data/products'
 import type { DeliveryZoneProperties } from '~/utils/deliveryZones'
 
 const CART_STORAGE_KEY = 'teleshop-cart'
 
-function getStoredCartItems(): CartItem[] {
+function buildCartStorageKey(scopeKey: string | null): string {
+  const scope = typeof scopeKey === 'string' ? scopeKey.trim() : ''
+  return scope ? `${CART_STORAGE_KEY}:${scope}` : CART_STORAGE_KEY
+}
+
+export interface SelectedModifier {
+  groupId: string
+  groupName: string
+  optionId: string
+  optionName: string
+  pricingType?: 'delta' | 'multiplier'
+  priceDelta: number
+  priceMultiplier?: number | null
+}
+
+export interface CartItem extends Product {
+  cartItemId: string // Unique ID for the cart item (product.id + modifiers hash)
+  quantity: number
+  selectedModifiers: SelectedModifier[]
+  unitPrice: number // Base price + modifiers
+}
+
+function getStoredCartItems(scopeKey: string | null): CartItem[] {
   if (typeof localStorage === 'undefined') return []
   try {
-    const raw = localStorage.getItem(CART_STORAGE_KEY)
+    const raw = localStorage.getItem(buildCartStorageKey(scopeKey))
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
@@ -29,32 +51,45 @@ function getStoredCartItems(): CartItem[] {
   }
 }
 
-function persistCart(items: CartItem[]) {
+function persistCart(scopeKey: string | null, items: CartItem[]) {
   if (typeof localStorage === 'undefined') return
   try {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
+    localStorage.setItem(buildCartStorageKey(scopeKey), JSON.stringify(items))
   } catch {
     // ignore quota / private mode
   }
 }
 
-export interface CartItem extends Product {
-  quantity: number
+function generateCartItemId(productId: string, modifiers: SelectedModifier[]): string {
+  if (!modifiers || modifiers.length === 0) return productId
+  
+  // Sort modifiers by groupId and optionId to ensure consistent hashing
+  const sorted = [...modifiers].sort((a, b) => {
+    if (a.groupId !== b.groupId) return a.groupId.localeCompare(b.groupId)
+    return a.optionId.localeCompare(b.optionId)
+  })
+  
+  const hash = sorted.map(m => `${m.groupId}:${m.optionId}`).join('|')
+  return `${productId}::${hash}`
 }
 
-const CATEGORY_ORDER: ProductCategory[] = ['main', 'закуски', 'супы', 'десерты']
-const CATEGORY_LABELS: Record<ProductCategory, string> = {
-  main: 'Основные блюда',
-  закуски: 'Закуски',
-  супы: 'Супы',
-  десерты: 'Десерты',
+function calculateUnitPrice(basePrice: number, modifiers: SelectedModifier[]): number {
+  const multiplier = modifiers
+    .filter((mod) => mod.pricingType === 'multiplier')
+    .reduce((acc, mod) => acc * (mod.priceMultiplier ?? 1), 1)
+
+  const delta = modifiers
+    .filter((mod) => mod.pricingType !== 'multiplier')
+    .reduce((sum, mod) => sum + (mod.priceDelta || 0), 0)
+
+  return Math.round(basePrice * multiplier + delta)
 }
 
 export const useCartStore = defineStore('cart', {
   state: () => ({
-    products: MOCK_PRODUCTS,
-    items: getStoredCartItems(),
-    isCartModalOpen: false,
+    products: [] as Product[],
+    items: [] as CartItem[],
+    scopeKey: null as string | null,
     deliveryZone: null as DeliveryZoneProperties | null,
     // Базовая стоимость доставки по городу до уточнения зоны
     deliveryCost: 200,
@@ -62,13 +97,15 @@ export const useCartStore = defineStore('cart', {
   }),
   getters: {
     total: (state) =>
-      state.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+      state.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
     count: (state) =>
       state.items.reduce((sum, item) => sum + item.quantity, 0),
-    quantityById: (state) => (productId: string) =>
-      state.items.find((i) => i.id === productId)?.quantity ?? 0,
+    quantityByProductId: (state) => (productId: string) =>
+      state.items.filter((i) => i.id === productId).reduce((sum, item) => sum + item.quantity, 0),
     hasDeliveryZone: (state) => !!state.deliveryZone,
-    grandTotal: (state) => state.total + state.deliveryCost,
+    grandTotal(): number {
+      return this.total + this.deliveryCost
+    },
     canCheckout: (state): boolean => {
       if (!state.items.length) return false
       if (state.deliveryError) return false
@@ -89,7 +126,8 @@ export const useCartStore = defineStore('cart', {
       }
 
       const z = state.deliveryZone
-      const isFree = state.total >= z.freeDeliveryThreshold
+      const total = state.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
+      const isFree = total >= z.freeDeliveryThreshold
       const cost = isFree ? 0 : z.deliveryCost
 
       return {
@@ -103,42 +141,77 @@ export const useCartStore = defineStore('cart', {
         zoneName: z.name,
       }
     },
-    productsByCategory(): { category: ProductCategory; label: string; products: Product[] }[] {
-      return CATEGORY_ORDER.map((category) => ({
+    productsByCategory(): { category: string; label: string; products: Product[] }[] {
+      // Group products dynamically based on their category string
+      const map = new Map<string, Product[]>()
+      this.products.forEach(p => {
+        const cat = p.category || 'Без категории'
+        if (!map.has(cat)) map.set(cat, [])
+        map.get(cat)!.push(p)
+      })
+      
+      return Array.from(map.entries()).map(([category, products]) => ({
         category,
-        label: CATEGORY_LABELS[category],
-        products: this.products.filter((p) => p.category === category),
-      })).filter((section) => section.products.length > 0)
+        label: category, // Use the category name directly as the label
+        products
+      }))
     },
   },
   actions: {
-    addItem(product: Product, quantity = 1) {
-      const existing = this.items.find((i) => i.id === product.id)
+    setScope(nextScopeKey: string | null) {
+      const normalized = typeof nextScopeKey === 'string' && nextScopeKey.trim()
+        ? nextScopeKey.trim()
+        : null
+
+      if (this.scopeKey === normalized) return
+
+      this.scopeKey = normalized
+      this.items = getStoredCartItems(this.scopeKey)
+      this.deliveryZone = null
+      this.deliveryError = null
+      this.deliveryCost = this.items.length ? 200 : 0
+      // Каталог товаров должен загружаться заново для нового ресторана
+      this.products = []
+    },
+    setProducts(products: Product[]) {
+      this.products = Array.isArray(products) ? products : []
+    },
+    addItem(product: Product, quantity = 1, modifiers: SelectedModifier[] = []) {
+      const cartItemId = generateCartItemId(product.id, modifiers)
+      const existing = this.items.find((i) => i.cartItemId === cartItemId)
+      
       if (existing) {
         existing.quantity += quantity
       } else {
-        this.items.push({ ...product, quantity })
+        const unitPrice = calculateUnitPrice(product.price, modifiers)
+        this.items.push({ 
+          ...product, 
+          cartItemId,
+          quantity,
+          selectedModifiers: modifiers,
+          unitPrice
+        })
       }
-      persistCart(this.items)
+      persistCart(this.scopeKey, this.items)
       // При изменении корзины пересчитаем стоимость доставки для текущей зоны
       if (this.deliveryZone) {
         this.setDeliveryZone(this.deliveryZone)
       }
     },
-    removeItem(id: string) {
-      this.items = this.items.filter((i) => i.id !== id)
-      persistCart(this.items)
+    removeItem(cartItemId: string) {
+      this.items = this.items.filter((i) => i.cartItemId !== cartItemId)
+      persistCart(this.scopeKey, this.items)
       if (this.deliveryZone) {
         this.setDeliveryZone(this.deliveryZone)
       }
     },
-    updateQuantity(id: string, quantity: number) {
-      const item = this.items.find((i) => i.id === id)
+    updateQuantity(cartItemId: string, quantity: number) {
+      const item = this.items.find((i) => i.cartItemId === cartItemId)
       if (item) {
-        if (quantity <= 0) this.removeItem(id)
+        if (quantity <= 0) this.removeItem(cartItemId)
         else {
           item.quantity = quantity
-          persistCart(this.items)
+          persistCart(this.scopeKey, this.items)
           if (this.deliveryZone) {
             this.setDeliveryZone(this.deliveryZone)
           }
@@ -147,25 +220,21 @@ export const useCartStore = defineStore('cart', {
     },
     clear() {
       this.items = []
-      persistCart(this.items)
+      persistCart(this.scopeKey, this.items)
+      this.deliveryZone = null
+      this.deliveryError = null
       this.deliveryCost = 0
     },
-    openCartModal() {
-      this.isCartModalOpen = true
-      // При первом открытии корзины, если зона ещё не выбрана,
-      // считаем доставку по базовому тарифу
-      if (!this.deliveryZone && this.items.length && !this.deliveryCost) {
-        this.deliveryCost = 200
-      }
-    },
-    closeCartModal() {
-      this.isCartModalOpen = false
-    },
     /** Восстановить корзину из localStorage (вызывать на клиенте после гидрации) */
-    hydrateFromStorage() {
+    hydrateFromStorage(scopeKey: string | null = null) {
       if (typeof localStorage === 'undefined') return
-      const stored = getStoredCartItems()
-      if (stored.length > 0) this.items = stored
+      this.scopeKey = typeof scopeKey === 'string' && scopeKey.trim() ? scopeKey.trim() : null
+      this.items = getStoredCartItems(this.scopeKey)
+      this.deliveryZone = null
+      this.deliveryError = null
+      this.deliveryCost = this.items.length ? 200 : 0
+      // Fallback для локальной разработки без tenant-базы.
+      if (!this.products.length) this.products = MOCK_PRODUCTS
     },
     setDeliveryZone(zone: DeliveryZoneProperties | null) {
       this.deliveryZone = zone
