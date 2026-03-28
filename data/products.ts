@@ -1,4 +1,23 @@
-export type ProductCategory = 'main' | 'закуски' | 'супы' | 'десерты'
+export type ProductCategory = string
+
+export interface ModifierOption {
+  id: string
+  name: string
+  pricingType?: 'delta' | 'multiplier'
+  priceDelta: number
+  priceMultiplier?: number | null
+  isDefault: boolean
+}
+
+export interface ModifierGroup {
+  id: string
+  name: string
+  selectionType: 'single' | 'multi' | 'boolean'
+  isRequired: boolean
+  minSelect: number
+  maxSelect: number | null
+  options: ModifierOption[]
+}
 
 export interface Product {
   id: string
@@ -7,6 +26,7 @@ export interface Product {
   image: string
   description?: string
   category: ProductCategory
+  modifiers?: ModifierGroup[]
 }
 
 const SAMGYEPSAL_DESC =
@@ -19,7 +39,7 @@ export const MOCK_PRODUCTS: Product[] = [
     price: 1600,
     image: '/menu/menu_r1_c1.webp',
     description: SAMGYEPSAL_DESC,
-    category: 'main',
+    category: 'Основные блюда',
   },
   {
     id: '2',
@@ -27,14 +47,14 @@ export const MOCK_PRODUCTS: Product[] = [
     price: 1900,
     image: '/menu/menu_r1_c2.webp',
     description: SAMGYEPSAL_DESC,
-    category: 'main',
+    category: 'Основные блюда',
   },
   {
     id: '3',
     name: 'Говядина бульгоги',
     price: 720,
     image: '/menu/menu_r1_c3.webp',
-    category: 'main',
+    category: 'Основные блюда',
   },
   {
     id: '4',
@@ -43,7 +63,7 @@ export const MOCK_PRODUCTS: Product[] = [
     image: '/menu/menu_r2_c1.webp',
     description:
       'Хрустящие кусочки курицы, покрытые глазурью из соуса, на выбор в сырном соусе и в кисло-сладком соусе',
-    category: 'main',
+    category: 'Основные блюда',
   },
   {
     id: '5',
@@ -52,7 +72,7 @@ export const MOCK_PRODUCTS: Product[] = [
     image: '/menu/menu_r2_c2.webp',
     description:
       'Рисовые клёцки в остром соусе с отварным яйцом, блинчиком омук, под сыром моцарелла',
-    category: 'main',
+    category: 'Основные блюда',
   },
   {
     id: '6',
@@ -61,7 +81,7 @@ export const MOCK_PRODUCTS: Product[] = [
     image: '/menu/menu_r2_c3.webp',
     description:
       'Рис, маринованная обжаренная говядина, шпинат, соевые ростки, обжаренный лук, острая морковь, зелёный лук, паста кочуджан, яйцо',
-    category: 'main',
+    category: 'Основные блюда',
   },
   {
     id: '7',
@@ -70,7 +90,7 @@ export const MOCK_PRODUCTS: Product[] = [
     image: '/menu/menu_r3_c1.webp',
     description:
       'Сырный (сосиска, моцарелла) и фри (сосиска, картофель фри, моцарелла)',
-    category: 'main',
+    category: 'Основные блюда',
   },
   {
     id: '8',
@@ -79,7 +99,7 @@ export const MOCK_PRODUCTS: Product[] = [
     image: '/menu/menu_r3_c2.webp',
     description:
       'Рис со свининой и кимчи в соусе, глазуньей, сыром моцарелла и зеленью',
-    category: 'main',
+    category: 'Основные блюда',
   },
   {
     id: '9',
@@ -87,7 +107,7 @@ export const MOCK_PRODUCTS: Product[] = [
     price: 400,
     image: '/menu/menu_r3_c3.webp',
     description: 'Фунчоза с говядиной и овощами',
-    category: 'main',
+    category: 'Основные блюда',
   },
   {
     id: '10',
@@ -95,7 +115,7 @@ export const MOCK_PRODUCTS: Product[] = [
     price: 690,
     image: '/menu/menu_r4_c1.webp',
     description: 'Лапша удон с говядиной и овощами в соусе гальби',
-    category: 'main',
+    category: 'Основные блюда',
   },
   // Закуски
   {
@@ -104,7 +124,7 @@ export const MOCK_PRODUCTS: Product[] = [
     price: 530,
     image: '/menu/menu_r4_c2.webp',
     description: 'В остром соусе и соусе пулькоги (неостром)',
-    category: 'закуски',
+    category: 'Закуски',
   },
   // Супы
   {
@@ -112,14 +132,14 @@ export const MOCK_PRODUCTS: Product[] = [
     name: 'Кимчи рамён',
     price: 490,
     image: '/menu/menu_r4_c3.webp',
-    category: 'супы',
+    category: 'Супы',
   },
   {
     id: '13',
     name: 'Кимчи тиге',
     price: 490,
     image: '/menu/menu_r5_c1.webp',
-    category: 'супы',
+    category: 'Супы',
   },
   // Десерты
   {
@@ -127,7 +147,6 @@ export const MOCK_PRODUCTS: Product[] = [
     name: 'Моти',
     price: 270,
     image: '/menu/menu_r5_c2.webp',
-    category: 'десерты',
+    category: 'Десерты',
   },
 ]
-

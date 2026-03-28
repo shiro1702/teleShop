@@ -14,11 +14,23 @@ import {
 } from '~/server/utils/tenant'
 import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
 
+interface SelectedModifierPayload {
+  groupId: string
+  groupName: string
+  optionId: string
+  optionName: string
+  pricingType?: 'delta' | 'multiplier'
+  priceDelta: number
+  priceMultiplier?: number | null
+}
+
 interface CartItemPayload {
   id: string
+  cartItemId?: string
   name: string
   price: number
   quantity: number
+  selectedModifiers?: SelectedModifierPayload[]
 }
 
 interface ProductRow {
@@ -112,11 +124,26 @@ function buildOrderMessage(
   const username = user.username ? `@${user.username}` : [user.first_name, user.last_name].filter(Boolean).join(' ') || `ID ${user.id}`
   const grandTotal = total + deliveryCost
   const isPickup = options.fulfillmentType === 'pickup'
+  
+  const formattedItems = items.flatMap((item) => {
+    const lines = [`  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`]
+    if (item.selectedModifiers && item.selectedModifiers.length > 0) {
+      item.selectedModifiers.forEach(mod => {
+        if (mod.pricingType === 'multiplier') {
+          lines.push(`    - ${mod.optionName} (×${mod.priceMultiplier ?? 1})`)
+        } else {
+          lines.push(`    - ${mod.optionName}${mod.priceDelta > 0 ? ` (+${formatPrice(mod.priceDelta)})` : mod.priceDelta < 0 ? ` (${formatPrice(mod.priceDelta)})` : ''}`)
+        }
+      })
+    }
+    return lines
+  })
+
   const lines: string[] = [
     `📦 Заказ #${orderId}`,
     '',
     'Состав:',
-    ...items.map((item) => `  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`),
+    ...formattedItems,
     '',
     `💰 Товары: ${formatPrice(total)}`,
     isPickup
@@ -170,11 +197,26 @@ function buildClientOrderMessage(
 ): string {
   const grandTotal = total + deliveryCost
   const isPickup = options.fulfillmentType === 'pickup'
+  
+  const formattedItems = items.flatMap((item) => {
+    const lines = [`  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`]
+    if (item.selectedModifiers && item.selectedModifiers.length > 0) {
+      item.selectedModifiers.forEach(mod => {
+        if (mod.pricingType === 'multiplier') {
+          lines.push(`    - ${mod.optionName} (×${mod.priceMultiplier ?? 1})`)
+        } else {
+          lines.push(`    - ${mod.optionName}${mod.priceDelta > 0 ? ` (+${formatPrice(mod.priceDelta)})` : mod.priceDelta < 0 ? ` (${formatPrice(mod.priceDelta)})` : ''}`)
+        }
+      })
+    }
+    return lines
+  })
+
   const lines: string[] = [
     `🧾 Ваш заказ #${orderId} принят!`,
     '',
     'Состав заказа:',
-    ...items.map((item) => `  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`),
+    ...formattedItems,
     '',
     `💰 Товары: ${formatPrice(total)}`,
     isPickup
@@ -295,6 +337,7 @@ export default defineEventHandler(async (event) => {
   const uniqueProductIds = Array.from(new Set(body.items.map((item) => item.id)))
   const productMap = await loadTenantProductsForOrder(event, tenantShopId, uniqueProductIds)
 
+  // TODO: В идеале нужно также валидировать цены модификаторов на сервере
   const itemsWithServerPrice: CartItemPayload[] = body.items.map((item) => {
     const product = productMap.get(item.id)
     if (!product) {
@@ -304,11 +347,27 @@ export default defineEventHandler(async (event) => {
       })
     }
     const quantity = item.quantity > 0 ? item.quantity : 0
+    
+    let multiplier = 1
+    let delta = 0
+    if (item.selectedModifiers && item.selectedModifiers.length > 0) {
+      for (const mod of item.selectedModifiers) {
+        if (mod.pricingType === 'multiplier') {
+          multiplier *= (mod.priceMultiplier ?? 1)
+        } else {
+          delta += (mod.priceDelta || 0)
+        }
+      }
+    }
+    const unitPrice = Math.round(product.price * multiplier + delta)
+    
     return {
       id: product.id,
+      cartItemId: item.cartItemId,
       name: product.name,
-      price: product.price,
+      price: unitPrice,
       quantity,
+      selectedModifiers: item.selectedModifiers
     }
   })
 

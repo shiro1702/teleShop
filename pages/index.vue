@@ -75,6 +75,7 @@
         </ul>
       </section>
     </main>
+
     <!-- Модалка успеха заказа после возврата на меню -->
     <Teleport to="body">
       <Transition name="product">
@@ -115,6 +116,7 @@
         </div>
       </Transition>
     </Teleport>
+
     <!-- Нижняя панель корзины на мобильных -->
     <div
       class="fixed inset-x-0 bottom-0 z-40 border-t px-4 py-2 sm:hidden pb-10"
@@ -141,7 +143,8 @@
         </div>
       </button>
     </div>
-    <!-- Модалка с информацией о товаре -->
+
+    <!-- Модалка с информацией о товаре и модификаторами -->
     <Teleport to="body">
       <Transition name="product">
         <div
@@ -155,7 +158,7 @@
             @click="closeProduct"
           />
           <div
-            class="relative max-h-[90vh] w-full max-w-md overflow-hidden rounded-t-2xl shadow-xl sm:rounded-2xl"
+            class="relative max-h-[90vh] w-full max-w-md overflow-hidden rounded-t-2xl shadow-xl sm:rounded-2xl flex flex-col"
             :style="modalCardStyle"
           >
             <button
@@ -168,33 +171,78 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            <div class="h-48 w-full overflow-hidden sm:h-56" :style="{ backgroundColor: cardBgColor }">
+            <div class="h-48 w-full shrink-0 overflow-hidden sm:h-56" :style="{ backgroundColor: cardBgColor }">
               <img
                 :src="selectedProduct.image"
                 :alt="selectedProduct.name"
                 class="h-full w-full object-cover"
               />
             </div>
-            <div class="space-y-3 p-4 sm:p-5">
-              <h2 class="text-lg font-semibold sm:text-xl" :style="{ color: mainTextColor }">
-                {{ selectedProduct.name }}
-              </h2>
-              <p
-                v-if="selectedProduct.description"
-                class="text-sm"
-                :style="{ color: mutedTextColor }"
-              >
-                {{ selectedProduct.description }}
-              </p>
-              <p class="text-lg font-bold text-primary">
-                {{ formatPrice(selectedProduct.price) }}
-              </p>
+            
+            <div class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+              <div>
+                <h2 class="text-lg font-semibold sm:text-xl" :style="{ color: mainTextColor }">
+                  {{ selectedProduct.name }}
+                </h2>
+                <p
+                  v-if="selectedProduct.description"
+                  class="mt-1 text-sm"
+                  :style="{ color: mutedTextColor }"
+                >
+                  {{ selectedProduct.description }}
+                </p>
+              </div>
+
+              <!-- Модификаторы -->
+              <div v-if="selectedProduct.modifiers && selectedProduct.modifiers.length > 0" class="space-y-4 pt-2">
+                <div v-for="group in selectedProduct.modifiers" :key="group.id" class="space-y-2">
+                  <div class="flex items-center justify-between">
+                    <h3 class="font-medium text-sm" :style="{ color: mainTextColor }">{{ group.name }}</h3>
+                    <span v-if="group.isRequired" class="text-[10px] uppercase tracking-wider text-red-500 font-semibold bg-red-50 px-2 py-0.5 rounded">Обязательно</span>
+                  </div>
+                  
+                  <div class="flex flex-wrap gap-2 w-full">
+                    <label 
+                      v-for="opt in group.options" 
+                      :key="opt.id"
+                      class="relative flex-1 min-w-[80px] flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition-colors text-center"
+                      :style="{ 
+                        borderColor: isOptionSelected(group.id, opt.id) ? 'var(--color-primary)' : theme.primary_100 || '#e5e7eb',
+                        backgroundColor: isOptionSelected(group.id, opt.id) ? 'var(--color-primary)' : 'transparent',
+                        color: isOptionSelected(group.id, opt.id) ? '#ffffff' : mainTextColor
+                      }"
+                    >
+                      <input 
+                        :type="group.selectionType === 'multi' ? 'checkbox' : 'radio'"
+                        :name="`group-${group.id}`"
+                        :checked="isOptionSelected(group.id, opt.id)"
+                        @change="toggleOption(group, opt)"
+                        class="sr-only"
+                      />
+                      <span class="text-sm font-medium">{{ opt.name }}</span>
+                      
+                      <!-- Badge для количества в корзине -->
+                      <span 
+                        v-if="getOptionQuantityInCart(opt.id) > 0" 
+                        class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-sm"
+                      >
+                        {{ getOptionQuantityInCart(opt.id) }}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="shrink-0 border-t p-4 sm:p-5 bg-white" :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }">
               <button
                 type="button"
-              class="mt-2 w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
+                class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
+                :disabled="!isModifiersValid"
                 @click="addSelectedToCart"
               >
-                Добавить в корзину
+                <span>{{ isModifiersValid ? 'Добавить в корзину' : 'Выберите опции' }}</span>
+                <span v-if="isModifiersValid" class="font-bold">{{ formatPrice(selectedProductPrice) }}</span>
               </button>
             </div>
           </div>
@@ -208,7 +256,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { $fetch } from 'ofetch'
-import type { Product } from '../data/products'
+import type { Product, ModifierGroup, ModifierOption } from '../data/products'
+import type { SelectedModifier } from '../stores/cart'
 import { useTenant } from '../composables/useTenant'
 import { useTelegram } from '../composables/useTelegram'
 import { useCartStore } from '../stores/cart'
@@ -226,6 +275,9 @@ const tenantName = computed(() => tenant.value.shopName || 'Наш магази�
 const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
 const theme = computed(() => tenant.value.theme || {})
+
+// State for modifiers
+const activeModifiers = ref<Record<string, Set<string>>>({})
 
 const pageBgColor = computed(() => theme.value.surface_background || 'var(--color-surface-bg)')
 const cardBgColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
@@ -272,16 +324,137 @@ function applyCartScope() {
 
 function openProduct(product: Product) {
   selectedProduct.value = product
+  const next: Record<string, Set<string>> = {}
+
+  // Pre-select defaults
+  if (product.modifiers) {
+    product.modifiers.forEach((group) => {
+      const s = new Set<string>()
+      group.options.forEach((opt) => {
+        if (opt.isDefault) s.add(opt.id)
+      })
+      next[group.id] = s
+    })
+  }
+  activeModifiers.value = next
 }
 
 function closeProduct() {
   selectedProduct.value = null
+  activeModifiers.value = {}
 }
 
+function isOptionSelected(groupId: string, optionId: string) {
+  return activeModifiers.value[groupId]?.has(optionId) || false
+}
+
+function getOptionQuantityInCart(optionId: string) {
+  if (!selectedProduct.value) return 0
+  let count = 0
+  for (const item of cartStore.items) {
+    if ((item as any).id === selectedProduct.value.id) {
+      if (item.selectedModifiers?.some(m => m.optionId === optionId)) {
+        count += item.quantity
+      }
+    }
+  }
+  return count
+}
+
+function toggleOption(group: ModifierGroup, option: ModifierOption) {
+  const prev = activeModifiers.value[group.id] ?? new Set<string>()
+  // Новый Set на каждое изменение — так Vue гарантированно перерисует выбор (Set мутации не всегда реактивны).
+  let next = new Set(prev)
+
+  if (group.selectionType === 'single' || group.selectionType === 'boolean') {
+    next = new Set([option.id])
+  } else {
+    // Multi
+    if (next.has(option.id)) {
+      next.delete(option.id)
+    } else {
+      const max = group.maxSelect
+      if (typeof max === 'number' && max > 0 && next.size >= max) {
+        // Лимит: снимаем последний по порядку выбора (Set сохраняет порядок вставки)
+        const order = Array.from(next)
+        const lastId = order[order.length - 1]
+        if (lastId) next.delete(lastId)
+      }
+      next.add(option.id)
+    }
+  }
+
+  activeModifiers.value = {
+    ...activeModifiers.value,
+    [group.id]: next,
+  }
+}
+
+const isModifiersValid = computed(() => {
+  if (!selectedProduct.value?.modifiers) return true
+  
+  for (const group of selectedProduct.value.modifiers) {
+    const selectedCount = activeModifiers.value[group.id]?.size || 0
+    if (group.isRequired && selectedCount === 0) return false
+    if (group.minSelect > 0 && selectedCount < group.minSelect) return false
+  }
+  
+  return true
+})
+
+const selectedProductPrice = computed(() => {
+  if (!selectedProduct.value) return 0
+  let multiplier = 1
+  let delta = 0
+  
+  if (selectedProduct.value.modifiers) {
+    selectedProduct.value.modifiers.forEach(group => {
+      const selectedIds = activeModifiers.value[group.id]
+      if (selectedIds) {
+        group.options.forEach(opt => {
+          if (selectedIds.has(opt.id)) {
+            if (opt.pricingType === 'multiplier') {
+              multiplier *= (opt.priceMultiplier ?? 1)
+            } else {
+              delta += (opt.priceDelta || 0)
+            }
+          }
+        })
+      }
+    })
+  }
+  
+  return Math.round(selectedProduct.value.price * multiplier + delta)
+})
+
 function addSelectedToCart() {
-  if (!selectedProduct.value) return
-  cartStore.addItem(selectedProduct.value, 1)
-  selectedProduct.value = null
+  if (!selectedProduct.value || !isModifiersValid.value) return
+  
+  const modifiers: SelectedModifier[] = []
+  
+  if (selectedProduct.value.modifiers) {
+    selectedProduct.value.modifiers.forEach(group => {
+      const selectedIds = activeModifiers.value[group.id]
+      if (selectedIds) {
+        group.options.forEach(opt => {
+          if (selectedIds.has(opt.id)) {
+            modifiers.push({
+              groupId: group.id,
+              groupName: group.name,
+              optionId: opt.id,
+              optionName: opt.name,
+              pricingType: opt.pricingType || 'delta',
+              priceDelta: opt.priceDelta,
+              priceMultiplier: opt.priceMultiplier ?? null
+            })
+          }
+        })
+      }
+    })
+  }
+  
+  cartStore.addItem(selectedProduct.value, 1, modifiers)
+  closeProduct()
 }
 
 function goToCheckout() {
