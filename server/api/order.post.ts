@@ -24,6 +24,17 @@ interface SelectedModifierPayload {
   priceMultiplier?: number | null
 }
 
+interface SelectedParameterPayload {
+  parameterKindId: string
+  productParameterId: string
+  optionId: string
+  optionName: string
+  price: number
+  weightG?: number | null
+  volumeMl?: number | null
+  pieces?: number | null
+}
+
 interface CartItemPayload {
   id: string
   cartItemId?: string
@@ -31,12 +42,14 @@ interface CartItemPayload {
   price: number
   quantity: number
   selectedModifiers?: SelectedModifierPayload[]
+  selectedParameters?: SelectedParameterPayload[]
 }
 
 interface ProductRow {
   id: string
   name: string
   price: number
+  parameters: any[]
 }
 
 interface TelegramUser {
@@ -127,6 +140,18 @@ function buildOrderMessage(
   
   const formattedItems = items.flatMap((item) => {
     const lines = [`  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`]
+    
+    if (item.selectedParameters && item.selectedParameters.length > 0) {
+      item.selectedParameters.forEach(param => {
+        const attrs = []
+        if (param.weightG) attrs.push(`${param.weightG} г`)
+        if (param.volumeMl) attrs.push(`${param.volumeMl} мл`)
+        if (param.pieces) attrs.push(`${param.pieces} шт`)
+        const attrStr = attrs.length > 0 ? ` (${attrs.join(', ')})` : ''
+        lines.push(`    - Вариант: ${param.optionName}${attrStr}`)
+      })
+    }
+
     if (item.selectedModifiers && item.selectedModifiers.length > 0) {
       item.selectedModifiers.forEach(mod => {
         if (mod.pricingType === 'multiplier') {
@@ -200,6 +225,18 @@ function buildClientOrderMessage(
   
   const formattedItems = items.flatMap((item) => {
     const lines = [`  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`]
+    
+    if (item.selectedParameters && item.selectedParameters.length > 0) {
+      item.selectedParameters.forEach(param => {
+        const attrs = []
+        if (param.weightG) attrs.push(`${param.weightG} г`)
+        if (param.volumeMl) attrs.push(`${param.volumeMl} мл`)
+        if (param.pieces) attrs.push(`${param.pieces} шт`)
+        const attrStr = attrs.length > 0 ? ` (${attrs.join(', ')})` : ''
+        lines.push(`    - Вариант: ${param.optionName}${attrStr}`)
+      })
+    }
+
     if (item.selectedModifiers && item.selectedModifiers.length > 0) {
       item.selectedModifiers.forEach(mod => {
         if (mod.pricingType === 'multiplier') {
@@ -256,7 +293,13 @@ async function loadTenantProductsForOrder(
   const serviceClient = await serverSupabaseServiceRole(event)
   const { data, error } = await serviceClient
     .from('products')
-    .select('id,name,price')
+    .select(`
+      id,name,price,
+      product_parameters(
+        id, parameter_kind_id, is_required,
+        product_parameter_options(id, name, price, weight_g, volume_ml, pieces, is_active)
+      )
+    `)
     .eq('shop_id', shopId)
     .in('id', productIds)
 
@@ -265,10 +308,15 @@ async function loadTenantProductsForOrder(
     throw createError({ statusCode: 500, message: 'Failed to load products for this shop' })
   }
 
-  const rows = (Array.isArray(data) ? data : []) as ProductRow[]
+  const rows = (Array.isArray(data) ? data : []) as any[]
   const map = new Map<string, ProductRow>()
   for (const row of rows) {
-    map.set(row.id, row)
+    map.set(row.id, {
+      id: row.id,
+      name: row.name,
+      price: row.price,
+      parameters: row.product_parameters || []
+    })
   }
   return map
 }
@@ -348,6 +396,28 @@ export default defineEventHandler(async (event) => {
     }
     const quantity = item.quantity > 0 ? item.quantity : 0
     
+    let basePrice = product.price
+    if (item.selectedParameters && item.selectedParameters.length > 0) {
+      const param = item.selectedParameters[0]
+      const dbParamGroup = product.parameters?.find((p: any) => p.id === param.productParameterId)
+      if (dbParamGroup) {
+        const dbOption = dbParamGroup.product_parameter_options?.find((o: any) => o.id === param.optionId && o.is_active)
+        if (dbOption) {
+          basePrice = dbOption.price
+        } else {
+          throw createError({
+            statusCode: 400,
+            message: `Invalid parameter option ${param.optionId} for product ${item.id}`,
+          })
+        }
+      }
+    } else if (product.parameters && product.parameters.some((p: any) => p.is_required)) {
+      throw createError({
+        statusCode: 400,
+        message: `Product ${item.id} requires parameter selection`,
+      })
+    }
+
     let multiplier = 1
     let delta = 0
     if (item.selectedModifiers && item.selectedModifiers.length > 0) {
@@ -359,7 +429,7 @@ export default defineEventHandler(async (event) => {
         }
       }
     }
-    const unitPrice = Math.round(product.price * multiplier + delta)
+    const unitPrice = Math.round(basePrice * multiplier + delta)
     
     return {
       id: product.id,
@@ -367,7 +437,8 @@ export default defineEventHandler(async (event) => {
       name: product.name,
       price: unitPrice,
       quantity,
-      selectedModifiers: item.selectedModifiers
+      selectedModifiers: item.selectedModifiers,
+      selectedParameters: item.selectedParameters
     }
   })
 

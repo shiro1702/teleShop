@@ -72,6 +72,44 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  if (body.parameterKinds !== undefined && Array.isArray(body.parameterKinds)) {
+    if (body.parameterKinds.length > 0) {
+      const pkToInsert = body.parameterKinds.map((pk: any) => ({
+        product_id: data.id,
+        parameter_kind_id: pk.parameterKindId,
+        is_required: pk.isRequired ?? true
+      }))
+
+      const { error: pkError } = await client
+        .from('product_parameter_kinds')
+        .insert(pkToInsert)
+
+      if (pkError) {
+        console.error('Failed to save product parameter kinds:', pkError)
+      }
+    }
+  }
+
+  if (body.parameterOptionOverrides !== undefined && Array.isArray(body.parameterOptionOverrides)) {
+    if (body.parameterOptionOverrides.length > 0) {
+      const overridesToInsert = body.parameterOptionOverrides.map((ov: any) => ({
+        product_id: data.id,
+        option_id: ov.optionId,
+        price: ov.price,
+        is_disabled: ov.isDisabled ?? false,
+        is_default: ov.isDefault ?? false
+      }))
+
+      const { error: ovError } = await client
+        .from('product_parameter_option_overrides')
+        .insert(overridesToInsert)
+
+      if (ovError) {
+        console.error('Failed to save parameter option overrides:', ovError)
+      }
+    }
+  }
+
   return {
     ok: true,
     item: {

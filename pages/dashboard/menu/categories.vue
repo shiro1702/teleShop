@@ -58,6 +58,31 @@
 
           <div class="border-t border-gray-200 pt-4">
             <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm font-medium text-gray-900">Параметры для категории</h3>
+            </div>
+            <p class="text-xs text-gray-500 mb-2">Эти типы параметров будут применяться ко всем товарам в этой категории.</p>
+            <div class="space-y-2 max-h-40 overflow-y-auto">
+              <div v-for="kind in parameterKinds" :key="kind.id" class="flex items-center justify-between rounded-lg border border-gray-100 p-2">
+                <div>
+                  <p class="text-sm font-medium text-gray-900">{{ kind.name }}</p>
+                </div>
+                <label class="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    :checked="form.parameterKindIds.includes(kind.id)"
+                    @change="toggleParameterKind(kind.id)"
+                    class="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                  />
+                </label>
+              </div>
+              <div v-if="!parameterKinds.length" class="text-xs text-gray-500 italic">
+                Нет доступных типов параметров.
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-gray-200 pt-4">
+            <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900">Модификаторы для категории</h3>
             </div>
             <p class="text-xs text-gray-500 mb-2">Эти модификаторы будут применяться ко всем товарам в этой категории.</p>
@@ -111,6 +136,7 @@ type Category = {
   externalId: string | null
   productsCount: number
   modifierGroupIds?: string[]
+  parameterKindIds?: string[]
 }
 
 type ModifierGroup = {
@@ -118,8 +144,14 @@ type ModifierGroup = {
   name: string
 }
 
+type ParameterKind = {
+  id: string
+  name: string
+}
+
 const categories = ref<Category[]>([])
 const modifierGroups = ref<ModifierGroup[]>([])
+const parameterKinds = ref<ParameterKind[]>([])
 const pending = ref(true)
 const error = ref('')
 
@@ -131,7 +163,8 @@ const form = ref({
   isActive: true,
   sortOrder: 0,
   externalId: '',
-  modifierGroupIds: [] as string[]
+  modifierGroupIds: [] as string[],
+  parameterKindIds: [] as string[]
 })
 
 function toggleModifierGroup(id: string) {
@@ -143,16 +176,27 @@ function toggleModifierGroup(id: string) {
   }
 }
 
+function toggleParameterKind(id: string) {
+  const idx = form.value.parameterKindIds.indexOf(id)
+  if (idx === -1) {
+    form.value.parameterKindIds.push(id)
+  } else {
+    form.value.parameterKindIds.splice(idx, 1)
+  }
+}
+
 async function fetchCategories() {
   pending.value = true
   try {
-    const [catsRes, modsRes] = await Promise.all([
+    const [catsRes, modsRes, paramsRes] = await Promise.all([
       fetch('/api/dashboard/menu/categories'),
-      fetch('/api/dashboard/menu/modifiers')
+      fetch('/api/dashboard/menu/modifiers'),
+      fetch('/api/dashboard/menu/parameters')
     ])
     
     const catsData = await catsRes.json()
     const modsData = await modsRes.json()
+    const paramsData = await paramsRes.json()
     
     if (catsData.ok) {
       categories.value = catsData.items
@@ -166,6 +210,13 @@ async function fetchCategories() {
         name: g.name
       }))
     }
+
+    if (paramsData.ok) {
+      parameterKinds.value = paramsData.items.map((k: any) => ({
+        id: k.id,
+        name: k.name
+      }))
+    }
   } catch (e: any) {
     error.value = e.message
   } finally {
@@ -177,7 +228,7 @@ onMounted(fetchCategories)
 
 function openCreateModal() {
   editingCategory.value = null
-  form.value = { name: '', isActive: true, sortOrder: 0, externalId: '', modifierGroupIds: [] }
+  form.value = { name: '', isActive: true, sortOrder: 0, externalId: '', modifierGroupIds: [], parameterKindIds: [] }
   isModalOpen.value = true
 }
 
@@ -188,7 +239,8 @@ function openEditModal(cat: Category) {
     isActive: cat.isActive, 
     sortOrder: cat.sortOrder, 
     externalId: cat.externalId || '',
-    modifierGroupIds: cat.modifierGroupIds || []
+    modifierGroupIds: cat.modifierGroupIds || [],
+    parameterKindIds: cat.parameterKindIds || []
   }
   isModalOpen.value = true
 }

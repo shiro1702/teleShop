@@ -141,7 +141,7 @@ async function saveOverrides() {
   try {
     const overrides = items.value.map(item => ({
       productId: item.id,
-      priceOverride: item.priceOverride === '' ? null : item.priceOverride,
+      priceOverride: item.priceOverride === null || item.priceOverride === undefined || String(item.priceOverride) === '' ? null : Number(item.priceOverride),
       isHidden: item.isHidden,
       isInStopList: item.isInStopList
     }))

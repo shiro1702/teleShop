@@ -5,14 +5,14 @@ export function useTelegram() {
 
   const isTelegram = computed(() => {
     if (!isClient) return false
-    // @ts-expect-error: Telegram WebApp может быть не объявлен
+    // @ts-ignore: Telegram WebApp может быть не объявлен
     const webApp = window.Telegram?.WebApp
     return typeof webApp !== 'undefined' && !!webApp.initData
   })
 
   const webApp = computed(() => {
     if (!isClient) return null
-    // @ts-expect-error: Telegram WebApp может быть не объявлен
+    // @ts-ignore: Telegram WebApp может быть не объявлен
     return window.Telegram?.WebApp ?? null
   })
 

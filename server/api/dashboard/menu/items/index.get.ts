@@ -10,9 +10,11 @@ export default defineEventHandler(async (event) => {
     .from('products')
     .select(`
       id, name, price, image, description, category_id, is_active, sort_order, external_id, created_at, 
-      categories(id, name, category_modifier_groups(group_id)),
+      categories(id, name, category_modifier_groups(group_id), category_parameter_kinds(parameter_kind_id)),
       product_modifier_groups(group_id),
-      product_modifier_group_overrides(group_id, is_disabled, disabled_option_ids)
+      product_modifier_group_overrides(group_id, is_disabled, disabled_option_ids),
+      product_parameter_kinds(parameter_kind_id, is_required),
+      product_parameter_option_overrides(option_id, price, is_disabled, is_default)
     `)
     .eq('shop_id', access.shopId)
     .order('sort_order', { ascending: true })
@@ -45,6 +47,21 @@ export default defineEventHandler(async (event) => {
           {
             isDisabled: !!override.is_disabled,
             disabledOptionIds: Array.isArray(override.disabled_option_ids) ? override.disabled_option_ids : []
+          }
+        ])
+      ),
+      parameterKinds: row.product_parameter_kinds?.map((pk: any) => ({
+        parameterKindId: pk.parameter_kind_id,
+        isRequired: pk.is_required
+      })) || [],
+      categoryParameterKindIds: row.categories?.category_parameter_kinds?.map((pk: any) => pk.parameter_kind_id) || [],
+      parameterOptionOverrides: Object.fromEntries(
+        (row.product_parameter_option_overrides || []).map((override: any) => [
+          override.option_id,
+          {
+            price: override.price,
+            isDisabled: override.is_disabled,
+            isDefault: override.is_default
           }
         ])
       )

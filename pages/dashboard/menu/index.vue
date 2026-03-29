@@ -16,9 +16,14 @@
         <p class="mt-1 text-xs text-gray-600">Управление товарами, ценами, доступностью и фото.</p>
       </NuxtLink>
       
-      <NuxtLink to="/dashboard/menu/modifiers" class="rounded-xl border border-gray-200 bg-white p-4 transition hover:border-primary hover:shadow-sm sm:col-span-2">
+      <NuxtLink to="/dashboard/menu/modifiers" class="rounded-xl border border-gray-200 bg-white p-4 transition hover:border-primary hover:shadow-sm">
         <p class="text-sm font-semibold text-gray-900">Модификаторы</p>
         <p class="mt-1 text-xs text-gray-600">Группы опций: размер, соус, добавки, ограничения выбора и доплаты.</p>
+      </NuxtLink>
+
+      <NuxtLink to="/dashboard/menu/parameters" class="rounded-xl border border-gray-200 bg-white p-4 transition hover:border-primary hover:shadow-sm">
+        <p class="text-sm font-semibold text-gray-900">Параметры</p>
+        <p class="mt-1 text-xs text-gray-600">Справочник типов параметров (например, "Размер", "Объём").</p>
       </NuxtLink>
     </div>
 

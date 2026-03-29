@@ -80,9 +80,9 @@ export function useCheckoutAddress() {
   }
 
   async function loadSavedAddresses() {
-    if (isTelegram.value && webApp.value?.CloudStorage) {
+    if (isTelegram.value && (webApp.value as any)?.CloudStorage) {
       await new Promise<void>((resolve) => {
-        webApp.value!.CloudStorage.getItem(STORAGE_KEY, (err: unknown, value: string | null) => {
+        (webApp.value as any).CloudStorage.getItem(STORAGE_KEY, (err: unknown, value: string | null) => {
           if (!err && value) {
             try {
               savedAddresses.value = JSON.parse(value) as (typeof savedAddresses.value)[number][]
@@ -122,9 +122,9 @@ export function useCheckoutAddress() {
   async function persistAddresses() {
     const data = JSON.stringify(savedAddresses.value)
 
-    if (isTelegram.value && webApp.value?.CloudStorage) {
+    if (isTelegram.value && (webApp.value as any)?.CloudStorage) {
       await new Promise<void>((resolve) => {
-        webApp.value!.CloudStorage.setItem(STORAGE_KEY, data, () => resolve())
+        (webApp.value as any).CloudStorage.setItem(STORAGE_KEY, data, () => resolve())
       })
     } else if (process.client) {
       localStorage.setItem(STORAGE_KEY, data)

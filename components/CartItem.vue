@@ -27,6 +27,18 @@
           {{ formatPrice(item.unitPrice) }} за шт.
         </p>
         
+        <!-- Выбранные параметры -->
+        <div v-if="item.selectedParameters && item.selectedParameters.length > 0" class="mt-1 flex flex-wrap gap-1">
+          <span 
+            v-for="param in item.selectedParameters" 
+            :key="param.optionId"
+            class="text-sm font-medium"
+            :style="{ color: mainTextColor, opacity: 0.8 }"
+          >
+            {{ param.optionName }}<template v-if="param.weightG"> ({{ param.weightG }} г)</template><template v-if="param.volumeMl"> ({{ param.volumeMl }} мл)</template><template v-if="param.pieces"> ({{ param.pieces }} шт)</template>
+          </span>
+        </div>
+
         <!-- Выбранные модификаторы -->
         <div v-if="item.selectedModifiers && item.selectedModifiers.length > 0" class="mt-1 flex flex-wrap gap-1">
           <span 
@@ -71,7 +83,7 @@
             type="button"
             class="flex h-10 w-10 shrink-0 items-center justify-center rounded-r-lg bg-primary text-white transition hover:bg-primary-600 active:bg-primary-700"
             aria-label="Увеличить"
-            @click="cartStore.addItem(item, 1, item.selectedModifiers)"
+            @click="cartStore.addItem(item, 1, item.selectedModifiers, item.selectedParameters)"
           >
             +
           </button>

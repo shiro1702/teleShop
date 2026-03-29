@@ -129,7 +129,7 @@
               <ul class="space-y-4">
                 <CartItem
                   v-for="item in cartStore.items"
-                  :key="item.id"
+                  :key="item.cartItemId"
                   :item="item"
                 />
                 <button
@@ -969,23 +969,23 @@ function loadCheckoutStateLocal() {
 }
 
 function persistCheckoutStateCloud(data: string) {
-  if (!isTelegram.value || !webApp.value?.CloudStorage) {
+  if (!isTelegram.value || !(webApp.value as any)?.CloudStorage) {
     persistCheckoutStateLocal(data)
     return
   }
 
-  webApp.value.CloudStorage.setItem(CHECKOUT_STORAGE_KEY, data, () => {
+  (webApp.value as any).CloudStorage.setItem(CHECKOUT_STORAGE_KEY, data, () => {
     persistCheckoutStateLocal(data)
   })
 }
 
 function loadCheckoutStateCloud(): Promise<any | null> {
-  if (!isTelegram.value || !webApp.value?.CloudStorage) {
+  if (!isTelegram.value || !(webApp.value as any)?.CloudStorage) {
     return Promise.resolve(loadCheckoutStateLocal())
   }
 
   return new Promise((resolve) => {
-    webApp.value!.CloudStorage.getItem(
+    (webApp.value as any).CloudStorage.getItem(
       CHECKOUT_STORAGE_KEY,
       (_err: unknown, value: string | null) => {
         if (value) {

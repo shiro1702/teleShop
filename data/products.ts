@@ -1,5 +1,24 @@
 export type ProductCategory = string
 
+export interface ProductParameterOption {
+  id: string
+  name: string
+  price?: number
+  weightG?: number | null
+  volumeMl?: number | null
+  pieces?: number | null
+  isDefault: boolean
+  sortOrder: number
+}
+
+export interface ProductParameterGroup {
+  id: string
+  parameterKindId: string
+  name: string
+  isRequired: boolean
+  options: ProductParameterOption[]
+}
+
 export interface ModifierOption {
   id: string
   name: string
@@ -27,6 +46,7 @@ export interface Product {
   description?: string
   category: ProductCategory
   modifiers?: ModifierGroup[]
+  parameters?: ProductParameterGroup[]
 }
 
 const SAMGYEPSAL_DESC =

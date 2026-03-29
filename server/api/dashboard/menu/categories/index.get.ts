@@ -10,7 +10,8 @@ export default defineEventHandler(async (event) => {
     .from('categories')
     .select(`
       id, name, sort_order, is_active, external_id, created_at,
-      category_modifier_groups(group_id)
+      category_modifier_groups(group_id),
+      category_parameter_kinds(parameter_kind_id)
     `)
     .eq('shop_id', access.shopId)
     .order('sort_order', { ascending: true })
@@ -47,7 +48,8 @@ export default defineEventHandler(async (event) => {
       externalId: row.external_id,
       createdAt: row.created_at,
       productsCount: productCounts[row.id] || 0,
-      modifierGroupIds: row.category_modifier_groups?.map((g: any) => g.group_id) || []
+      modifierGroupIds: row.category_modifier_groups?.map((g: any) => g.group_id) || [],
+      parameterKindIds: row.category_parameter_kinds?.map((pk: any) => pk.parameter_kind_id) || []
     }))
   }
 })

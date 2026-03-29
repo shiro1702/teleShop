@@ -44,6 +44,22 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  if (body.parameterKindIds && Array.isArray(body.parameterKindIds) && body.parameterKindIds.length > 0) {
+    const parameterLinks = body.parameterKindIds.map((kindId: string) => ({
+      category_id: data.id,
+      parameter_kind_id: kindId,
+      is_required: true
+    }))
+    
+    const { error: linkError } = await client
+      .from('category_parameter_kinds')
+      .insert(parameterLinks)
+      
+    if (linkError) {
+      console.error('Failed to link parameters to category:', linkError)
+    }
+  }
+
   return {
     ok: true,
     item: {

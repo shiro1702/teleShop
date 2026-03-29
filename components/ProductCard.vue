@@ -15,7 +15,7 @@
         <div v-if="quantity > 0" class="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-white shadow-sm">
           {{ quantity }} шт
         </div>
-        <div v-if="product.modifiers && product.modifiers.length > 0" class="rounded-full bg-white/90 backdrop-blur px-2 py-1 text-[10px] font-medium text-gray-700 shadow-sm">
+        <div v-if="(product.modifiers && product.modifiers.length > 0) || (product.parameters && product.parameters.length > 0)" class="rounded-full bg-white/90 backdrop-blur px-2 py-1 text-[10px] font-medium text-gray-700 shadow-sm">
           Настраиваемый
         </div>
       </div>
@@ -34,9 +34,9 @@
           {{ displayPrice }}
         </p>
 
-        <!-- Если есть модификаторы, всегда показываем кнопку "Выбрать" (открывает модалку) -->
+        <!-- Если есть модификаторы или параметры, всегда показываем кнопку "Выбрать" (открывает модалку) -->
         <button
-          v-if="product.modifiers && product.modifiers.length > 0"
+          v-if="(product.modifiers && product.modifiers.length > 0) || (product.parameters && product.parameters.length > 0)"
           type="button"
           class="w-full rounded-lg px-4 py-3 text-base font-medium transition"
           :style="{ backgroundColor: theme.primary_50 || '#f3f4f6', color: theme.primary_700 || '#111827' }"
@@ -114,31 +114,45 @@ const mutedTextColor = computed(() => theme.value.text_muted || 'var(--color-tex
 const quantity = computed(() => cartStore.quantityByProductId(props.product.id))
 
 const displayPrice = computed(() => {
-  if (!props.product.modifiers || props.product.modifiers.length === 0) {
+  const hasModifiers = props.product.modifiers && props.product.modifiers.length > 0
+  const hasParameters = props.product.parameters && props.product.parameters.length > 0
+
+  if (!hasModifiers && !hasParameters) {
     return formatPrice(props.product.price)
   }
   
   let minPrice = props.product.price
-  for (const group of props.product.modifiers) {
-    if (group.isRequired && group.minSelect > 0) {
-      const options = [...group.options]
-      for (let i = 0; i < Math.min(group.minSelect, options.length); i++) {
-        let bestIndex = -1
-        let bestPrice = Number.POSITIVE_INFINITY
-        for (let idx = 0; idx < options.length; idx++) {
-          const opt = options[idx]
-          const candidate =
-            opt.pricingType === 'multiplier'
-              ? Math.round(minPrice * (opt.priceMultiplier ?? 1))
-              : minPrice + (opt.priceDelta || 0)
-          if (candidate < bestPrice) {
-            bestPrice = candidate
-            bestIndex = idx
+
+  if (hasParameters) {
+    // If we have parameters, the base price is the minimum of the parameter options
+    const allPrices = props.product.parameters!.flatMap(p => p.options.filter(o => o.price !== undefined).map(o => o.price!))
+    if (allPrices.length > 0) {
+      minPrice = Math.min(...allPrices)
+    }
+  }
+
+  if (hasModifiers) {
+    for (const group of props.product.modifiers!) {
+      if (group.isRequired && group.minSelect > 0) {
+        const options = [...group.options]
+        for (let i = 0; i < Math.min(group.minSelect, options.length); i++) {
+          let bestIndex = -1
+          let bestPrice = Number.POSITIVE_INFINITY
+          for (let idx = 0; idx < options.length; idx++) {
+            const opt = options[idx]
+            const candidate =
+              opt.pricingType === 'multiplier'
+                ? Math.round(minPrice * (opt.priceMultiplier ?? 1))
+                : minPrice + (opt.priceDelta || 0)
+            if (candidate < bestPrice) {
+              bestPrice = candidate
+              bestIndex = idx
+            }
           }
-        }
-        if (bestIndex >= 0) {
-          minPrice = bestPrice
-          options.splice(bestIndex, 1)
+          if (bestIndex >= 0) {
+            minPrice = bestPrice
+            options.splice(bestIndex, 1)
+          }
         }
       }
     }

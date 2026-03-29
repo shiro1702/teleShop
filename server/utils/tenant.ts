@@ -70,7 +70,7 @@ export function extractShopIdFromInitData(initData: string): string | null {
   if (!startParam) return null
   const direct = startParam.match(/shop_(.+)/i)
   if (direct?.[1]) return decodeURIComponent(direct[1]).trim()
-  return null
+  return decodeURIComponent(startParam).trim()
 }
 
 export function extractBotIdFromInitData(initData: string): number | null {

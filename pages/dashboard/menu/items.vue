@@ -35,7 +35,7 @@
                     <span v-if="!item.isActive" class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">Скрыт</span>
                   </div>
                   <p class="mt-1 text-xs text-gray-500">
-                    {{ item.price }} ₽
+                    <span v-if="item.parameterKinds && item.parameterKinds.length > 0 || item.categoryParameterKindIds && item.categoryParameterKindIds.length > 0">от </span>{{ item.price }} ₽
                   </p>
                 </div>
               </div>
@@ -77,6 +77,52 @@
           <div>
             <label class="block text-sm font-medium text-gray-700">Описание</label>
             <textarea v-model="form.description" rows="2" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"></textarea>
+          </div>
+
+          <div class="border-t border-gray-200 pt-4">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm font-medium text-gray-900">Параметры (варианты с разной ценой)</h3>
+            </div>
+            
+            <div v-if="allParameterKinds.length === 0" class="text-xs text-gray-500 italic mb-4">
+              Нет доступных параметров.
+            </div>
+
+            <div v-for="kind in allParameterKinds" :key="kind.id" class="mb-4 rounded-lg border border-gray-200 p-3 bg-gray-50">
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <div class="flex-1">
+                  <p class="text-sm font-medium text-gray-900">
+                    {{ kind.name }}
+                    <span v-if="kind.source !== 'product'" class="ml-2 rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-700">
+                      из категории
+                    </span>
+                  </p>
+                </div>
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" :checked="isParameterKindEnabled(kind.id, kind.source)" @change="toggleParameterKind(kind.id, kind.source)" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
+                  {{ kind.source === 'product' ? 'Подключить' : 'Включено для товара' }}
+                </label>
+              </div>
+
+              <div v-if="isParameterKindEnabled(kind.id, kind.source)" class="space-y-2">
+                <div v-for="opt in kind.parameter_options" :key="opt.id" class="flex items-center gap-2 bg-white p-2 rounded border border-gray-100">
+                  <div class="flex-1 grid grid-cols-[1fr_auto] gap-2 items-center">
+                     <span class="text-sm text-gray-700">{{ opt.name }}</span>
+                     <input v-model.number="getOptionOverride(opt.id).price" type="number" min="0" placeholder="Цена (₽)" class="block w-24 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" @input="syncBasePrice" />
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-1 text-xs text-gray-600" title="Включена">
+                      <input type="checkbox" v-model="getOptionOverride(opt.id).isActive" class="h-3 w-3 text-primary focus:ring-primary" @change="syncBasePrice" />
+                      Вкл.
+                    </label>
+                    <label class="flex items-center gap-1 text-xs text-gray-600" title="По умолчанию">
+                      <input type="radio" :name="`default_opt_${kind.id}`" :checked="getOptionOverride(opt.id).isDefault" @change="setDefaultOption(kind.id, opt.id)" class="h-3 w-3 text-primary focus:ring-primary" />
+                      Деф.
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="border-t border-gray-200 pt-4">
@@ -196,6 +242,30 @@ import { computed, ref, onMounted, onUnmounted } from 'vue'
 
 definePageMeta({ layout: 'dashboard' })
 
+type ParameterOption = {
+  id: string
+  name: string
+}
+
+type ParameterKind = {
+  id: string
+  code: string
+  name: string
+  parameter_options?: ParameterOption[]
+}
+
+type ProductParameterKind = {
+  parameterKindId: string
+  isRequired: boolean
+}
+
+type ProductParameterOptionOverride = {
+  price?: number
+  isDisabled: boolean
+  isDefault: boolean
+  isActive?: boolean
+}
+
 type Item = {
   id: string
   name: string
@@ -210,12 +280,16 @@ type Item = {
   modifierGroupIds?: string[]
   categoryModifierGroupIds?: string[]
   modifierOverrides?: Record<string, { isDisabled: boolean; disabledOptionIds: string[] }>
+  parameterKinds?: ProductParameterKind[]
+  categoryParameterKindIds?: string[]
+  parameterOptionOverrides?: Record<string, ProductParameterOptionOverride>
 }
 
 type Category = {
   id: string
   name: string
   modifierGroupIds?: string[]
+  parameterKindIds?: string[]
 }
 
 type ModifierGroup = {
@@ -229,6 +303,7 @@ type ModifierGroup = {
 const items = ref<Item[]>([])
 const categories = ref<Category[]>([])
 const modifierGroups = ref<ModifierGroup[]>([])
+const parameterKinds = ref<ParameterKind[]>([])
 const pending = ref(true)
 const error = ref('')
 
@@ -249,7 +324,9 @@ const form = ref({
   externalId: '',
   modifierGroupIds: [] as string[],
   categoryModifierGroupIds: [] as string[],
-  modifierOverrides: {} as Record<string, { isDisabled: boolean; disabledOptionIds: string[] }>
+  modifierOverrides: {} as Record<string, { isDisabled: boolean; disabledOptionIds: string[] }>,
+  parameterKinds: [] as ProductParameterKind[],
+  parameterOptionOverrides: {} as Record<string, ProductParameterOptionOverride>
 })
 
 const groupedItems = computed(() => {
@@ -297,6 +374,87 @@ function ensureOverride(groupId: string) {
     form.value.modifierOverrides[groupId] = { isDisabled: false, disabledOptionIds: [] }
   }
   return form.value.modifierOverrides[groupId]
+}
+
+const categoryParameterKindIds = computed(() => {
+  const category = categories.value.find((cat) => cat.id === form.value.categoryId)
+  return category?.parameterKindIds || []
+})
+
+const allParameterKinds = computed(() => {
+  const categorySet = new Set(categoryParameterKindIds.value)
+  const directSet = new Set(form.value.parameterKinds.map(pk => pk.parameterKindId))
+  const result: Array<ParameterKind & { source: 'category' | 'product' | 'both' }> = []
+
+  for (const kind of parameterKinds.value) {
+    const fromCategory = categorySet.has(kind.id)
+    const fromProduct = directSet.has(kind.id)
+    if (!fromCategory && !fromProduct) continue
+
+    let source: 'category' | 'product' | 'both' = 'product'
+    if (fromCategory && fromProduct) source = 'both'
+    else if (fromCategory) source = 'category'
+
+    result.push({ ...kind, source })
+  }
+
+  return result
+})
+
+function getOptionOverride(optionId: string) {
+  if (!form.value.parameterOptionOverrides[optionId]) {
+    form.value.parameterOptionOverrides[optionId] = { price: undefined, isDisabled: false, isDefault: false, isActive: true }
+  }
+  return form.value.parameterOptionOverrides[optionId]
+}
+
+function isParameterKindEnabled(kindId: string, source: 'category' | 'product' | 'both') {
+  if (source === 'product') return form.value.parameterKinds.some(pk => pk.parameterKindId === kindId)
+  // For category inherited, it's always enabled unless we add logic to disable entire kinds
+  return true
+}
+
+function toggleParameterKind(kindId: string, source: 'category' | 'product' | 'both') {
+  if (source === 'product') {
+    const idx = form.value.parameterKinds.findIndex(pk => pk.parameterKindId === kindId)
+    if (idx === -1) form.value.parameterKinds.push({ parameterKindId: kindId, isRequired: true })
+    else form.value.parameterKinds.splice(idx, 1)
+    return
+  }
+  // If we want to allow disabling category inherited kinds, we need a new override structure for that
+}
+
+function setDefaultOption(kindId: string, optionId: string) {
+  const kind = parameterKinds.value.find(k => k.id === kindId)
+  if (!kind || !kind.parameter_options) return
+
+  kind.parameter_options.forEach(opt => {
+    const override = getOptionOverride(opt.id)
+    override.isDefault = opt.id === optionId
+  })
+}
+
+function syncBasePrice() {
+  let minPrice: number | null = null
+  
+  for (const kind of allParameterKinds.value) {
+    if (!isParameterKindEnabled(kind.id, kind.source)) continue
+    
+    if (kind.parameter_options) {
+      for (const opt of kind.parameter_options) {
+        const override = getOptionOverride(opt.id)
+        if (override.isActive !== false && override.price !== undefined && override.price !== null) {
+          if (minPrice === null || override.price < minPrice) {
+            minPrice = override.price
+          }
+        }
+      }
+    }
+  }
+
+  if (minPrice !== null) {
+    form.value.price = minPrice
+  }
 }
 
 function isGroupEnabled(groupId: string, source: 'category' | 'product' | 'both') {
@@ -384,18 +542,21 @@ async function handleImageUpload(event: Event) {
 async function fetchData() {
   pending.value = true
   try {
-    const [itemsRes, catsRes, modsRes] = await Promise.all([
+    const [itemsRes, catsRes, modsRes, paramsRes] = await Promise.all([
       fetch('/api/dashboard/menu/items'),
       fetch('/api/dashboard/menu/categories'),
-      fetch('/api/dashboard/menu/modifiers')
+      fetch('/api/dashboard/menu/modifiers'),
+      fetch('/api/dashboard/menu/parameters')
     ])
     
     const itemsData = await itemsRes.json()
     const catsData = await catsRes.json()
     const modsData = await modsRes.json()
+    const paramsData = await paramsRes.json()
     
     if (itemsData.ok) items.value = itemsData.items
     if (catsData.ok) categories.value = catsData.items
+    if (paramsData.ok) parameterKinds.value = paramsData.items
     if (modsData.ok) {
       modifierGroups.value = modsData.items.map((g: any) => ({
         id: g.id,
@@ -436,7 +597,9 @@ function openCreateModal() {
     isActive: true, sortOrder: 0, externalId: '',
     modifierGroupIds: [],
     categoryModifierGroupIds: [],
-    modifierOverrides: {}
+    modifierOverrides: {},
+    parameterKinds: [],
+    parameterOptionOverrides: {}
   }
   isModalOpen.value = true
 }
@@ -455,7 +618,9 @@ function openEditModal(item: Item) {
     externalId: item.externalId || '',
     modifierGroupIds: item.modifierGroupIds || [],
     categoryModifierGroupIds: item.categoryModifierGroupIds || [],
-    modifierOverrides: item.modifierOverrides || {}
+    modifierOverrides: item.modifierOverrides || {},
+    parameterKinds: JSON.parse(JSON.stringify(item.parameterKinds || [])),
+    parameterOptionOverrides: JSON.parse(JSON.stringify(item.parameterOptionOverrides || {}))
   }
   isModalOpen.value = true
 }
@@ -472,10 +637,19 @@ async function saveItem() {
       ? `/api/dashboard/menu/items/${editingItem.value!.id}`
       : '/api/dashboard/menu/items'
     
+    // Convert parameterOptionOverrides object to array for API
+    const payload = {
+      ...form.value,
+      parameterOptionOverrides: Object.entries(form.value.parameterOptionOverrides).map(([optionId, override]) => ({
+        optionId,
+        ...override
+      }))
+    }
+
     const res = await fetch(url, {
       method: isEdit ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form.value)
+      body: JSON.stringify(payload)
     })
     
     const data = await res.json()

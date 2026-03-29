@@ -10,6 +10,17 @@ function buildCartStorageKey(scopeKey: string | null): string {
   return scope ? `${CART_STORAGE_KEY}:${scope}` : CART_STORAGE_KEY
 }
 
+export interface SelectedParameter {
+  parameterKindId: string
+  productParameterId: string
+  optionId: string
+  optionName: string
+  price: number
+  weightG?: number | null
+  volumeMl?: number | null
+  pieces?: number | null
+}
+
 export interface SelectedModifier {
   groupId: string
   groupName: string
@@ -21,10 +32,11 @@ export interface SelectedModifier {
 }
 
 export interface CartItem extends Product {
-  cartItemId: string // Unique ID for the cart item (product.id + modifiers hash)
+  cartItemId: string // Unique ID for the cart item (product.id + parameters hash + modifiers hash)
   quantity: number
   selectedModifiers: SelectedModifier[]
-  unitPrice: number // Base price + modifiers
+  selectedParameters?: SelectedParameter[]
+  unitPrice: number // Base price (or parameter price) + modifiers
 }
 
 function getStoredCartItems(scopeKey: string | null): CartItem[] {
@@ -60,20 +72,28 @@ function persistCart(scopeKey: string | null, items: CartItem[]) {
   }
 }
 
-function generateCartItemId(productId: string, modifiers: SelectedModifier[]): string {
-  if (!modifiers || modifiers.length === 0) return productId
+function generateCartItemId(productId: string, modifiers: SelectedModifier[], parameters?: SelectedParameter[]): string {
+  let paramHash = ''
+  if (parameters && parameters.length > 0) {
+    const sortedParams = [...parameters].sort((a, b) => a.parameterKindId.localeCompare(b.parameterKindId))
+    paramHash = sortedParams.map(p => `${p.parameterKindId}:${p.optionId}`).join('|')
+  }
+
+  let modHash = ''
+  if (modifiers && modifiers.length > 0) {
+    const sortedMods = [...modifiers].sort((a, b) => {
+      if (a.groupId !== b.groupId) return a.groupId.localeCompare(b.groupId)
+      return a.optionId.localeCompare(b.optionId)
+    })
+    modHash = sortedMods.map(m => `${m.groupId}:${m.optionId}`).join('|')
+  }
   
-  // Sort modifiers by groupId and optionId to ensure consistent hashing
-  const sorted = [...modifiers].sort((a, b) => {
-    if (a.groupId !== b.groupId) return a.groupId.localeCompare(b.groupId)
-    return a.optionId.localeCompare(b.optionId)
-  })
-  
-  const hash = sorted.map(m => `${m.groupId}:${m.optionId}`).join('|')
-  return `${productId}::${hash}`
+  return `${productId}::P[${paramHash}]::M[${modHash}]`
 }
 
-function calculateUnitPrice(basePrice: number, modifiers: SelectedModifier[]): number {
+function calculateUnitPrice(basePrice: number, modifiers: SelectedModifier[], parameters?: SelectedParameter[]): number {
+  const actualBasePrice = parameters && parameters.length > 0 ? parameters[0].price : basePrice
+
   const multiplier = modifiers
     .filter((mod) => mod.pricingType === 'multiplier')
     .reduce((acc, mod) => acc * (mod.priceMultiplier ?? 1), 1)
@@ -82,7 +102,7 @@ function calculateUnitPrice(basePrice: number, modifiers: SelectedModifier[]): n
     .filter((mod) => mod.pricingType !== 'multiplier')
     .reduce((sum, mod) => sum + (mod.priceDelta || 0), 0)
 
-  return Math.round(basePrice * multiplier + delta)
+  return Math.round(actualBasePrice * multiplier + delta)
 }
 
 export const useCartStore = defineStore('cart', {
@@ -106,12 +126,12 @@ export const useCartStore = defineStore('cart', {
     grandTotal(): number {
       return this.total + this.deliveryCost
     },
-    canCheckout: (state): boolean => {
-      if (!state.items.length) return false
-      if (state.deliveryError) return false
-      if (!state.deliveryZone) return false
-      const zoneMin = state.deliveryZone.minOrderAmount
-      return state.total >= zoneMin
+    canCheckout(): boolean {
+      if (!this.items.length) return false
+      if (this.deliveryError) return false
+      if (!this.deliveryZone) return false
+      const zoneMin = this.deliveryZone.minOrderAmount
+      return this.total >= zoneMin
     },
     deliverySummary: (state) => {
       if (!state.deliveryZone) {
@@ -176,19 +196,20 @@ export const useCartStore = defineStore('cart', {
     setProducts(products: Product[]) {
       this.products = Array.isArray(products) ? products : []
     },
-    addItem(product: Product, quantity = 1, modifiers: SelectedModifier[] = []) {
-      const cartItemId = generateCartItemId(product.id, modifiers)
+    addItem(product: Product, quantity = 1, modifiers: SelectedModifier[] = [], parameters: SelectedParameter[] = []) {
+      const cartItemId = generateCartItemId(product.id, modifiers, parameters)
       const existing = this.items.find((i) => i.cartItemId === cartItemId)
       
       if (existing) {
         existing.quantity += quantity
       } else {
-        const unitPrice = calculateUnitPrice(product.price, modifiers)
+        const unitPrice = calculateUnitPrice(product.price, modifiers, parameters)
         this.items.push({ 
           ...product, 
           cartItemId,
           quantity,
           selectedModifiers: modifiers,
+          selectedParameters: parameters,
           unitPrice
         })
       }

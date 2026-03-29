@@ -193,6 +193,49 @@
                 </p>
               </div>
 
+              <!-- Параметры -->
+              <div v-if="selectedProduct.parameters && selectedProduct.parameters.length > 0" class="space-y-4 pt-2">
+                <div v-for="group in selectedProduct.parameters" :key="group.id" class="space-y-2">
+                  <div class="flex items-center justify-between">
+                    <h3 class="font-medium text-sm" :style="{ color: mainTextColor }">{{ group.name }}</h3>
+                    <span v-if="group.isRequired" class="text-[10px] uppercase tracking-wider text-red-500 font-semibold bg-red-50 px-2 py-0.5 rounded">Обязательно</span>
+                  </div>
+                  
+                  <div class="flex flex-wrap gap-2 w-full">
+                    <label 
+                      v-for="opt in group.options" 
+                      :key="opt.id"
+                      class="relative flex-1 min-w-[80px] flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition-colors text-center"
+                      :style="{ 
+                        borderColor: isParameterSelected(group.id, opt.id) ? 'var(--color-primary)' : theme.primary_100 || '#e5e7eb',
+                        backgroundColor: isParameterSelected(group.id, opt.id) ? 'var(--color-primary)' : 'transparent',
+                        color: isParameterSelected(group.id, opt.id) ? '#ffffff' : mainTextColor
+                      }"
+                    >
+                      <input 
+                        type="radio"
+                        :name="`param-${group.id}`"
+                        :checked="isParameterSelected(group.id, opt.id)"
+                        @change="toggleParameter(group.id, opt.id)"
+                        class="sr-only"
+                      />
+                      <div class="flex flex-col items-center">
+                        <span class="text-sm font-medium">{{ opt.name }}</span>
+                        <span class="text-xs opacity-80">{{ formatPrice(opt.price || 0) }}</span>
+                      </div>
+
+                      <!-- Badge для количества в корзине -->
+                      <span 
+                        v-if="getParameterQuantityInCart(opt.id) > 0" 
+                        class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-sm"
+                      >
+                        {{ getParameterQuantityInCart(opt.id) }}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
               <!-- Модификаторы -->
               <div v-if="selectedProduct.modifiers && selectedProduct.modifiers.length > 0" class="space-y-4 pt-2">
                 <div v-for="group in selectedProduct.modifiers" :key="group.id" class="space-y-2">
@@ -256,8 +299,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { $fetch } from 'ofetch'
-import type { Product, ModifierGroup, ModifierOption } from '../data/products'
-import type { SelectedModifier } from '../stores/cart'
+import type { Product, ModifierGroup, ModifierOption, ProductParameterGroup, ProductParameterOption } from '../data/products'
+import type { SelectedModifier, SelectedParameter } from '../stores/cart'
 import { useTenant } from '../composables/useTenant'
 import { useTelegram } from '../composables/useTelegram'
 import { useCartStore } from '../stores/cart'
@@ -276,8 +319,9 @@ const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
 const theme = computed(() => tenant.value.theme || {})
 
-// State for modifiers
+// State for modifiers and parameters
 const activeModifiers = ref<Record<string, Set<string>>>({})
+const activeParameters = ref<Record<string, string>>({})
 
 const pageBgColor = computed(() => theme.value.surface_background || 'var(--color-surface-bg)')
 const cardBgColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
@@ -324,24 +368,62 @@ function applyCartScope() {
 
 function openProduct(product: Product) {
   selectedProduct.value = product
-  const next: Record<string, Set<string>> = {}
+  const nextMods: Record<string, Set<string>> = {}
+  const nextParams: Record<string, string> = {}
 
-  // Pre-select defaults
+  // Pre-select defaults for modifiers
   if (product.modifiers) {
     product.modifiers.forEach((group) => {
       const s = new Set<string>()
       group.options.forEach((opt) => {
         if (opt.isDefault) s.add(opt.id)
       })
-      next[group.id] = s
+      nextMods[group.id] = s
     })
   }
-  activeModifiers.value = next
+
+  // Pre-select defaults for parameters
+  if (product.parameters) {
+    product.parameters.forEach((group) => {
+      const defaultOpt = group.options.find(opt => opt.isDefault) || group.options[0]
+      if (defaultOpt) {
+        nextParams[group.id] = defaultOpt.id
+      }
+    })
+  }
+
+  activeModifiers.value = nextMods
+  activeParameters.value = nextParams
 }
 
 function closeProduct() {
   selectedProduct.value = null
   activeModifiers.value = {}
+  activeParameters.value = {}
+}
+
+function isParameterSelected(groupId: string, optionId: string) {
+  return activeParameters.value[groupId] === optionId
+}
+
+function toggleParameter(groupId: string, optionId: string) {
+  activeParameters.value = {
+    ...activeParameters.value,
+    [groupId]: optionId
+  }
+}
+
+function getParameterQuantityInCart(optionId: string) {
+  if (!selectedProduct.value) return 0
+  let count = 0
+  for (const item of cartStore.items) {
+    if ((item as any).id === selectedProduct.value.id) {
+      if (item.selectedParameters?.some(p => p.optionId === optionId)) {
+        count += item.quantity
+      }
+    }
+  }
+  return count
 }
 
 function isOptionSelected(groupId: string, optionId: string) {
@@ -391,12 +473,20 @@ function toggleOption(group: ModifierGroup, option: ModifierOption) {
 }
 
 const isModifiersValid = computed(() => {
-  if (!selectedProduct.value?.modifiers) return true
+  if (!selectedProduct.value) return true
   
-  for (const group of selectedProduct.value.modifiers) {
-    const selectedCount = activeModifiers.value[group.id]?.size || 0
-    if (group.isRequired && selectedCount === 0) return false
-    if (group.minSelect > 0 && selectedCount < group.minSelect) return false
+  if (selectedProduct.value.parameters) {
+    for (const group of selectedProduct.value.parameters) {
+      if (group.isRequired && !activeParameters.value[group.id]) return false
+    }
+  }
+
+  if (selectedProduct.value.modifiers) {
+    for (const group of selectedProduct.value.modifiers) {
+      const selectedCount = activeModifiers.value[group.id]?.size || 0
+      if (group.isRequired && selectedCount === 0) return false
+      if (group.minSelect > 0 && selectedCount < group.minSelect) return false
+    }
   }
   
   return true
@@ -404,6 +494,22 @@ const isModifiersValid = computed(() => {
 
 const selectedProductPrice = computed(() => {
   if (!selectedProduct.value) return 0
+  
+  let basePrice = selectedProduct.value.price
+  
+  if (selectedProduct.value.parameters) {
+    for (const group of selectedProduct.value.parameters) {
+      const selectedId = activeParameters.value[group.id]
+      if (selectedId) {
+        const opt = group.options.find(o => o.id === selectedId)
+        if (opt && opt.price !== undefined) {
+          basePrice = opt.price
+          break // Only one parameter group affects base price
+        }
+      }
+    }
+  }
+
   let multiplier = 1
   let delta = 0
   
@@ -424,13 +530,35 @@ const selectedProductPrice = computed(() => {
     })
   }
   
-  return Math.round(selectedProduct.value.price * multiplier + delta)
+  return Math.round(basePrice * multiplier + delta)
 })
 
 function addSelectedToCart() {
   if (!selectedProduct.value || !isModifiersValid.value) return
   
   const modifiers: SelectedModifier[] = []
+  const parameters: SelectedParameter[] = []
+
+  if (selectedProduct.value.parameters) {
+    selectedProduct.value.parameters.forEach(group => {
+      const selectedId = activeParameters.value[group.id]
+      if (selectedId) {
+        const opt = group.options.find(o => o.id === selectedId)
+        if (opt) {
+          parameters.push({
+            parameterKindId: group.parameterKindId,
+            productParameterId: group.id,
+            optionId: opt.id,
+            optionName: opt.name,
+            price: opt.price || 0,
+            weightG: opt.weightG,
+            volumeMl: opt.volumeMl,
+            pieces: opt.pieces
+          })
+        }
+      }
+    })
+  }
   
   if (selectedProduct.value.modifiers) {
     selectedProduct.value.modifiers.forEach(group => {
@@ -453,7 +581,7 @@ function addSelectedToCart() {
     })
   }
   
-  cartStore.addItem(selectedProduct.value, 1, modifiers)
+  cartStore.addItem(selectedProduct.value, 1, modifiers, parameters)
   closeProduct()
 }
 
