@@ -756,11 +756,11 @@ export default defineNuxtRouteMiddleware((to) => {
 
 *Принятая целевая модель: одна организация (бренд) может работать в нескольких городах через свои филиалы.*
 
-## 11. Stories System (Marketing & Engagement)
-The platform includes a robust Stories system for displaying interactive, targeted content to users. This system is documented in detail in [STORIES.md](./STORIES.md).
+## 15. Сториз, Маркетинг и Лояльность
+Платформа включает в себя мощную систему для вовлечения пользователей, проведения акций и удержания клиентов.
 
-**Key Features:**
-- **Targeted Campaigns:** Show stories based on user profile (gender, birthday, order history).
-- **Interactive Actions:** Buttons within stories can trigger actions like "Add to Cart" or "Apply Promo Code".
-- **Flexible Placement:** Display stories in a top bar or inject them directly into the product catalog grid.
-- **Future Aggregator Integration:** The system is designed to scale to the aggregator level for monetizing placement space.
+**Документация разделена на следующие части:**
+- **Сториз (Управление):** Как рестораны создают кампании, настраивают таргетинг, интерактивы (опросы, геймификация) — описано в `pages/dashboard/stories.md`.
+- **Сториз (Отображение на витрине):** Как сториз персонализируются для клиентов, внедряются в каталог (Grid Injection) и обрабатывают диплинки — описано в `pages/[city_slug]/[tenant_slug]/index.md`.
+- **Акции и Лояльность:** Движок правил (Rule Engine) для промокодов и акций, а также бонусная система "Магазин за баллы" и грейды лояльности — описано в `pages/dashboard/marketing.md`.
+- **Продвинутый каталог:** Модификаторы, сборные комбо и кросс-селл (Upsell) в корзине — описано в `pages/dashboard/menu.md`.
