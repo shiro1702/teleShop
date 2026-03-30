@@ -588,9 +588,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const now = new Date()
-  const datePart = now.toISOString().slice(0, 10).replace(/-/g, '')
-  const timePart = now.toISOString().slice(11, 19).replace(/:/g, '')
-  const orderId = `${datePart}-${timePart}`
+  // В таблице `public.orders.id` тип `uuid`, поэтому используем UUID, чтобы
+  // фронт (и роуты дашборда) могли однозначно находить заказ.
+  const orderId = crypto.randomUUID()
+  const orderCreatedAtIso = now.toISOString()
   const text = buildOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, fulfillmentType === 'delivery' ? deliveryZoneValidated : null, user, {
     fulfillmentType,
     pickupPoint,
@@ -622,6 +623,55 @@ export default defineEventHandler(async (event) => {
         ],
       ],
     },
+  }
+
+  // Persist order for dashboard & kitchen.
+  // Note: WEB/TMA modes are normalized to `user.id` (Telegram id) above.
+  const serviceClient = await serverSupabaseServiceRole(event)
+  const grandTotal = Math.round(total + deliveryCost)
+  const initialMetadata = {
+    timeline: [
+      {
+        at: orderCreatedAtIso,
+        label: 'Заказ создан',
+        from: 'new',
+        to: 'new',
+        source: 'order',
+        userId: String(user.id),
+        comment: null,
+      },
+    ],
+  }
+
+  const { error: insertError } = await serviceClient.from('orders').insert({
+    id: orderId,
+    shop_id: tenantShopId,
+    restaurant_id: restaurant.id,
+    customer_telegram_id: user.id,
+    status: 'new',
+    fulfillment_type: fulfillmentType,
+    payment_method: paymentMethod,
+    subtotal: Math.round(total),
+    delivery_cost: Math.round(deliveryCost),
+    total: grandTotal,
+    items: itemsWithServerPrice,
+    address:
+      fulfillmentType === 'delivery' || fulfillmentType === 'qr-menu'
+        ? {
+            line: addressLine,
+            flat,
+            comment,
+            zone: deliveryZoneValidated,
+          }
+        : null,
+    pickup_point: fulfillmentType === 'pickup' ? pickupPoint : null,
+    comment,
+    metadata: initialMetadata,
+  })
+
+  if (insertError) {
+    console.error('Failed to insert order row:', insertError)
+    throw createError({ statusCode: 500, message: 'Failed to create order' })
   }
 
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`
