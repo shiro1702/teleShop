@@ -452,13 +452,13 @@ const derivedAllowedFulfillmentTypes = computed<FulfillmentType[]>(() => {
     const out: FulfillmentType[] = []
     if (ops[0].supports_delivery) out.push('delivery')
     if (ops[0].supports_pickup) out.push('pickup')
-    return out.length ? out : fallback
+    return out
   }
 
   const out: FulfillmentType[] = []
   if (ops.some((r) => r.supports_delivery)) out.push('delivery')
   if (ops.some((r) => r.supports_pickup)) out.push('pickup')
-  return out.length ? out : fallback
+  return out
 })
 
 const hasDeliveryOption = computed(() => derivedAllowedFulfillmentTypes.value.includes('delivery'))
@@ -555,6 +555,10 @@ async function loadRestaurantModes() {
   } finally {
     isRestaurantModesLoaded.value = true
     const allowed = derivedAllowedFulfillmentTypes.value
+    if (!allowed.length) {
+      persistFulfillmentTypeToCheckout(selectedFulfillmentType.value)
+      return
+    }
     if (!allowed.includes(selectedFulfillmentType.value)) {
       selectedFulfillmentType.value = allowed.includes('delivery') ? 'delivery' : allowed[0]
     }

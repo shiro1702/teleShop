@@ -22,6 +22,7 @@ export type TenantRestaurant = {
   address: string
   supports_delivery: boolean
   supports_pickup: boolean
+  supports_qr_menu: boolean
   is_active: boolean
 }
 
@@ -210,16 +211,23 @@ export async function requireTenantShop(event: H3Event): Promise<{ shopId: strin
   return { shopId, shop }
 }
 
-export function assertShopIdMatchesTenant(
+/**
+ * Проверяет, что shop_id из тела запроса относится к тому же магазину, что и tenant-контекст.
+ * В теле можно передать UUID магазина или его slug — оба сопоставляются с `shops.id`.
+ * Если поле не передано, проверка пропускается (используется только tenant).
+ */
+export async function assertShopIdMatchesTenant(
+  event: H3Event,
   payloadShopId: string | null | undefined,
   tenantShopId: string,
-): string {
+): Promise<void> {
   const normalized = typeof payloadShopId === 'string' ? payloadShopId.trim() : ''
-  const effective = normalized || tenantShopId
-  if (effective !== tenantShopId) {
+  if (!normalized) return
+
+  const shop = await getShopById(event, normalized)
+  if (!shop || shop.id !== tenantShopId) {
     throw createError({ statusCode: 400, message: 'shop_id does not match tenant context' })
   }
-  return effective
 }
 
 export async function requireRestaurantForShop(
@@ -235,7 +243,7 @@ export async function requireRestaurantForShop(
   const client = await serverSupabaseServiceRole(event)
   const { data, error } = await client
     .from('restaurants')
-    .select('id,shop_id,name,address,supports_delivery,supports_pickup,is_active')
+    .select('id,shop_id,name,address,supports_delivery,supports_pickup,supports_qr_menu,is_active')
     .eq('shop_id', shopId)
     .eq('id', normalizedRestaurantId)
     .eq('is_active', true)

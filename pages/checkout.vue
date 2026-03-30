@@ -231,13 +231,23 @@
                   Способ получения
                 </h2>
                 <p
-                  v-if="availableFulfillmentTypes.length === 1"
+                  v-if="availableFulfillmentTypes.length === 0"
+                  class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                >
+                  Для выбранного ресторана не доступно оформление через delivery/pickup.
+                </p>
+                <p
+                  v-else-if="availableFulfillmentTypes.length === 1"
                   class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
                 >
                   Доступно только: <span class="font-semibold text-gray-900">{{ summaryDeliveryLabel }}</span>
                 </p>
-                <div v-else class="inline-flex w-full rounded-xl border border-gray-200 bg-white p-1">
+                <div
+                  v-else
+                  class="inline-flex w-full rounded-xl border border-gray-200 bg-white p-1"
+                >
                   <button
+                    v-if="hasDeliveryOption"
                     type="button"
                     class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition"
                     :class="state.fulfillmentType === 'delivery'
@@ -248,6 +258,7 @@
                     Доставка
                   </button>
                   <button
+                    v-if="hasPickupOption"
                     type="button"
                     class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition"
                     :class="state.fulfillmentType === 'pickup'
@@ -256,6 +267,17 @@
                     @click="state.fulfillmentType = 'pickup'"
                   >
                     Самовывоз
+                  </button>
+                  <button
+                    v-if="hasQrMenuOption"
+                    type="button"
+                    class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition"
+                    :class="state.fulfillmentType === 'qr-menu'
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-gray-600 hover:bg-gray-100'"
+                    @click="state.fulfillmentType = 'qr-menu'"
+                  >
+                    QR-меню
                   </button>
                 </div>
               </section>
@@ -368,7 +390,7 @@
               </section>
 
               <section
-                v-else-if="hasPickupOption"
+                v-else-if="hasPickupOption && state.fulfillmentType === 'pickup'"
                 class="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 sm:p-4"
               >
                 <p>
@@ -417,6 +439,18 @@
                     {{ selectedPickupPoint.address }}
                   </p>
                 </div>
+              </section>
+
+              <section
+                v-else-if="hasQrMenuOption && state.fulfillmentType === 'qr-menu'"
+                class="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 sm:p-4"
+              >
+                <p class="font-medium">
+                  Оформление через QR-меню
+                </p>
+                <p class="text-amber-900/80">
+                  Адрес доставки не требуется. Мы передадим заказ в работу и отправим подтверждение после оформления.
+                </p>
               </section>
             </div>
           </div>
@@ -752,6 +786,7 @@ const {
   availableFulfillmentTypes,
   hasDeliveryOption,
   hasPickupOption,
+  hasQrMenuOption,
   pickupIntroText,
   loadRestaurants,
 } = useCheckoutTenantRestaurants({
@@ -781,13 +816,23 @@ const hasAllRequiredParameterSelections = computed(() => {
 const canGoToSummary = computed(() => {
   if (state.fulfillmentType === 'pickup') {
     return (
+      hasPickupOption.value &&
       cartStore.items.length > 0 &&
       !!selectedPickupPoint.value &&
       hasAllRequiredParameterSelections.value
     )
   }
+
+  if (state.fulfillmentType === 'qr-menu') {
+    return (
+      hasQrMenuOption.value &&
+      cartStore.items.length > 0 &&
+      hasAllRequiredParameterSelections.value
+    )
+  }
   const hasHouseNumber = /\d/.test(addressLine.value.trim())
   return (
+    hasDeliveryOption.value &&
     hasHouseNumber &&
     cartStore.items.length > 0 &&
     !!cartStore.deliveryZone &&
@@ -797,11 +842,17 @@ const canGoToSummary = computed(() => {
 })
 
 const summaryDeliveryLabel = computed(() =>
-  state.fulfillmentType === 'pickup' ? 'Самовывоз' : 'Доставка',
+  state.fulfillmentType === 'pickup'
+    ? 'Самовывоз'
+    : state.fulfillmentType === 'qr-menu'
+      ? 'QR-меню'
+      : 'Доставка',
 )
 
 const summaryDeliveryCost = computed(() =>
-  state.fulfillmentType === 'pickup' ? 0 : cartStore.deliveryCost,
+  state.fulfillmentType === 'delivery'
+    ? cartStore.deliveryCost
+    : 0,
 )
 
 const summaryGrandTotal = computed(() =>
@@ -813,7 +864,9 @@ const step1NextButtonLabel = computed(() =>
     ? 'Далее: способ получения'
     : hasPickupOption.value
       ? 'Далее: самовывоз'
-      : 'Далее: адрес доставки',
+      : hasQrMenuOption.value
+        ? 'Далее: QR-меню'
+        : 'Далее: адрес доставки',
 )
 
 const isAuthorizedForOrder = computed(() => {

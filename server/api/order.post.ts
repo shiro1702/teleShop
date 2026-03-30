@@ -13,6 +13,10 @@ import {
   type TenantRestaurantZone,
 } from '~/server/utils/tenant'
 import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
+import {
+  catalogGroupsToOrderValidationShape,
+  fetchProductParameterGroupsByProductId,
+} from '~/server/utils/productParametersCatalog'
 
 interface SelectedModifierPayload {
   groupId: string
@@ -93,7 +97,7 @@ function formatPrice(value: number): string {
 }
 
 type PaymentMethod = 'cash' | 'card_courier' | 'online'
-type FulfillmentType = 'delivery' | 'pickup'
+type FulfillmentType = 'delivery' | 'pickup' | 'qr-menu'
 type PickupPoint = {
   id: string
   name: string
@@ -101,13 +105,13 @@ type PickupPoint = {
 }
 
 function parseAvailableFulfillmentTypes(raw: string | undefined): FulfillmentType[] {
-  if (!raw) return ['delivery', 'pickup']
+  if (!raw) return ['delivery', 'pickup', 'qr-menu']
   const parsed = raw
     .split(',')
     .map((x) => x.trim().toLowerCase())
-    .filter((x): x is FulfillmentType => x === 'delivery' || x === 'pickup')
+    .filter((x): x is FulfillmentType => x === 'delivery' || x === 'pickup' || x === 'qr-menu')
 
-  if (!parsed.length) return ['delivery', 'pickup']
+  if (!parsed.length) return ['delivery', 'pickup', 'qr-menu']
   return Array.from(new Set(parsed))
 }
 
@@ -137,6 +141,7 @@ function buildOrderMessage(
   const username = user.username ? `@${user.username}` : [user.first_name, user.last_name].filter(Boolean).join(' ') || `ID ${user.id}`
   const grandTotal = total + deliveryCost
   const isPickup = options.fulfillmentType === 'pickup'
+  const isQrMenu = options.fulfillmentType === 'qr-menu'
   
   const formattedItems = items.flatMap((item) => {
     const lines = [`  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`]
@@ -173,18 +178,20 @@ function buildOrderMessage(
     `💰 Товары: ${formatPrice(total)}`,
     isPickup
       ? '🏬 Способ получения: Самовывоз'
-      : `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
-    isPickup
+      : isQrMenu
+        ? '🧾 Способ получения: QR-меню'
+        : `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
+    isPickup || isQrMenu
       ? `💳 Итого: ${formatPrice(grandTotal)}`
       : `💳 Итого с доставкой: ${formatPrice(grandTotal)}`,
     '',
   ]
 
-  if (!isPickup && options.addressLine) {
+  if (!isPickup && !isQrMenu && options.addressLine) {
     const addrParts = [options.addressLine]
     if (options.flat) addrParts.push(options.flat)
     lines.push(`📍 Адрес: ${addrParts.join(', ')}`)
-  } else if (isPickup && options.pickupPoint) {
+  } else if ((isPickup || isQrMenu) && isPickup && options.pickupPoint) {
     lines.push(`🏬 Точка самовывоза: ${options.pickupPoint.name}, ${options.pickupPoint.address}`)
   }
   if (options.comment) {
@@ -222,6 +229,7 @@ function buildClientOrderMessage(
 ): string {
   const grandTotal = total + deliveryCost
   const isPickup = options.fulfillmentType === 'pickup'
+  const isQrMenu = options.fulfillmentType === 'qr-menu'
   
   const formattedItems = items.flatMap((item) => {
     const lines = [`  • ${item.name} × ${item.quantity} — ${formatPrice(item.price * item.quantity)}`]
@@ -258,15 +266,19 @@ function buildClientOrderMessage(
     `💰 Товары: ${formatPrice(total)}`,
     isPickup
       ? '🏬 Способ получения: Самовывоз'
-      : `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
-    isPickup ? `💳 Итого: ${formatPrice(grandTotal)}` : `💳 Итого с доставкой: ${formatPrice(grandTotal)}`,
+      : isQrMenu
+        ? '🧾 Способ получения: QR-меню'
+        : `🚚 Доставка: ${formatPrice(deliveryCost)}${deliveryZone?.name ? ` (зона: ${deliveryZone.name})` : ''}`,
+    isPickup || isQrMenu
+      ? `💳 Итого: ${formatPrice(grandTotal)}`
+      : `💳 Итого с доставкой: ${formatPrice(grandTotal)}`,
   ]
 
-  if (!isPickup && options.addressLine) {
+  if (!isPickup && !isQrMenu && options.addressLine) {
     const addrParts = [options.addressLine]
     if (options.flat) addrParts.push(options.flat)
     lines.push(`📍 Адрес: ${addrParts.join(', ')}`)
-  } else if (isPickup && options.pickupPoint) {
+  } else if ((isPickup || isQrMenu) && isPickup && options.pickupPoint) {
     lines.push(`🏬 Точка самовывоза: ${options.pickupPoint.name}, ${options.pickupPoint.address}`)
   }
   if (options.comment) {
@@ -293,13 +305,7 @@ async function loadTenantProductsForOrder(
   const serviceClient = await serverSupabaseServiceRole(event)
   const { data, error } = await serviceClient
     .from('products')
-    .select(`
-      id,name,price,
-      product_parameters(
-        id, parameter_kind_id, is_required,
-        product_parameter_options(id, name, price, weight_g, volume_ml, pieces, is_active)
-      )
-    `)
+    .select('id,name,price,category_id')
     .eq('shop_id', shopId)
     .in('id', productIds)
 
@@ -309,13 +315,16 @@ async function loadTenantProductsForOrder(
   }
 
   const rows = (Array.isArray(data) ? data : []) as any[]
+  const paramByProduct = await fetchProductParameterGroupsByProductId(serviceClient, shopId, rows)
+
   const map = new Map<string, ProductRow>()
   for (const row of rows) {
+    const groups = paramByProduct[row.id]
     map.set(row.id, {
       id: row.id,
       name: row.name,
       price: row.price,
-      parameters: row.product_parameters || []
+      parameters: groups ? catalogGroupsToOrderValidationShape(groups) : [],
     })
   }
   return map
@@ -334,9 +343,17 @@ export default defineEventHandler(async (event) => {
         ? tenantIntegrationKeys.manager_chat_id
         : config.managerChatId
   ) as string
-  const tenantFulfillment = typeof tenantIntegrationKeys.fulfillment_types === 'string'
+  const tenantFulfillmentRaw = typeof tenantIntegrationKeys.fulfillment_types === 'string'
     ? tenantIntegrationKeys.fulfillment_types
     : (config.public?.fulfillmentTypes as string | undefined)
+  const tenantFulfillment = typeof tenantFulfillmentRaw === 'string' && tenantFulfillmentRaw.trim().length
+    ? tenantFulfillmentRaw
+        .split(',')
+        .map((x) => x.trim().toLowerCase())
+        .filter(Boolean)
+        .concat(['qr-menu'].filter(() => !tenantFulfillmentRaw.toLowerCase().includes('qr-menu')))
+        .join(',')
+    : undefined
   const availableFulfillmentTypes = parseAvailableFulfillmentTypes(tenantFulfillment)
   const globallyAllowed = await applyGlobalFulfillmentPolicy(event, tenantShopId, availableFulfillmentTypes)
 
@@ -369,7 +386,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Expected { items }' })
   }
 
-  assertShopIdMatchesTenant(
+  await assertShopIdMatchesTenant(
+    event,
     typeof body.shopId === 'string'
       ? body.shopId
       : typeof body.shop_id === 'string'
@@ -443,7 +461,12 @@ export default defineEventHandler(async (event) => {
   })
 
   const total = itemsWithServerPrice.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const fulfillmentType: FulfillmentType = body.fulfillmentType === 'pickup' ? 'pickup' : 'delivery'
+  const fulfillmentType: FulfillmentType =
+    body.fulfillmentType === 'pickup'
+      ? 'pickup'
+      : body.fulfillmentType === 'qr-menu'
+        ? 'qr-menu'
+        : 'delivery'
   if (!globallyAllowed.includes(fulfillmentType)) {
     throw createError({ statusCode: 400, message: `Fulfillment type "${fulfillmentType}" is disabled` })
   }
@@ -453,37 +476,53 @@ export default defineEventHandler(async (event) => {
   if (fulfillmentType === 'pickup' && !restaurant.supports_pickup) {
     throw createError({ statusCode: 400, message: 'Pickup is not available for selected restaurant' })
   }
+  // QR-меню управляется настройками ops.fulfillmentTypes (глобально/для организации),
+  // а не колонкой supports_qr_menu у конкретного ресторана.
 
-  const incomingZone: DeliveryZoneProperties | null = body.address?.zone ?? null
-  const incomingZoneId = typeof incomingZone?.slug === 'string' ? incomingZone.slug.trim() : ''
-  const serverZone: TenantRestaurantZone | null = incomingZoneId
-    ? await requireRestaurantZoneForShop(event, tenantShopId, restaurant.id, incomingZoneId)
-    : null
-  const deliveryZone: DeliveryZoneProperties | null = serverZone
-    ? {
-        slug: serverZone.id,
-        name: serverZone.name,
-        minOrderAmount: serverZone.min_order_amount,
-        deliveryCost: serverZone.delivery_cost,
-        freeDeliveryThreshold: serverZone.free_delivery_threshold,
-      }
-    : null
-  let deliveryCost = 0
-  if (fulfillmentType === 'pickup') {
-    deliveryCost = 0
-  } else if (!deliveryZone) {
-    throw createError({ statusCode: 400, message: 'Delivery zone is required for selected restaurant' })
-  } else if (total >= deliveryZone.freeDeliveryThreshold) {
-    deliveryCost = 0
-  } else {
-    deliveryCost = deliveryZone.deliveryCost
+  const deliveryZone: DeliveryZoneProperties | null =
+    fulfillmentType === 'delivery'
+      ? (() => {
+          // address.zone is required only for delivery
+          const incomingZone: DeliveryZoneProperties | null = body.address?.zone ?? null
+          const incomingZoneId = typeof incomingZone?.slug === 'string' ? incomingZone.slug.trim() : ''
+          return incomingZoneId ? incomingZone : null
+        })()
+      : null
+
+  let deliveryZoneValidated: DeliveryZoneProperties | null = null
+  if (fulfillmentType === 'delivery') {
+    if (!deliveryZone) {
+      throw createError({ statusCode: 400, message: 'Delivery zone is required for selected restaurant' })
+    }
+    const incomingZoneId = typeof deliveryZone.slug === 'string' ? deliveryZone.slug.trim() : ''
+    const serverZone: TenantRestaurantZone | null = incomingZoneId
+      ? await requireRestaurantZoneForShop(event, tenantShopId, restaurant.id, incomingZoneId)
+      : null
+    deliveryZoneValidated = serverZone
+      ? {
+          slug: serverZone.id,
+          name: serverZone.name,
+          minOrderAmount: serverZone.min_order_amount,
+          deliveryCost: serverZone.delivery_cost,
+          freeDeliveryThreshold: serverZone.free_delivery_threshold,
+        }
+      : null
   }
+
+  const deliveryCost: number = (() => {
+    if (fulfillmentType === 'pickup' || fulfillmentType === 'qr-menu') return 0
+    if (!deliveryZoneValidated) return 0
+    return total >= deliveryZoneValidated.freeDeliveryThreshold ? 0 : deliveryZoneValidated.deliveryCost
+  })()
 
   const addressLine = body.address?.line?.trim() || null
   const flat = body.address?.flat?.trim() || null
   const comment = body.address?.comment?.trim() || null
   const pickupPoint: PickupPoint | null =
-    body.pickupPoint?.id && body.pickupPoint?.name && body.pickupPoint?.address
+    fulfillmentType === 'pickup' &&
+    body.pickupPoint?.id &&
+    body.pickupPoint?.name &&
+    body.pickupPoint?.address
       ? {
           id: body.pickupPoint.id.trim(),
           name: body.pickupPoint.name.trim(),
@@ -552,7 +591,7 @@ export default defineEventHandler(async (event) => {
   const datePart = now.toISOString().slice(0, 10).replace(/-/g, '')
   const timePart = now.toISOString().slice(11, 19).replace(/:/g, '')
   const orderId = `${datePart}-${timePart}`
-  const text = buildOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, deliveryZone, user, {
+  const text = buildOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, fulfillmentType === 'delivery' ? deliveryZoneValidated : null, user, {
     fulfillmentType,
     pickupPoint,
     addressLine,
@@ -605,7 +644,7 @@ export default defineEventHandler(async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: user.id,
-        text: buildClientOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, deliveryZone, {
+        text: buildClientOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, fulfillmentType === 'delivery' ? deliveryZoneValidated : null, {
           fulfillmentType,
           pickupPoint,
           addressLine,

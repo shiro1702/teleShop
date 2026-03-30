@@ -1,6 +1,7 @@
 import { createError, defineEventHandler } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireTenantShop } from '~/server/utils/tenant'
+import { fetchProductParameterGroupsByProductId } from '~/server/utils/productParametersCatalog'
 
 export default defineEventHandler(async (event) => {
   const { shopId } = await requireTenantShop(event)
@@ -25,121 +26,9 @@ export default defineEventHandler(async (event) => {
   
   let modifiersMap: Record<string, any[]> = {}
   let parametersMap: Record<string, any[]> = {}
-  
+
   if (productIds.length > 0) {
-    // Fetch parameters
-    const { data: parameterKinds } = await client
-      .from('parameter_kinds')
-      .select(`
-        id, name, code, sort_order,
-        parameter_options(id, name, weight_g, volume_ml, pieces, is_active, sort_order)
-      `)
-      .eq('shop_id', shopId)
-      .order('sort_order', { ascending: true })
-
-    const { data: productParameterKinds } = await client
-      .from('product_parameter_kinds')
-      .select('product_id, parameter_kind_id, is_required')
-      .in('product_id', productIds)
-
-    const { data: categoryParameterKinds } = await client
-      .from('category_parameter_kinds')
-      .select('category_id, parameter_kind_id, is_required')
-      .in('category_id', categoryIds)
-
-    const { data: parameterOverrides } = await client
-      .from('product_parameter_option_overrides')
-      .select('product_id, option_id, price, is_disabled, is_default')
-      .in('product_id', productIds)
-
-    if (parameterKinds) {
-      // Pre-process parameter kinds for quick lookup
-      const kindsMap = new Map(parameterKinds.map(k => [k.id, k]))
-      
-      // Group overrides by product_id -> option_id
-      const overridesByProduct = new Map<string, Map<string, any>>()
-      if (parameterOverrides) {
-        parameterOverrides.forEach(ov => {
-          if (!overridesByProduct.has(ov.product_id)) {
-            overridesByProduct.set(ov.product_id, new Map())
-          }
-          overridesByProduct.get(ov.product_id)!.set(ov.option_id, ov)
-        })
-      }
-
-      // Helper to build parameters for a product
-      const buildProductParameters = (productId: string, categoryId: string | null) => {
-        const productKinds = new Map<string, { isRequired: boolean }>()
-        
-        // Add inherited from category
-        if (categoryId && categoryParameterKinds) {
-          categoryParameterKinds
-            .filter(cpk => cpk.category_id === categoryId)
-            .forEach(cpk => productKinds.set(cpk.parameter_kind_id, { isRequired: cpk.is_required }))
-        }
-
-        // Add/override from product
-        if (productParameterKinds) {
-          productParameterKinds
-            .filter(ppk => ppk.product_id === productId)
-            .forEach(ppk => productKinds.set(ppk.parameter_kind_id, { isRequired: ppk.is_required }))
-        }
-
-        const productParams: any[] = []
-        const productOverridesMap = overridesByProduct.get(productId)
-
-        for (const [kindId, config] of productKinds.entries()) {
-          const kind = kindsMap.get(kindId)
-          if (!kind || !kind.parameter_options) continue
-
-          const options = kind.parameter_options
-            .map((opt: any) => {
-              const override = productOverridesMap?.get(opt.id)
-              
-              // Only include options that have a price set (either base or override) and are not disabled
-              const price = override?.price
-              const isDisabled = override?.is_disabled || !opt.is_active
-              
-              if (price === undefined || price === null || isDisabled) {
-                return null
-              }
-
-              return {
-                id: opt.id,
-                name: opt.name,
-                price: price,
-                weightG: opt.weight_g,
-                volumeMl: opt.volume_ml,
-                pieces: opt.pieces,
-                isDefault: override?.is_default || false,
-                sortOrder: opt.sort_order
-              }
-            })
-            .filter(Boolean)
-            .sort((a: any, b: any) => a.sortOrder - b.sortOrder)
-
-          if (options.length > 0) {
-            productParams.push({
-              id: kind.id, // Using kind.id as the parameter group ID for the frontend
-              parameterKindId: kind.id,
-              name: kind.name,
-              isRequired: config.isRequired,
-              options
-            })
-          }
-        }
-
-        return productParams
-      }
-
-      // Build for all products
-      data?.forEach(product => {
-        const params = buildProductParameters(product.id, product.category_id)
-        if (params.length > 0) {
-          parametersMap[product.id] = params
-        }
-      })
-    }
+    parametersMap = await fetchProductParameterGroupsByProductId(client, shopId, data ?? [])
   }
 
   if (productIds.length > 0 || categoryIds.length > 0) {

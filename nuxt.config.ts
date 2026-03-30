@@ -22,7 +22,7 @@ export default defineNuxtConfig({
       yandexMapsApiKey: process.env.YANDEX_MAPS_API_KEY ?? '',
       telegramBotName: process.env.NUXT_TELEGRAM_BOT_NAME ?? '',
       pickupPointsJson: process.env.NUXT_PICKUP_POINTS_JSON ?? '',
-      fulfillmentTypes: process.env.NUXT_FULFILLMENT_TYPES ?? 'delivery,pickup',
+      fulfillmentTypes: process.env.NUXT_FULFILLMENT_TYPES ?? 'delivery,pickup,qr-menu',
       dadataToken: process.env.DADATA_TOKEN ?? '',
       supabaseUrl: process.env.SUPABASE_URL ?? '',
       supabaseKey: process.env.SUPABASE_KEY ?? '',
