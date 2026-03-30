@@ -15,12 +15,45 @@
             </a>
           </nav>
 
+          <div
+            v-if="isRestaurantModesLoaded && showFulfillmentSelector"
+            class="hidden shrink-0 items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 sm:flex"
+            :style="{ borderColor: theme.primary_100 || '#e5e7eb' }"
+          >
+            <button
+              type="button"
+              class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
+              :class="selectedFulfillmentType === 'delivery'
+                ? 'bg-primary text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100'"
+              @click="setFulfillmentType('delivery')"
+            >
+              Доставка
+            </button>
+            <button
+              type="button"
+              class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
+              :class="selectedFulfillmentType === 'pickup'
+                ? 'bg-primary text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100'"
+              @click="setFulfillmentType('pickup')"
+            >
+              Самовывоз
+            </button>
+          </div>
+
           <button
             type="button"
             class="hidden shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 sm:flex"
             @click="goToCheckout"
           >
             <span>Корзина</span>
+            <span
+              v-if="isRestaurantModesLoaded"
+              class="text-xs font-semibold text-white/90"
+            >
+              {{ fulfillmentTypeLabel }}
+            </span>
             <template v-if="cartStore.count > 0">
               <span class="text-orange-100">
                 {{ cartStore.count }} шт.
@@ -119,9 +152,36 @@
 
     <!-- Нижняя панель корзины на мобильных -->
     <div
-      class="fixed inset-x-0 bottom-0 z-40 border-t px-4 py-2 sm:hidden pb-10"
+      class="fixed inset-x-0 bottom-0 z-40 flex flex-col gap-2 border-t px-4 py-2 sm:hidden pb-10"
       :style="mobileBarStyle"
     >
+      <div
+        v-if="isRestaurantModesLoaded && showFulfillmentSelector"
+        class="inline-flex w-full rounded-xl border border-gray-200 bg-white p-1"
+        :style="{ borderColor: theme.primary_100 || '#e5e7eb' }"
+      >
+        <button
+          type="button"
+          class="flex-1 rounded-lg px-3 py-2 text-xs font-medium transition"
+          :class="selectedFulfillmentType === 'delivery'
+            ? 'bg-primary text-white shadow-sm'
+            : 'text-gray-600 hover:bg-gray-100'"
+          @click="setFulfillmentType('delivery')"
+        >
+          Доставка
+        </button>
+        <button
+          type="button"
+          class="flex-1 rounded-lg px-3 py-2 text-xs font-medium transition"
+          :class="selectedFulfillmentType === 'pickup'
+            ? 'bg-primary text-white shadow-sm'
+            : 'text-gray-600 hover:bg-gray-100'"
+          @click="setFulfillmentType('pickup')"
+        >
+          Самовывоз
+        </button>
+      </div>
+
       <button
         type="button"
         class="flex w-full items-center justify-between gap-3 rounded-lg bg-primary px-4 py-3 text-base font-medium text-white shadow-md"
@@ -132,6 +192,12 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
           <span>Корзина</span>
+          <span
+            v-if="isRestaurantModesLoaded"
+            class="text-xs font-semibold text-white/90"
+          >
+            {{ fulfillmentTypeLabel }}
+          </span>
         </div>
         <div v-if="cartStore.count > 0" class="flex items-center gap-2">
           <span class="text-sm text-orange-100">
@@ -306,7 +372,7 @@ import { useTelegram } from '../composables/useTelegram'
 import { useCartStore } from '../stores/cart'
 
 const cartStore = useCartStore()
-const { isTelegram } = useTelegram()
+const { isTelegram, webApp } = useTelegram()
 const router = useRouter()
 const route = useRoute()
 const { tenant, tenantKey, tenantPath } = useTenant()
@@ -358,6 +424,153 @@ const mobileBarStyle = computed(() => ({
   borderColor: theme.value.primary_100 || '#e5e7eb',
   backgroundColor: cardBgColor.value,
 }))
+
+type FulfillmentType = 'delivery' | 'pickup'
+type RestaurantOps = {
+  id: string
+  supports_delivery: boolean
+  supports_pickup: boolean
+}
+
+const CHECKOUT_STORAGE_KEY = 'teleshop_checkout_state'
+
+const restaurantOps = ref<RestaurantOps[]>([])
+const isRestaurantModesLoaded = ref(false)
+const selectedFulfillmentType = ref<FulfillmentType>('delivery')
+
+const fulfillmentTypeLabel = computed(() =>
+  selectedFulfillmentType.value === 'pickup' ? 'Самовывоз' : 'Доставка',
+)
+
+const derivedAllowedFulfillmentTypes = computed<FulfillmentType[]>(() => {
+  const ops = restaurantOps.value
+  const fallback: FulfillmentType[] = ['delivery', 'pickup']
+
+  if (!ops.length) return fallback
+
+  if (ops.length === 1) {
+    const out: FulfillmentType[] = []
+    if (ops[0].supports_delivery) out.push('delivery')
+    if (ops[0].supports_pickup) out.push('pickup')
+    return out
+  }
+
+  const out: FulfillmentType[] = []
+  if (ops.some((r) => r.supports_delivery)) out.push('delivery')
+  if (ops.some((r) => r.supports_pickup)) out.push('pickup')
+  return out
+})
+
+const hasDeliveryOption = computed(() => derivedAllowedFulfillmentTypes.value.includes('delivery'))
+const hasPickupOption = computed(() => derivedAllowedFulfillmentTypes.value.includes('pickup'))
+const showFulfillmentSelector = computed(() => hasDeliveryOption.value && hasPickupOption.value)
+
+const selectedRestaurantIdForCheckout = computed(() => {
+  return restaurantOps.value.length === 1 ? restaurantOps.value[0].id : null
+})
+
+function readCheckoutStateLocal(): any | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(CHECKOUT_STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as any
+  } catch {
+    return null
+  }
+}
+
+function persistCheckoutStateLocal(data: string) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(CHECKOUT_STORAGE_KEY, data)
+  } catch {
+    // ignore
+  }
+}
+
+function persistCheckoutStateCloud(data: string) {
+  if (!isTelegram.value || !(webApp.value as any)?.CloudStorage) {
+    persistCheckoutStateLocal(data)
+    return
+  }
+
+  ;(webApp.value as any).CloudStorage.setItem(CHECKOUT_STORAGE_KEY, data, () => {
+    persistCheckoutStateLocal(data)
+  })
+}
+
+function persistFulfillmentTypeToCheckout(next: FulfillmentType) {
+  const existing = readCheckoutStateLocal() ?? {}
+  const nextState: Record<string, any> = {
+    ...existing,
+    fulfillmentType: next,
+  }
+
+  if (typeof selectedRestaurantIdForCheckout.value === 'string' && selectedRestaurantIdForCheckout.value) {
+    nextState.selectedRestaurantId = selectedRestaurantIdForCheckout.value
+  }
+
+  const payload = JSON.stringify(nextState)
+  persistCheckoutStateCloud(payload)
+}
+
+function setFulfillmentType(next: FulfillmentType) {
+  if (!derivedAllowedFulfillmentTypes.value.includes(next)) return
+  selectedFulfillmentType.value = next
+  persistFulfillmentTypeToCheckout(next)
+}
+
+function readFirstQueryString(key: string): string | null {
+  const v = route.query[key]
+  if (typeof v === 'string' && v.trim()) return v.trim()
+  if (Array.isArray(v)) {
+    const found = v.find((x): x is string => typeof x === 'string' && !!x.trim())
+    if (found) return found.trim()
+  }
+  return null
+}
+
+async function loadRestaurantModes() {
+  isRestaurantModesLoaded.value = false
+  restaurantOps.value = []
+
+  try {
+    const shopId = tenantKey.value
+    const branchIdFromQuery = readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
+
+    const res = await $fetch<{ ok: boolean; items: RestaurantOps[] }>('/api/restaurants', {
+      query: shopId ? { shop_id: shopId } : undefined,
+      headers: shopId ? { 'x-shop-id': shopId } : undefined,
+    })
+
+    if (res?.ok && Array.isArray(res.items)) {
+      restaurantOps.value = branchIdFromQuery
+        ? res.items.filter((r) => r.id === branchIdFromQuery)
+        : res.items
+    }
+  } catch {
+    // fallback: allow both modes
+    restaurantOps.value = []
+  } finally {
+    isRestaurantModesLoaded.value = true
+    const allowed = derivedAllowedFulfillmentTypes.value
+    if (!allowed.length) {
+      persistFulfillmentTypeToCheckout(selectedFulfillmentType.value)
+      return
+    }
+    if (!allowed.includes(selectedFulfillmentType.value)) {
+      selectedFulfillmentType.value = allowed.includes('delivery') ? 'delivery' : allowed[0]
+    }
+    persistFulfillmentTypeToCheckout(selectedFulfillmentType.value)
+  }
+}
+
+// Initialize from stored state (before restaurants are loaded).
+const saved = readCheckoutStateLocal()
+if (saved?.fulfillmentType === 'delivery' || saved?.fulfillmentType === 'pickup') {
+  selectedFulfillmentType.value = saved.fulfillmentType
+}
 
 function applyCartScope() {
   const scope = typeof tenantKey.value === 'string' && tenantKey.value.trim()
@@ -586,7 +799,25 @@ function addSelectedToCart() {
 }
 
 function goToCheckout() {
-  router.push(tenantPath('/cart'))
+  persistFulfillmentTypeToCheckout(selectedFulfillmentType.value)
+
+  const readFirstQueryString = (key: string): string | null => {
+    const v = route.query[key]
+    if (typeof v === 'string' && v.trim()) return v.trim()
+    if (Array.isArray(v)) {
+      const found = v.find((x): x is string => typeof x === 'string' && !!x.trim())
+      if (found) return found.trim()
+    }
+    return null
+  }
+
+  // QR-ссылка должна “довозиться” до корзины, чтобы не заставлять пользователя
+  // вручную выбирать филиал/ресторан.
+  const branchId = readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
+  void router.push({
+    path: tenantPath('/cart'),
+    query: branchId ? { branch_id: branchId } : undefined,
+  })
 }
 
 function formatPrice(price: number) {
@@ -600,6 +831,7 @@ function formatPrice(price: number) {
 onMounted(() => {
   applyCartScope()
   void loadCatalog()
+  void loadRestaurantModes()
   const orderId = route.query.orderId
   if (typeof orderId === 'string' && orderId) {
     lastOrderId.value = orderId
@@ -611,6 +843,7 @@ onMounted(() => {
 watch(tenantKey, () => {
   applyCartScope()
   void loadCatalog()
+  void loadRestaurantModes()
 })
 
 async function loadCatalog() {

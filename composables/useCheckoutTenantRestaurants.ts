@@ -1,7 +1,7 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import type { DeliveryZoneFeature } from '~/utils/deliveryZones'
 
-export type FulfillmentType = 'delivery' | 'pickup'
+export type FulfillmentType = 'delivery' | 'pickup' | 'qr-menu'
 
 export type PickupPoint = {
   id: string
@@ -15,6 +15,7 @@ export type RestaurantItem = {
   address: string
   supports_delivery: boolean
   supports_pickup: boolean
+  supports_qr_menu: boolean
 }
 
 type RestaurantZoneApiItem = {
@@ -43,6 +44,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
   const selectedPickupPointId = ref<string>('')
   const selectedRestaurantId = ref<string>('')
   const restaurants = ref<RestaurantItem[]>([])
+  const restaurantsLoaded = ref(false)
   const restaurantZones = ref<DeliveryZoneFeature[]>([])
 
   const selectedRestaurant = computed(() =>
@@ -92,8 +94,20 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
       const fromFlags: FulfillmentType[] = []
       if (selectedRestaurant.value.supports_delivery) fromFlags.push('delivery')
       if (selectedRestaurant.value.supports_pickup) fromFlags.push('pickup')
-      if (fromFlags.length) return fromFlags
+      if (selectedRestaurant.value.supports_qr_menu) fromFlags.push('qr-menu')
+      // Важно: если у ресторана не включены delivery/pickup,
+      // не делаем fallback на глобальную конфигурацию.
+      return fromFlags
     }
+
+    // Пока не загрузились рестораны (и, соответственно, не выбран ресторан),
+    // не показываем delivery/pickup из fallback runtime-конфигурации,
+    // иначе получится “неверный” UI до прихода данных.
+    if (!restaurantsLoaded.value) return []
+
+    // После загрузки ресторанов — всё равно нет выбранного ресторана,
+    // поэтому delivery/pickup скрываем, чтобы не показывать неверные режимы.
+    return []
 
     const parsed = params.fulfillmentTypesConfigRaw
       .split(',')
@@ -113,6 +127,10 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
 
   const hasPickupOption = computed(() =>
     availableFulfillmentTypes.value.includes('pickup'),
+  )
+
+  const hasQrMenuOption = computed(() =>
+    availableFulfillmentTypes.value.includes('qr-menu'),
   )
 
   const pickupIntroText = computed(() =>
@@ -135,6 +153,19 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
     selectedRestaurantId,
     async (restaurantId) => {
       if (!restaurantId) {
+        restaurantZones.value = []
+        params.setDeliveryZones([])
+        cartStore.setDeliveryZone(null)
+        return
+      }
+
+      // Зоны доставки нужны только для delivery.
+      // Дополнительно убеждаемся, что delivery вообще доступен для выбранного ресторана,
+      // иначе может получиться лишний запрос до того, как currentFulfillmentType успеет обновиться.
+      if (
+        params.currentFulfillmentType.value !== 'delivery'
+        || !availableFulfillmentTypes.value.includes('delivery')
+      ) {
         restaurantZones.value = []
         params.setDeliveryZones([])
         cartStore.setDeliveryZone(null)
@@ -211,8 +242,9 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
   watch(
     availableFulfillmentTypes,
     (types) => {
+      if (!types.length) return
       if (types.includes(params.currentFulfillmentType.value)) return
-      params.currentFulfillmentType.value = types[0] ?? 'delivery'
+      params.currentFulfillmentType.value = types[0]
     },
     { immediate: true },
   )
@@ -231,6 +263,9 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
     } catch {
       // keep fallback behavior for local/dev
     }
+    finally {
+      restaurantsLoaded.value = true
+    }
   }
 
   return {
@@ -243,6 +278,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
     availableFulfillmentTypes,
     hasDeliveryOption,
     hasPickupOption,
+    hasQrMenuOption,
     pickupIntroText,
     loadRestaurants,
   }

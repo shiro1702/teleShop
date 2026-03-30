@@ -1,9 +1,16 @@
 <template>
   <section v-if="branch" class="space-y-4">
-    <div class="flex items-start justify-between gap-3">
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <h1 class="text-2xl font-semibold">Карточка филиала</h1>
         <p class="mt-1 text-sm text-gray-600">{{ branch.name }}</p>
+        <NuxtLink
+          v-if="branch"
+          :to="`/dashboard/branches/${branch.id}/kitchen`"
+          class="mt-2 inline-block text-sm text-primary hover:underline"
+        >
+          Экран кухни (KDS)
+        </NuxtLink>
       </div>
       <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="branch.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'">
         {{ branch.isActive ? 'Active' : 'Inactive' }}
