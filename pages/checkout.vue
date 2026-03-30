@@ -865,7 +865,7 @@ const step1NextButtonLabel = computed(() =>
     : hasPickupOption.value
       ? 'Далее: самовывоз'
       : hasQrMenuOption.value
-        ? 'Далее: QR-меню'
+        ? 'Далее: оформление'
         : 'Далее: адрес доставки',
 )
 
