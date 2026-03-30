@@ -51,7 +51,28 @@
       <div class="mx-auto grid max-w-6xl grid-cols-3 items-center gap-3 px-4 py-4 sm:px-6">
         <div class="flex w-24 items-center">
           <button
-            v-if="state.currentStep > 1"
+            v-if="state.currentStep === 1"
+            type="button"
+            class="flex w-fit items-center gap-2 transition"
+            :style="{ color: mutedTextColor }"
+            aria-label="Назад к меню"
+            @click="goBackToMenu"
+          >
+            <span
+              class="flex h-10 w-10 items-center justify-center rounded-lg"
+              :style="{ backgroundColor: 'transparent' }"
+              aria-hidden="true"
+            >
+              <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+              </svg>
+            </span>
+            <span class="hidden text-sm sm:inline">
+              Назад к меню
+            </span>
+          </button>
+          <button
+            v-else
             type="button"
             class="flex w-fit items-center gap-2 transition"
             :style="{ color: mutedTextColor }"
@@ -71,12 +92,6 @@
               Назад
             </span>
           </button>
-          <!-- Филлер вместо "Назад", чтобы заголовок оставался по центру -->
-          <span
-            v-else
-            class="h-10 w-10 sm:w-24"
-            aria-hidden="true"
-          />
         </div>
 
         <h1 class="text-center text-xl font-bold" :style="{ color: mainTextColor }">
@@ -751,12 +766,34 @@ const canGoToAddress = computed(
   () => cartStore.items.length > 0,
 )
 
+const hasAllRequiredParameterSelections = computed(() => {
+  // Для каждого товара: если есть обязательные параметрные группы,
+  // то в cartStore должен быть выбран как минимум один option для этой группы.
+  return cartStore.items.every((item) => {
+    const requiredGroups = (item.parameters ?? []).filter((g) => !!g.isRequired)
+    if (!requiredGroups.length) return true
+
+    const selected = item.selectedParameters ?? []
+    return requiredGroups.every((g) => selected.some((p) => p.productParameterId === g.id))
+  })
+})
+
 const canGoToSummary = computed(() => {
   if (state.fulfillmentType === 'pickup') {
-    return cartStore.items.length > 0 && !!selectedPickupPoint.value
+    return (
+      cartStore.items.length > 0 &&
+      !!selectedPickupPoint.value &&
+      hasAllRequiredParameterSelections.value
+    )
   }
   const hasHouseNumber = /\d/.test(addressLine.value.trim())
-  return hasHouseNumber && cartStore.items.length > 0 && !!cartStore.deliveryZone && !cartStore.deliveryError
+  return (
+    hasHouseNumber &&
+    cartStore.items.length > 0 &&
+    !!cartStore.deliveryZone &&
+    !cartStore.deliveryError &&
+    hasAllRequiredParameterSelections.value
+  )
 })
 
 const summaryDeliveryLabel = computed(() =>
@@ -799,6 +836,10 @@ function goToStep(step: 1 | 2) {
 
 function goBackStep() {
   if (state.currentStep === 2) goToStep(1)
+}
+
+function goBackToMenu() {
+  void router.push({ path: tenantPath('/') })
 }
 
 function openClearCartModal() {
@@ -1057,6 +1098,9 @@ async function placeOrder() {
         name: item.name,
         price: item.price,
         quantity: item.quantity,
+        cartItemId: item.cartItemId,
+        selectedModifiers: item.selectedModifiers ?? [],
+        selectedParameters: item.selectedParameters ?? [],
       })),
       fulfillmentType: state.fulfillmentType,
       address: state.fulfillmentType === 'delivery'
