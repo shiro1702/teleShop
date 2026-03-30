@@ -49,7 +49,7 @@
 
     <header class="border-b" :style="headerStyle">
       <div class="mx-auto grid max-w-6xl grid-cols-3 items-center gap-3 px-4 py-4 sm:px-6">
-        <div class="flex w-24 items-center">
+        <div class="flex w-24 items-center sm:w-32">
           <button
             v-if="state.currentStep === 1"
             type="button"
