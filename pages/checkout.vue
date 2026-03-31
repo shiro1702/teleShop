@@ -672,6 +672,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCheckoutAddress } from '~/composables/useCheckoutAddress'
 import { useCheckoutTenantRestaurants } from '~/composables/useCheckoutTenantRestaurants'
 import type { FulfillmentType } from '~/composables/useCheckoutTenantRestaurants'
+import { resolveCartScopeKey } from '~/utils/cartScope'
 
 const cartStore = useCartStore()
 const route = useRoute()
@@ -771,9 +772,7 @@ const shopIdFromRoute = computed(() =>
 )
 
 function applyCartScope() {
-  const scope = typeof shopIdFromRoute.value === 'string' && shopIdFromRoute.value.trim()
-    ? shopIdFromRoute.value.trim()
-    : null
+  const scope = resolveCartScopeKey(route, shopIdFromRoute.value)
   cartStore.setScope(scope)
 }
 

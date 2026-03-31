@@ -370,6 +370,7 @@ import type { SelectedModifier, SelectedParameter } from '../stores/cart'
 import { useTenant } from '../composables/useTenant'
 import { useTelegram } from '../composables/useTelegram'
 import { useCartStore } from '../stores/cart'
+import { resolveCartScopeKey } from '../utils/cartScope'
 
 const cartStore = useCartStore()
 const { isTelegram, webApp } = useTelegram()
@@ -573,9 +574,7 @@ if (saved?.fulfillmentType === 'delivery' || saved?.fulfillmentType === 'pickup'
 }
 
 function applyCartScope() {
-  const scope = typeof tenantKey.value === 'string' && tenantKey.value.trim()
-    ? tenantKey.value.trim()
-    : null
+  const scope = resolveCartScopeKey(route, tenantKey.value)
   cartStore.setScope(scope)
 }
 
