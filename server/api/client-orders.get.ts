@@ -1,7 +1,6 @@
 import { createError, defineEventHandler } from 'h3'
 import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
-
-type OrderStatus = 'new' | 'in_progress' | 'done' | 'cancelled'
+import { normalizeDashboardStatus, type DashboardOrderStatus } from '~/utils/dashboardOrderStatus'
 
 type OrderRow = {
   id: string
@@ -76,9 +75,9 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const activeStatuses = new Set<OrderStatus>(['new', 'in_progress'])
+  const activeStatuses = new Set<DashboardOrderStatus>(['new', 'in_progress', 'ready_for_pickup', 'out_for_delivery'])
   const items = rows.map((row) => {
-    const status = (row.status || 'new').toLowerCase()
+    const status = normalizeDashboardStatus(row.status)
     const safeItems = Array.isArray(row.items) ? row.items : []
     const itemsCount = safeItems.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0)
     const title = restaurantsMap.get(row.restaurant_id || '') || shopsMap.get(row.shop_id) || 'Ресторан'
@@ -89,7 +88,7 @@ export default defineEventHandler(async (event) => {
       restaurantId: row.restaurant_id,
       restaurantName: title,
       status,
-      isActive: activeStatuses.has(status as OrderStatus),
+      isActive: activeStatuses.has(status),
       fulfillmentType: row.fulfillment_type || 'delivery',
       paymentMethod: row.payment_method || 'cash',
       subtotal: row.subtotal || 0,

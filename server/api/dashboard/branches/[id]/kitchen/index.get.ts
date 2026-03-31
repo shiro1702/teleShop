@@ -64,7 +64,7 @@ export default defineEventHandler(async (event) => {
 
   const activeRows = allRows.filter((r) => {
     const st = normalizeDashboardStatus(r.status)
-    return st !== 'done' && st !== 'cancelled'
+    return st === 'new' || st === 'in_progress'
   })
 
   const normalizedByOrder: NormalizedOrderItem[][] = activeRows.map((r) => normalizeOrderItemsJson(r.items))

@@ -672,6 +672,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCheckoutAddress } from '~/composables/useCheckoutAddress'
 import { useCheckoutTenantRestaurants } from '~/composables/useCheckoutTenantRestaurants'
 import type { FulfillmentType } from '~/composables/useCheckoutTenantRestaurants'
+import { resolveCartScopeKey } from '~/utils/cartScope'
 
 const cartStore = useCartStore()
 const route = useRoute()
@@ -771,9 +772,7 @@ const shopIdFromRoute = computed(() =>
 )
 
 function applyCartScope() {
-  const scope = typeof shopIdFromRoute.value === 'string' && shopIdFromRoute.value.trim()
-    ? shopIdFromRoute.value.trim()
-    : null
+  const scope = resolveCartScopeKey(route, shopIdFromRoute.value)
   cartStore.setScope(scope)
 }
 
@@ -865,7 +864,7 @@ const step1NextButtonLabel = computed(() =>
     : hasPickupOption.value
       ? 'Далее: самовывоз'
       : hasQrMenuOption.value
-        ? 'Далее: QR-меню'
+        ? 'Далее: оформление'
         : 'Далее: адрес доставки',
 )
 
@@ -1197,9 +1196,11 @@ async function placeOrder() {
       }
       // Пока просто редиректим на главную, позже можно сделать отдельную страницу успеха
       await navigateTo({
-        path: tenantPath('/'),
+        path: tenantPath('/orders'),
         query: {
           orderId: res.orderId ?? undefined,
+          // Явно прокидываем магазин, чтобы tenant-контекст был корректным для API.
+          shop_id: shopIdFromRoute.value || undefined,
         },
       })
     } else if (isClient()) {

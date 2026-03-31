@@ -2,24 +2,20 @@ import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
 import {
-  allowedOrderStatusTransitions,
   mergeMetadataWithTimeline,
   normalizeDashboardStatus,
+  getAllowedOrderStatusTransitions,
   type DashboardOrderStatus,
   type TimelineEntry,
 } from '~/server/utils/dashboardOrders'
+import { dashboardOrderStatusLabels } from '~/utils/dashboardOrderStatus'
 
 type Body = {
   nextStatus?: string
   comment?: string | null
 }
 
-const statusLabels: Record<DashboardOrderStatus, string> = {
-  new: 'Новый',
-  in_progress: 'В работе',
-  done: 'Выполнен',
-  cancelled: 'Отменён',
-}
+const statusLabels = dashboardOrderStatusLabels
 
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
@@ -35,13 +31,17 @@ export default defineEventHandler(async (event) => {
   const nextStatus: DashboardOrderStatus | null =
     nextRaw === 'in_progress' || nextRaw === 'in-progress'
       ? 'in_progress'
-      : nextRaw === 'done'
-        ? 'done'
-        : nextRaw === 'cancelled' || nextRaw === 'canceled'
-          ? 'cancelled'
-          : nextRaw === 'new'
-            ? 'new'
-            : null
+      : nextRaw === 'ready_for_pickup' || nextRaw === 'ready-for-pickup'
+        ? 'ready_for_pickup'
+        : nextRaw === 'out_for_delivery' || nextRaw === 'out-for-delivery'
+          ? 'out_for_delivery'
+          : nextRaw === 'handed_to_customer' || nextRaw === 'handed-to-customer' || nextRaw === 'done'
+            ? 'handed_to_customer'
+            : nextRaw === 'cancelled' || nextRaw === 'canceled'
+              ? 'cancelled'
+              : nextRaw === 'new'
+                ? 'new'
+                : null
 
   if (!nextStatus) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid nextStatus' })
@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
 
   const { data: existing, error: loadError } = await client
     .from('orders')
-    .select('id,status,metadata')
+    .select('id,status,metadata,fulfillment_type')
     .eq('id', id)
     .eq('shop_id', access.shopId)
     .maybeSingle()
@@ -70,7 +70,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const current = normalizeDashboardStatus(existing.status as string)
-  const allowed = allowedOrderStatusTransitions[current]
+  const allowed = getAllowedOrderStatusTransitions(current, existing.fulfillment_type as string | null)
   if (!allowed.includes(nextStatus)) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid status transition' })
   }

@@ -1,12 +1,13 @@
 <template>
   <div class="min-h-screen bg-gray-50 text-gray-900">
     <header class="border-b border-gray-200 bg-white">
-      <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <div class="flex items-center gap-5">
+      <div class="overflow-x-auto">
+        <div class="mx-auto flex min-w-max max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:min-w-0 sm:px-6">
+          <div class="flex items-center gap-5">
           <NuxtLink to="/dashboard" class="text-sm font-semibold text-gray-900">
             TeleShop Dashboard
           </NuxtLink>
-          <nav class="flex items-center gap-4 text-sm text-gray-600">
+          <nav class="flex items-center gap-4 whitespace-nowrap text-sm text-gray-600">
             <NuxtLink v-if="can('orders.view')" to="/dashboard/orders" class="hover:text-gray-900">Заказы</NuxtLink>
             <NuxtLink v-if="can('menu.manage')" to="/dashboard/menu" class="hover:text-gray-900">Меню</NuxtLink>
             <NuxtLink v-if="can('branches.view')" to="/dashboard/branches" class="hover:text-gray-900">Филиалы</NuxtLink>
@@ -15,9 +16,10 @@
             <NuxtLink v-if="can('integrations.manage')" to="/dashboard/integrations" class="hover:text-gray-900">Интеграции</NuxtLink>
           </nav>
         </div>
-        <NuxtLink :to="storefrontPath" class="text-sm text-gray-600 hover:text-gray-900">
-          На витрину
-        </NuxtLink>
+          <NuxtLink :to="storefrontPath" class="whitespace-nowrap text-sm text-gray-600 hover:text-gray-900">
+            На витрину
+          </NuxtLink>
+        </div>
       </div>
     </header>
     <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6">

@@ -90,6 +90,14 @@
             :style="menuStyle"
           >
             <NuxtLink
+              :to="ordersLink"
+              class="block px-3 py-2"
+              :style="{ color: mainTextColor }"
+              @click="showUserMenu = false"
+            >
+              История заказов
+            </NuxtLink>
+            <NuxtLink
               to="/profile"
               class="block px-3 py-2"
               :style="{ color: mainTextColor }"
@@ -147,6 +155,13 @@ const telegramBotUrl = computed(() =>
   telegramBotName ? `https://t.me/${telegramBotName}` : null,
 )
 const homeLink = computed(() => tenantPath('/'))
+const ordersLink = computed(() => {
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  if (citySlug && tenantSlug) return `/${citySlug}/${tenantSlug}/orders`
+  if (citySlug) return `/${citySlug}/orders`
+  return tenantPath('/orders')
+})
 const tenantName = computed(() => tenant.value.shopName || 'teleShop')
 const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')

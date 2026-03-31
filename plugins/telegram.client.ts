@@ -9,12 +9,15 @@ export default defineNuxtPlugin(() => {
   console.log('[TMA][Bridge] initDataUnsafe:', webApp.value.initDataUnsafe)
   console.log('[TMA][Bridge] start_param:', startParam)
   if (startParam) {
-    $fetch<{ ok: boolean; items: any[] }>('/api/cart-bridge', {
+    $fetch<{ ok: boolean; shopId?: string | null; items: any[] }>('/api/cart-bridge', {
       method: 'GET',
       params: { token: startParam },
     })
       .then((res) => {
         if (res?.ok && Array.isArray(res.items) && res.items.length > 0) {
+          if (typeof res.shopId === 'string' && res.shopId.trim()) {
+            cartStore.setScope(res.shopId.trim())
+          }
           console.log('[TMA][Bridge] Restoring cart from token, items:', res.items.length)
           cartStore.clear()
           res.items.forEach((item) => {

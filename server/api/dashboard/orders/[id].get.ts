@@ -5,6 +5,7 @@ import { normalizeDashboardStatus, normalizeOrderItemsJson, parseOrderMetadata }
 
 type OrderRow = {
   id: string
+  order_number: string | null
   shop_id: string
   restaurant_id: string | null
   city_id: string | null
@@ -34,10 +35,31 @@ export default defineEventHandler(async (event) => {
 
   const client = await serverSupabaseServiceRole(event)
 
-  const { data, error } = await client
-    .from('orders')
-    .select(
-      `
+  const runLoad = async (includeOrderNumber: boolean) => {
+    const selectFields = includeOrderNumber
+      ? `
+      id,
+      order_number,
+      shop_id,
+      restaurant_id,
+      city_id,
+      status,
+      fulfillment_type,
+      payment_method,
+      subtotal,
+      delivery_cost,
+      total,
+      items,
+      address,
+      pickup_point,
+      comment,
+      metadata,
+      created_at,
+      updated_at,
+      customer_telegram_id,
+      customer_profile_id
+    `
+      : `
       id,
       shop_id,
       restaurant_id,
@@ -57,11 +79,21 @@ export default defineEventHandler(async (event) => {
       updated_at,
       customer_telegram_id,
       customer_profile_id
-    `,
-    )
-    .eq('id', id)
-    .eq('shop_id', access.shopId)
-    .maybeSingle()
+    `
+    return client
+      .from('orders')
+      .select(selectFields)
+      .eq('id', id)
+      .eq('shop_id', access.shopId)
+      .maybeSingle()
+  }
+
+  let { data, error } = await runLoad(true)
+  if (error && String((error as any)?.message || '').includes('order_number')) {
+    const fallback = await runLoad(false)
+    data = fallback.data
+    error = fallback.error
+  }
 
   if (error) {
     console.error('dashboard order detail:', error)
@@ -102,6 +134,7 @@ export default defineEventHandler(async (event) => {
     ok: true,
     order: {
       id: row.id,
+      orderNumber: (row as any).order_number || null,
       shopId: row.shop_id,
       restaurantId: row.restaurant_id,
       restaurantName,

@@ -129,6 +129,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     ok: true,
+    shopId: decoded.shopId,
     items,
   }
 })
