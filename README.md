@@ -89,3 +89,9 @@ npm run generate  # static generation (если применимо)
 - подготовьте Supabase таблицы и миграции из `supabase/migrations`
 - добавьте записи в `shops`, `restaurants`, `restaurant_delivery_zones`, `products` с корректным `shop_id`
 
+## Документация по платежам
+
+- `docs/PAYMENTS_RU_YOOKASSA_TBANK.md` - архитектура платежей YooKassa/Т-Банк, B2C/B2B контуры, webhook-процессы.
+- `docs/SAAS_BILLING_RU.md` - модель SaaS-подписки платформы: продления, grace period, upgrade/downgrade.
+- `docs/MULTI_TENANT_SAAS.md` (раздел `14.2`) - краткая привязка платежной модели к общей мультитенантной архитектуре.
+
