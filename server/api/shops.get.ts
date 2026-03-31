@@ -42,7 +42,7 @@ export default defineEventHandler(async (event) => {
 
   const { data, error } = await client
     .from('shops')
-    .select('id,slug,name,ui_settings,is_active,restaurants!inner(city_id,is_active)')
+    .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(city_id,is_active)')
     .eq('is_active', true)
     .eq('restaurants.city_id', cityId)
     .eq('restaurants.is_active', true)
