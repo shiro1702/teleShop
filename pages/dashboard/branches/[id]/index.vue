@@ -4,17 +4,65 @@
       <div>
         <h1 class="text-2xl font-semibold">Карточка филиала</h1>
         <p class="mt-1 text-sm text-gray-600">{{ branch.name }}</p>
-        <NuxtLink
-          v-if="branch"
-          :to="`/dashboard/branches/${branch.id}/kitchen`"
-          class="mt-2 inline-block text-sm text-primary hover:underline"
-        >
-          Экран кухни (KDS)
-        </NuxtLink>
+        <div class="mt-2 flex flex-wrap items-center gap-3">
+          <NuxtLink
+            v-if="branch"
+            :to="`/dashboard/branches/${branch.id}/kitchen`"
+            class="text-sm text-primary hover:underline"
+          >
+            Экран кухни (KDS)
+          </NuxtLink>
+          <NuxtLink
+            v-if="branch && storefrontPath"
+            :to="{ path: storefrontPath, query: { branch_id: branch.id } }"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center rounded-lg border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+          >
+            Витрина · этот филиал
+          </NuxtLink>
+        </div>
       </div>
       <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="branch.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'">
         {{ branch.isActive ? 'Active' : 'Inactive' }}
       </span>
+    </div>
+
+    <div v-if="branch && storefrontPath" class="rounded-xl border border-gray-200 bg-white p-4">
+      <h2 class="text-sm font-semibold text-gray-900">QR для гостей</h2>
+      <p class="mt-1 text-xs text-gray-500">
+        Ссылка ведёт на витрину с выбранным филиалом. Параметр
+        <code class="rounded bg-gray-100 px-1">qr=1</code>
+        отмечает переход с QR-стикера (можно отфильтровать в аналитике).
+      </p>
+      <div class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+        <div class="rounded-lg border border-gray-100 bg-gray-50 p-3">
+          <img
+            v-if="qrDataUrl"
+            :src="qrDataUrl"
+            width="220"
+            height="220"
+            class="h-[220px] w-[220px]"
+            alt="QR-код ссылки на витрину филиала"
+          >
+          <p v-else class="flex h-[220px] w-[220px] items-center justify-center text-xs text-gray-400">
+            Генерация…
+          </p>
+        </div>
+        <div class="min-w-0 flex-1 space-y-2 text-sm">
+          <p class="break-all rounded border border-gray-200 bg-gray-50 px-2 py-1.5 font-mono text-xs text-gray-800">
+            {{ branchQrUrl || '—' }}
+          </p>
+          <button
+            type="button"
+            class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!branchQrUrl"
+            @click="copyBranchQrUrl"
+          >
+            {{ copyFeedback || 'Скопировать ссылку' }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-2">
@@ -101,7 +149,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useDashboardAccess } from '../../../../composables/useDashboardAccess'
 
 declare const definePageMeta: (meta: Record<string, unknown>) => void
@@ -139,11 +187,72 @@ const allowedModes = ref<Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | '
 const allowedModesSet = computed(() => new Set(allowedModes.value))
 const showcaseOrderFulfillment = ref<'to-table' | 'pickup-point'>('to-table')
 
+const storefrontPath = ref('')
+const qrDataUrl = ref<string | null>(null)
+const copyFeedback = ref('')
+
+const branchQrUrl = computed(() => {
+  if (!import.meta.client || !branch.value || !storefrontPath.value) return ''
+  try {
+    const u = new URL(storefrontPath.value, window.location.origin)
+    u.searchParams.set('branch_id', branch.value.id)
+    u.searchParams.set('qr', '1')
+    return u.toString()
+  } catch {
+    return ''
+  }
+})
+
+watch(
+  [branch, storefrontPath, branchQrUrl],
+  async () => {
+    if (!import.meta.client || !branchQrUrl.value) {
+      qrDataUrl.value = null
+      return
+    }
+    try {
+      const QRCode = (await import('qrcode')).default
+      qrDataUrl.value = await QRCode.toDataURL(branchQrUrl.value, {
+        width: 220,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+      })
+    } catch {
+      qrDataUrl.value = null
+    }
+  },
+  { immediate: true },
+)
+
+async function copyBranchQrUrl() {
+  const t = branchQrUrl.value
+  if (!t || !import.meta.client) return
+  try {
+    await navigator.clipboard.writeText(t)
+    copyFeedback.value = 'Скопировано'
+    window.setTimeout(() => {
+      copyFeedback.value = ''
+    }, 2000)
+  } catch {
+    copyFeedback.value = 'Не удалось скопировать'
+    window.setTimeout(() => {
+      copyFeedback.value = ''
+    }, 2500)
+  }
+}
+
 onMounted(async () => {
-  const [restaurantsRes, orgRes] = await Promise.all([
+  const [restaurantsRes, orgRes, storefrontRes] = await Promise.all([
     fetch('/api/dashboard/restaurants'),
     fetch('/api/dashboard/organization/style'),
+    fetch('/api/dashboard/storefront'),
   ])
+  if (storefrontRes.ok) {
+    const sf = (await storefrontRes.json()) as { ok?: boolean; path?: string }
+    if (sf?.ok && typeof sf.path === 'string' && sf.path.trim()) {
+      storefrontPath.value = sf.path.trim()
+    }
+  }
   if (!restaurantsRes.ok) return
   const payload = await restaurantsRes.json() as { items?: Branch[] }
   const found = (payload.items || []).find((item) => item.id === String(route.params.id)) || null

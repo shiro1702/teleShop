@@ -1197,9 +1197,11 @@ async function placeOrder() {
       }
       // Пока просто редиректим на главную, позже можно сделать отдельную страницу успеха
       await navigateTo({
-        path: tenantPath('/'),
+        path: tenantPath('/orders'),
         query: {
           orderId: res.orderId ?? undefined,
+          // Явно прокидываем магазин, чтобы tenant-контекст был корректным для API.
+          shop_id: shopIdFromRoute.value || undefined,
         },
       })
     } else if (isClient()) {

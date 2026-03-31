@@ -1,4 +1,5 @@
-export type DashboardOrderStatus = 'new' | 'in_progress' | 'done' | 'cancelled'
+export type { DashboardOrderStatus } from '~/utils/dashboardOrderStatus'
+export { normalizeDashboardStatus, getAllowedOrderStatusTransitions } from '~/utils/dashboardOrderStatus'
 
 export type NormalizedOrderItem = {
   productId: string
@@ -34,13 +35,6 @@ export type TimelineEntry = {
   source?: string
   userId?: string
   comment?: string | null
-}
-
-export const allowedOrderStatusTransitions: Record<DashboardOrderStatus, DashboardOrderStatus[]> = {
-  new: ['in_progress', 'cancelled'],
-  in_progress: ['done', 'cancelled'],
-  done: [],
-  cancelled: [],
 }
 
 function sortStrings(a: string, b: string) {
@@ -154,10 +148,3 @@ export function mergeMetadataWithTimeline(
   }
 }
 
-export function normalizeDashboardStatus(raw: string | null | undefined): DashboardOrderStatus {
-  const s = (raw || 'new').toLowerCase().trim()
-  if (s === 'in_progress' || s === 'in-progress') return 'in_progress'
-  if (s === 'done' || s === 'completed') return 'done'
-  if (s === 'cancelled' || s === 'canceled') return 'cancelled'
-  return 'new'
-}

@@ -122,7 +122,7 @@ function formatPaymentMethod(method: PaymentMethod | undefined): string {
 }
 
 function buildOrderMessage(
-  orderId: string,
+  orderRef: string,
   items: CartItemPayload[],
   total: number,
   deliveryCost: number,
@@ -170,7 +170,7 @@ function buildOrderMessage(
   })
 
   const lines: string[] = [
-    `📦 Заказ #${orderId}`,
+    `📦 Заказ #${orderRef}`,
     '',
     'Состав:',
     ...formattedItems,
@@ -212,7 +212,7 @@ function buildOrderMessage(
 }
 
 function buildClientOrderMessage(
-  orderId: string,
+  orderRef: string,
   items: CartItemPayload[],
   total: number,
   deliveryCost: number,
@@ -258,7 +258,7 @@ function buildClientOrderMessage(
   })
 
   const lines: string[] = [
-    `🧾 Ваш заказ #${orderId} принят!`,
+    `🧾 Ваш заказ #${orderRef} принят!`,
     '',
     'Состав заказа:',
     ...formattedItems,
@@ -537,6 +537,7 @@ export default defineEventHandler(async (event) => {
 
   // Определяем пользователя: либо через initData (TMA), либо через Supabase-сессию (WEB)
   let user: TelegramUser | null = null
+  let customerProfileId: string | null = null
   if (body.initData && typeof body.initData === 'string') {
     // Telegram Mini App: авторизация через initData
     user = validateInitData(body.initData, botToken)
@@ -563,6 +564,8 @@ export default defineEventHandler(async (event) => {
       console.error('Supabase user has invalid id/sub in order (WEB):', supabaseUser)
       throw createError({ statusCode: 401, message: 'Unauthorized' })
     }
+
+    customerProfileId = userId
 
     const serviceClient = await serverSupabaseServiceRole(event)
 
@@ -592,7 +595,22 @@ export default defineEventHandler(async (event) => {
   // фронт (и роуты дашборда) могли однозначно находить заказ.
   const orderId = crypto.randomUUID()
   const orderCreatedAtIso = now.toISOString()
-  const text = buildOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, fulfillmentType === 'delivery' ? deliveryZoneValidated : null, user, {
+  const serviceClient = await serverSupabaseServiceRole(event)
+  const { data: generatedOrderNumber, error: orderNumberError } = await serviceClient.rpc('next_order_human_number', {
+    p_shop_id: tenantShopId,
+    p_restaurant_id: restaurant.id,
+    p_created_at: orderCreatedAtIso,
+  })
+  if (orderNumberError) {
+    console.error('Failed to generate human order number:', orderNumberError)
+    throw createError({ statusCode: 500, message: 'Failed to generate order number' })
+  }
+  const orderNumber =
+    typeof generatedOrderNumber === 'string' && generatedOrderNumber.trim()
+      ? generatedOrderNumber.trim()
+      : orderId.slice(0, 8)
+
+  const text = buildOrderMessage(orderNumber, itemsWithServerPrice, total, deliveryCost, fulfillmentType === 'delivery' ? deliveryZoneValidated : null, user, {
     fulfillmentType,
     pickupPoint,
     addressLine,
@@ -627,7 +645,6 @@ export default defineEventHandler(async (event) => {
 
   // Persist order for dashboard & kitchen.
   // Note: WEB/TMA modes are normalized to `user.id` (Telegram id) above.
-  const serviceClient = await serverSupabaseServiceRole(event)
   const grandTotal = Math.round(total + deliveryCost)
   const initialMetadata = {
     timeline: [
@@ -648,6 +665,8 @@ export default defineEventHandler(async (event) => {
     shop_id: tenantShopId,
     restaurant_id: restaurant.id,
     customer_telegram_id: user.id,
+    customer_profile_id: customerProfileId,
+    order_number: orderNumber,
     status: 'new',
     fulfillment_type: fulfillmentType,
     payment_method: paymentMethod,
@@ -689,20 +708,21 @@ export default defineEventHandler(async (event) => {
 
   // Дополнительное уведомление клиента о создании заказа (ошибки не критичны)
   try {
+    const clientText = buildClientOrderMessage(orderNumber, itemsWithServerPrice, total, deliveryCost, fulfillmentType === 'delivery' ? deliveryZoneValidated : null, {
+      fulfillmentType,
+      pickupPoint,
+      addressLine,
+      flat,
+      comment,
+      paymentMethod,
+      changeFrom,
+    })
     const clientPayload: any = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: user.id,
-        text: buildClientOrderMessage(orderId, itemsWithServerPrice, total, deliveryCost, fulfillmentType === 'delivery' ? deliveryZoneValidated : null, {
-          fulfillmentType,
-          pickupPoint,
-          addressLine,
-          flat,
-          comment,
-          paymentMethod,
-          changeFrom,
-        }),
+        text: clientText,
       }),
     }
 
@@ -722,5 +742,5 @@ export default defineEventHandler(async (event) => {
     console.error('Telegram notify client error:', notifyErr)
   }
 
-  return { ok: true, orderId }
+  return { ok: true, orderId, orderNumber }
 })

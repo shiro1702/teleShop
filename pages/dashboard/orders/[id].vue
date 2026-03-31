@@ -12,7 +12,10 @@
   <section v-else-if="order" class="space-y-4">
     <div class="flex items-start justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-semibold">Заказ {{ shortId(order.id) }}</h1>
+        <h1 class="text-2xl font-semibold">
+          Заказ {{ order.orderNumber && order.orderNumber.trim() ? order.orderNumber : shortId(order.id) }}
+        </h1>
+        <p class="mt-1 font-mono text-xs text-gray-500">ID: {{ shortId(order.id) }}</p>
         <p class="mt-1 text-sm text-gray-600">
           {{
             order.customerTelegramId != null
@@ -104,13 +107,16 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import {
+  dashboardOrderStatusLabels,
+  getAllowedOrderStatusTransitions,
+  type DashboardOrderStatus,
+} from '~/utils/dashboardOrderStatus'
 
 definePageMeta({ layout: 'dashboard' })
 
 const route = useRoute()
 const { can } = useDashboardAccess()
-
-type DashboardOrderStatus = 'new' | 'in_progress' | 'done' | 'cancelled'
 
 type OrderItem = {
   productId: string
@@ -123,21 +129,16 @@ type TimelineEntry = { at: string; label: string }
 
 type OrderDetail = {
   id: string
+  orderNumber?: string | null
   restaurantName: string
   cityName: string
   status: DashboardOrderStatus
+  fulfillmentType: string
   total: number
   items: OrderItem[]
   timeline: TimelineEntry[]
   customerTelegramId: number | null
   customerProfileId: string | null
-}
-
-const transitions: Record<DashboardOrderStatus, DashboardOrderStatus[]> = {
-  new: ['in_progress', 'cancelled'],
-  in_progress: ['done', 'cancelled'],
-  done: [],
-  cancelled: [],
 }
 
 const orderId = computed(() => String(route.params.id || ''))
@@ -152,7 +153,7 @@ const saving = ref(false)
 
 const allowedTransitions = computed(() => {
   if (!order.value) return []
-  return transitions[order.value.status] ?? []
+  return getAllowedOrderStatusTransitions(order.value.status, order.value.fulfillmentType)
 })
 
 watch(allowedTransitions, (list) => {
@@ -200,20 +201,15 @@ function formatAt(iso: string) {
 }
 
 function statusLabel(value: DashboardOrderStatus) {
-  return (
-    {
-      new: 'Новый',
-      in_progress: 'В работе',
-      done: 'Выполнен',
-      cancelled: 'Отменён',
-    } as Record<DashboardOrderStatus, string>
-  )[value]
+  return dashboardOrderStatusLabels[value]
 }
 
 function statusClass(value: DashboardOrderStatus) {
-  if (value === 'done') return 'bg-green-100 text-green-700'
+  if (value === 'handed_to_customer') return 'bg-green-100 text-green-700'
   if (value === 'cancelled') return 'bg-red-100 text-red-700'
   if (value === 'in_progress') return 'bg-blue-100 text-blue-700'
+  if (value === 'ready_for_pickup') return 'bg-amber-100 text-amber-900'
+  if (value === 'out_for_delivery') return 'bg-violet-100 text-violet-800'
   return 'bg-gray-100 text-gray-700'
 }
 

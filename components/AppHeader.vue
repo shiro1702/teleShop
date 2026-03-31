@@ -90,6 +90,14 @@
             :style="menuStyle"
           >
             <NuxtLink
+              :to="tenantPath('/orders')"
+              class="block px-3 py-2"
+              :style="{ color: mainTextColor }"
+              @click="showUserMenu = false"
+            >
+              История заказов
+            </NuxtLink>
+            <NuxtLink
               to="/profile"
               class="block px-3 py-2"
               :style="{ color: mainTextColor }"
