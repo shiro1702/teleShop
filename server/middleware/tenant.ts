@@ -10,6 +10,7 @@ import { getStyleRecord } from '~/server/utils/organizationStyle'
 
 const REQUIRED_PATHS = [
   '/api/order',
+  '/api/checkout/create',
   '/api/client-order-status',
   '/api/tenant',
   '/api/products',

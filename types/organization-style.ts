@@ -65,6 +65,12 @@ export type OrganizationTaxSettings = {
   vatMode: 'none' | 'included' | 'excluded'
 }
 
+export type OrganizationLegalSettings = {
+  legalName: string
+  inn: string
+  ogrn: string
+}
+
 export type OrganizationSettings = {
   slug: string
   displayName: string
@@ -74,6 +80,7 @@ export type OrganizationSettings = {
   ops: OrganizationOpsSettings
   locale: OrganizationLocaleSettings
   tax: OrganizationTaxSettings
+  legal: OrganizationLegalSettings
 }
 
 export type OrganizationStylePreset = {
