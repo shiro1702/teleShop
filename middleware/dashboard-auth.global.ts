@@ -16,14 +16,30 @@ export default defineNuxtRouteMiddleware(async (to) => {
   try {
     const access = await $fetch<{ ok: boolean; shopId?: string }>('/api/dashboard/access')
     if (!access?.ok || !access.shopId) {
+      if (to.path === '/dashboard') {
+        const redirectFromQuery = typeof to.query.redirect === 'string' ? to.query.redirect : ''
+        const redirectPath = redirectFromQuery.startsWith('/dashboard') ? redirectFromQuery : '/dashboard'
+        return navigateTo({
+          path: '/onboarding',
+          query: { redirect: redirectPath },
+        })
+      }
       return navigateTo({
-        path: '/onboarding',
+        path: '/dashboard',
         query: { redirect: to.fullPath },
       })
     }
   } catch {
+    if (to.path === '/dashboard') {
+      const redirectFromQuery = typeof to.query.redirect === 'string' ? to.query.redirect : ''
+      const redirectPath = redirectFromQuery.startsWith('/dashboard') ? redirectFromQuery : '/dashboard'
+      return navigateTo({
+        path: '/onboarding',
+        query: { redirect: redirectPath },
+      })
+    }
     return navigateTo({
-      path: '/onboarding',
+      path: '/dashboard',
       query: { redirect: to.fullPath },
     })
   }

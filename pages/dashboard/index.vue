@@ -64,6 +64,7 @@ import { computed, onMounted, ref } from 'vue'
 declare const definePageMeta: (meta: Record<string, unknown>) => void
 definePageMeta({ layout: 'dashboard' })
 
+const route = useRoute()
 const { access, can, load } = useDashboardAccess()
 const pending = ref(true)
 const errorMessage = ref<string | null>(null)
@@ -77,7 +78,12 @@ onMounted(async () => {
   try {
     await load()
     if (!access.value?.shopId) {
-      errorMessage.value = 'Не найден контекст организации. Завершите onboarding.'
+      const redirectFromQuery = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+      const redirectPath = redirectFromQuery.startsWith('/dashboard') ? redirectFromQuery : '/dashboard'
+      await navigateTo({
+        path: '/onboarding',
+        query: { redirect: redirectPath },
+      })
       return
     }
 
