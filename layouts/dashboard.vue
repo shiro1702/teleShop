@@ -5,7 +5,7 @@
         <div class="mx-auto flex min-w-max max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:min-w-0 sm:px-6">
           <div class="flex items-center gap-5">
           <NuxtLink to="/dashboard" class="text-sm font-semibold text-gray-900">
-            TeleShop Dashboard
+            PocketMenu Dashboard
           </NuxtLink>
           <nav class="flex items-center gap-4 whitespace-nowrap text-sm text-gray-600">
             <NuxtLink v-if="can('orders.view')" to="/dashboard/orders" class="hover:text-gray-900">Заказы</NuxtLink>
