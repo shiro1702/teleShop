@@ -74,32 +74,32 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TENA-01 | Phase TBD | Pending |
-| TENA-02 | Phase TBD | Pending |
-| TENA-03 | Phase TBD | Pending |
-| TENA-04 | Phase TBD | Pending |
-| QRST-01 | Phase TBD | Pending |
-| QRST-02 | Phase TBD | Pending |
-| QRST-03 | Phase TBD | Pending |
-| QRST-04 | Phase TBD | Pending |
-| PAYM-01 | Phase TBD | Pending |
-| PAYM-02 | Phase TBD | Pending |
-| PAYM-03 | Phase TBD | Pending |
-| PAYM-04 | Phase TBD | Pending |
-| PAYM-05 | Phase TBD | Pending |
-| ORDR-01 | Phase TBD | Pending |
-| ORDR-02 | Phase TBD | Pending |
-| ORDR-03 | Phase TBD | Pending |
-| ORDR-04 | Phase TBD | Pending |
-| ADMN-01 | Phase TBD | Pending |
-| ADMN-02 | Phase TBD | Pending |
-| ADMN-03 | Phase TBD | Pending |
+| TENA-01 | Phase 1 | Pending |
+| TENA-02 | Phase 1 | Pending |
+| TENA-03 | Phase 1 | Pending |
+| TENA-04 | Phase 1 | Pending |
+| QRST-01 | Phase 2 | Pending |
+| QRST-02 | Phase 2 | Pending |
+| QRST-03 | Phase 2 | Pending |
+| QRST-04 | Phase 2 | Pending |
+| PAYM-01 | Phase 3 | Pending |
+| PAYM-02 | Phase 3 | Pending |
+| PAYM-03 | Phase 3 | Pending |
+| PAYM-04 | Phase 3 | Pending |
+| PAYM-05 | Phase 3 | Pending |
+| ORDR-01 | Phase 4 | Pending |
+| ORDR-02 | Phase 4 | Pending |
+| ORDR-03 | Phase 4 | Pending |
+| ORDR-04 | Phase 4 | Pending |
+| ADMN-01 | Phase 5 | Pending |
+| ADMN-02 | Phase 1 | Pending |
+| ADMN-03 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 20 total
-- Mapped to phases: 0
-- Unmapped: 20 ⚠
+- Mapped to phases: 20
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-04-01 after initial definition*
+*Last updated: 2026-04-01 after roadmap mapping*
