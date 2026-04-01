@@ -216,6 +216,11 @@ export function getDefaultOrganizationSettings(): OrganizationSettings {
     tax: {
       vatMode: 'none',
     },
+    legal: {
+      legalName: '',
+      inn: '',
+      ogrn: '',
+    },
   }
 }
 
@@ -311,6 +316,7 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
   const ops = source.ops && typeof source.ops === 'object' ? source.ops : {}
   const locale = source.locale && typeof source.locale === 'object' ? source.locale : {}
   const tax = source.tax && typeof source.tax === 'object' ? source.tax : {}
+  const legal = source.legal && typeof source.legal === 'object' ? source.legal : {}
   const status = ['open', 'closed', 'coming_soon', 'temporarily_unavailable'].includes(ops.status) ? ops.status : defaults.ops.status
   const orderAcceptanceMode = ['auto', 'manual'].includes(ops.orderAcceptanceMode) ? ops.orderAcceptanceMode : defaults.ops.orderAcceptanceMode
   const showcaseOrderFulfillment = ['to-table', 'pickup-point'].includes(ops.showcaseOrderFulfillment)
@@ -355,6 +361,11 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
     },
     tax: {
       vatMode,
+    },
+    legal: {
+      legalName: asString(legal.legalName, defaults.legal.legalName),
+      inn: asString(legal.inn, defaults.legal.inn),
+      ogrn: asString(legal.ogrn, defaults.legal.ogrn),
     },
   }
 }
@@ -445,9 +456,16 @@ export async function getOrganizationSettings(event: any, shopId: string): Promi
   const client = await serverSupabaseServiceRole(event)
   const { data, error } = await client
     .from('shops')
-    .select('slug,name,ui_settings')
+    .select('slug,name,ui_settings,legal_name,inn,ogrn')
     .eq('id', shopId)
-    .maybeSingle<{ slug: string; name: string; ui_settings: Record<string, unknown> | null }>()
+    .maybeSingle<{
+      slug: string
+      name: string
+      ui_settings: Record<string, unknown> | null
+      legal_name: string | null
+      inn: string | null
+      ogrn: string | null
+    }>()
   if (error || !data) {
     throw createError({ statusCode: 500, statusMessage: 'Failed to load organization settings' })
   }
@@ -462,6 +480,11 @@ export async function getOrganizationSettings(event: any, shopId: string): Promi
     ops: {
       ...org.ops,
       fulfillmentTypes: modes.length ? modes : [],
+    },
+    legal: {
+      legalName: (data.legal_name ?? org.legal.legalName ?? '').trim(),
+      inn: (data.inn ?? org.legal.inn ?? '').trim(),
+      ogrn: (data.ogrn ?? org.legal.ogrn ?? '').trim(),
     },
   }
 }
@@ -487,6 +510,9 @@ export async function persistOrganizationSettings(event: any, shopId: string, se
   const payload: Record<string, unknown> = {
     slug: normalized.slug,
     ui_settings: nextUi,
+    legal_name: normalized.legal.legalName.trim() || null,
+    inn: normalized.legal.inn.trim() || null,
+    ogrn: normalized.legal.ogrn.trim() || null,
   }
   if (normalized.displayName) payload.name = normalized.displayName
   const update = await client
@@ -628,6 +654,18 @@ export function validateOrganizationSettings(settings: OrganizationSettings): st
   }
   if (settings.locale.languages.length === 0) {
     errors.push('Нужен минимум один язык витрины.')
+  }
+  const legalName = settings.legal.legalName.trim()
+  const inn = settings.legal.inn.trim()
+  const ogrn = settings.legal.ogrn.trim()
+  if (legalName.length < 2 || legalName.length > 160) {
+    errors.push('Юридическое наименование должно быть от 2 до 160 символов.')
+  }
+  if (!/^\d{10}(\d{2})?$/.test(inn)) {
+    errors.push('ИНН должен содержать 10 или 12 цифр.')
+  }
+  if (!/^\d{13}(\d{2})?$/.test(ogrn)) {
+    errors.push('ОГРН/ОГРНИП должен содержать 13 или 15 цифр.')
   }
   return errors
 }

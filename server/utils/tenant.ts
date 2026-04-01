@@ -7,6 +7,11 @@ export type TenantShop = {
   slug: string
   name: string
   custom_domain?: string | null
+  legal_name?: string | null
+  inn?: string | null
+  ogrn?: string | null
+  yookassa_shop_id?: string | null
+  yookassa_secret_key?: string | null
   telegram_bot_token: string
   telegram_bot_id: number | null
   manager_chat_id: string | null
@@ -45,7 +50,8 @@ type CacheEntry = {
 const CACHE_TTL_MS = 60_000
 const shopCache = new Map<string, CacheEntry>()
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-const SHOP_SELECT_WITH_DOMAIN = 'id,slug,name,custom_domain,telegram_bot_token,telegram_bot_id,manager_chat_id,integration_keys,ui_settings,is_active'
+const SHOP_SELECT_WITH_DOMAIN = 'id,slug,name,custom_domain,legal_name,inn,ogrn,yookassa_shop_id,yookassa_secret_key,telegram_bot_token,telegram_bot_id,manager_chat_id,integration_keys,ui_settings,is_active'
+const SHOP_SELECT_WITH_DOMAIN_LEGACY = 'id,slug,name,custom_domain,telegram_bot_token,telegram_bot_id,manager_chat_id,integration_keys,ui_settings,is_active'
 const SHOP_SELECT_LEGACY = 'id,slug,name,telegram_bot_token,telegram_bot_id,manager_chat_id,integration_keys,ui_settings,is_active'
 
 function getCached(shopId: string): TenantShop | null {
@@ -114,11 +120,14 @@ export async function getShopById(event: H3Event, shopId: string): Promise<Tenan
       ? await baseQuery.eq('id', shopRef).maybeSingle()
       : await baseQuery.eq('slug', shopRef).maybeSingle()
   }
-  let { data, error } = await loadShop(SHOP_SELECT_WITH_DOMAIN)
-  if (error && /custom_domain/i.test(error.message)) {
-    const fallback = await loadShop(SHOP_SELECT_LEGACY)
-    data = fallback.data
-    error = fallback.error
+  const tries = [SHOP_SELECT_WITH_DOMAIN, SHOP_SELECT_WITH_DOMAIN_LEGACY, SHOP_SELECT_LEGACY]
+  let data: any = null
+  let error: any = null
+  for (const clause of tries) {
+    const attempt = await loadShop(clause)
+    data = attempt.data
+    error = attempt.error
+    if (!error || data) break
   }
 
   if (error) {
@@ -174,11 +183,14 @@ export async function getShopByBotId(event: H3Event, botId: number): Promise<Ten
       .eq('telegram_bot_id', botId)
       .maybeSingle()
 
-  let { data, error } = await loadShop(SHOP_SELECT_WITH_DOMAIN)
-  if (error && /custom_domain/i.test(error.message)) {
-    const fallback = await loadShop(SHOP_SELECT_LEGACY)
-    data = fallback.data
-    error = fallback.error
+  const tries = [SHOP_SELECT_WITH_DOMAIN, SHOP_SELECT_WITH_DOMAIN_LEGACY, SHOP_SELECT_LEGACY]
+  let data: any = null
+  let error: any = null
+  for (const clause of tries) {
+    const attempt = await loadShop(clause)
+    data = attempt.data
+    error = attempt.error
+    if (!error || data) break
   }
 
   if (error) {

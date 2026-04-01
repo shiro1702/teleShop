@@ -92,6 +92,7 @@ export default defineEventHandler(async (event: H3Event) => {
       shop_id,
       restaurant_id,
       status,
+      payment_status,
       fulfillment_type,
       payment_method,
       subtotal,
@@ -137,6 +138,7 @@ export default defineEventHandler(async (event: H3Event) => {
     order: {
       id: row.id as string,
       status: st,
+      paymentStatus: row.payment_status || 'unpaid',
       fulfillmentType: row.fulfillment_type || 'delivery',
       paymentMethod: row.payment_method || 'cash',
       subtotal: row.subtotal ?? 0,

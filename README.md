@@ -1,4 +1,4 @@
-# teleShop — Multi-tenant Telegram Shop (Nuxt 3)
+# PocketMenu (pocketmenu.ru) — меню в вашем кармане (Nuxt 3)
 
 SaaS-платформа интернет-магазинов на одной кодовой базе: **Telegram Bot + Telegram Mini App + Web checkout**.
 Данные изолируются по `shop_id` (tenant), каталог и рестораны хранятся в Supabase.

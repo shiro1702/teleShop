@@ -517,20 +517,20 @@
                     </div>
                   </div>
                 </label>
-                <label class="flex cursor-not-allowed items-center justify-between rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm opacity-70">
+                <label class="flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm">
                   <div class="flex items-center gap-2">
                     <input
+                      v-model="state.paymentMethod"
                       type="radio"
                       value="online"
-                      disabled
                       class="h-4 w-4 text-primary"
                     >
                     <div>
-                      <p class="font-medium text-gray-400">
+                      <p class="font-medium text-gray-900">
                         Оплата на сайте
                       </p>
-                      <p class="text-xs text-gray-400">
-                        Скоро появится
+                      <p class="text-xs text-gray-500">
+                        Банковская страница YooKassa
                       </p>
                     </div>
                   </div>
@@ -1188,18 +1188,41 @@ async function placeOrder() {
     })
 
     if (res?.ok) {
+      if (state.paymentMethod === 'online' && res.orderId) {
+        const returnUrl = isClient()
+          ? `${window.location.origin}${tenantPath('/checkout')}?payment=return&orderId=${encodeURIComponent(res.orderId)}`
+          : undefined
+        const paymentRes = await $fetch<{ ok: boolean; confirmationUrl?: string }>('/api/checkout/create', {
+          method: 'POST',
+          headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+          body: {
+            orderId: res.orderId,
+            returnUrl,
+          },
+        })
+        if (!paymentRes?.confirmationUrl) {
+          throw new Error('Payment confirmation URL not received')
+        }
+        const data = serializeState()
+        persistCheckoutStateCloud(data)
+        cartStore.clear()
+        if (isClient()) {
+          localStorage.removeItem(CHECKOUT_STORAGE_KEY)
+          window.location.href = paymentRes.confirmationUrl
+        }
+        return
+      }
+
       const data = serializeState()
       persistCheckoutStateCloud(data)
       cartStore.clear()
       if (isClient()) {
         localStorage.removeItem(CHECKOUT_STORAGE_KEY)
       }
-      // Пока просто редиректим на главную, позже можно сделать отдельную страницу успеха
       await navigateTo({
         path: tenantPath('/orders'),
         query: {
           orderId: res.orderId ?? undefined,
-          // Явно прокидываем магазин, чтобы tenant-контекст был корректным для API.
           shop_id: shopIdFromRoute.value || undefined,
         },
       })

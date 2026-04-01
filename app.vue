@@ -7,17 +7,26 @@
       </NuxtLayout>
     </div>
     <footer
-      v-if="isCityRoute"
+      v-if="isStorefrontRoute"
       class="mt-12 border-t border-gray-200 bg-white/95"
     >
       <div class="mx-auto max-w-7xl px-4 py-6 text-xs leading-6 text-gray-600 sm:px-6">
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <p class="font-medium text-gray-700">
-              Оператор платформы: ИП Баранзаев Арсалан Баярович
-            </p>
-            <p>ИНН: 032384437278</p>
-            <p>ОГРНИП: 325030000033105</p>
+            <template v-if="tenantLegalName || tenantInn || tenantOgrn">
+              <p class="font-medium text-gray-700">
+                Продавец: {{ tenantLegalName || 'Ресторан-партнер' }}
+              </p>
+              <p v-if="tenantInn">ИНН: {{ tenantInn }}</p>
+              <p v-if="tenantOgrn">ОГРН/ОГРНИП: {{ tenantOgrn }}</p>
+            </template>
+            <template v-else>
+              <p class="font-medium text-gray-700">
+                Оператор платформы: ИП Баранзаев Арсалан Баярович
+              </p>
+              <p>ИНН: 032384437278</p>
+              <p>ОГРНИП: 325030000033105</p>
+            </template>
           </div>
           <div>
             <p class="font-medium text-gray-700">Юридические документы</p>
@@ -53,27 +62,27 @@ import { useTelegram } from './composables/useTelegram'
 import { useTenant } from './composables/useTenant'
 
 const { isTelegram } = useTelegram()
-const { cssVars, loadTenantSettings } = useTenant()
+const { cssVars, loadTenantSettings, tenant } = useTenant()
 const route = useRoute()
 
 const rootStyle = computed(() => cssVars.value)
-const isCityRoute = computed(() => {
+const isStorefrontRoute = computed(() => {
+  const routePath = typeof route.path === 'string' ? route.path : ''
+  if (routePath.startsWith('/dashboard') || routePath.startsWith('/platform')) return false
   const citySlug = route.params?.city_slug
-  const tenantSlug = route.params?.tenant_slug
 
   const hasCitySlug = Array.isArray(citySlug)
     ? citySlug.length > 0
     : typeof citySlug === 'string' && citySlug.length > 0
 
-  const hasTenantSlug = Array.isArray(tenantSlug)
-    ? tenantSlug.length > 0
-    : typeof tenantSlug === 'string' && tenantSlug.length > 0
-
-  if (!hasCitySlug || hasTenantSlug) {
+  if (!hasCitySlug) {
     return false
   }
   return true
 })
+const tenantLegalName = computed(() => tenant.value.legalName || null)
+const tenantInn = computed(() => tenant.value.inn || null)
+const tenantOgrn = computed(() => tenant.value.ogrn || null)
 const cityBasePath = computed(() => {
   const citySlug = route.params?.city_slug
   const city = Array.isArray(citySlug) ? citySlug[0] : citySlug

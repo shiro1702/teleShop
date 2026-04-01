@@ -233,6 +233,26 @@
             <option value="none">Без НДС</option><option value="included">НДС включен в цену</option><option value="excluded">НДС начисляется сверху</option>
           </select>
         </label>
+        <div class="md:col-span-2 rounded-lg border border-gray-200 p-3">
+          <p class="text-sm font-medium text-gray-700">Реквизиты для публичного футера</p>
+          <p class="mt-1 text-xs text-gray-500">
+            Показываются на публичной витрине ресторана.
+          </p>
+          <div class="mt-3 grid gap-3 md:grid-cols-3">
+            <label class="text-sm">
+              <span class="mb-1 block text-gray-600">Юр. наименование / ИП ФИО</span>
+              <input v-model="settings.legal.legalName" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly">
+            </label>
+            <label class="text-sm">
+              <span class="mb-1 block text-gray-600">ИНН</span>
+              <input v-model="settings.legal.inn" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly" inputmode="numeric">
+            </label>
+            <label class="text-sm">
+              <span class="mb-1 block text-gray-600">ОГРН / ОГРНИП</span>
+              <input v-model="settings.legal.ogrn" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly" inputmode="numeric">
+            </label>
+          </div>
+        </div>
       </div>
       <div class="flex flex-wrap gap-2">
         <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="save('Контакты и операционные настройки сохранены.')">
@@ -472,6 +492,11 @@ const settings = reactive<OrganizationSettings>({
   tax: {
     vatMode: 'none',
   },
+  legal: {
+    legalName: '',
+    inn: '',
+    ogrn: '',
+  },
 })
 const languagesRaw = ref('ru')
 const cuisineSearch = ref('')
@@ -620,6 +645,7 @@ function fillSettings(next: OrganizationSettings) {
   Object.assign(settings.ops, next.ops)
   Object.assign(settings.locale, next.locale)
   Object.assign(settings.tax, next.tax)
+  Object.assign(settings.legal, next.legal)
   languagesRaw.value = next.locale.languages.join(',')
   settings.ops.minOrderAmount = next.ops.minOrderAmount ?? 500
   settings.ops.prepTimeMinutes = next.ops.prepTimeMinutes ?? 30

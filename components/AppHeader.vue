@@ -162,7 +162,7 @@ const ordersLink = computed(() => {
   if (citySlug) return `/${citySlug}/orders`
   return tenantPath('/orders')
 })
-const tenantName = computed(() => tenant.value.shopName || 'teleShop')
+const tenantName = computed(() => tenant.value.shopName || 'PocketMenu')
 const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
 const defaultCitySlug = computed(() =>

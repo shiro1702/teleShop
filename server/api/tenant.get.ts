@@ -43,6 +43,9 @@ export default defineEventHandler(async (event) => {
         id: tenantFromContext.shop.id,
         slug: tenantFromContext.shop.slug,
         name: shopName,
+        legalName: tenantFromContext.shop.legal_name || null,
+        inn: tenantFromContext.shop.inn || null,
+        ogrn: tenantFromContext.shop.ogrn || null,
       },
       uiSettings,
     }
@@ -85,6 +88,9 @@ export default defineEventHandler(async (event) => {
       id: shop.id,
       slug: shop.slug,
       name: shopName,
+      legalName: shop.legal_name || null,
+      inn: shop.inn || null,
+      ogrn: shop.ogrn || null,
     },
     uiSettings,
   }

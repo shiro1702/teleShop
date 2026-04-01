@@ -12,6 +12,9 @@ type TenantState = {
   isCustomDomain: boolean
   logoUrl: string | null
   description: string | null
+  legalName: string | null
+  inn: string | null
+  ogrn: string | null
 }
 
 function normalizeTheme(input: unknown): TenantTheme {
@@ -125,12 +128,15 @@ export function useTenant() {
     isCustomDomain: false,
     logoUrl: null,
     description: null,
+    legalName: null,
+    inn: null,
+    ogrn: null,
   }))
 
   function applyTenant(payload: {
     shopId?: string | null
     tenantSlug?: string | null
-    shop?: { name?: string | null; slug?: string | null } | null
+    shop?: { name?: string | null; slug?: string | null; legalName?: string | null; inn?: string | null; ogrn?: string | null } | null
     uiSettings?: Record<string, unknown> | null
     isCustomDomain?: boolean
   }) {
@@ -142,6 +148,9 @@ export function useTenant() {
     state.value.isCustomDomain = !!payload.isCustomDomain
     state.value.logoUrl = getStringSetting(payload.uiSettings ?? null, 'logo_url', 'logoUrl')
     state.value.description = getStringSetting(payload.uiSettings ?? null, 'description', 'shop_description', 'shopDescription')
+    state.value.legalName = typeof payload.shop?.legalName === 'string' ? payload.shop.legalName : null
+    state.value.inn = typeof payload.shop?.inn === 'string' ? payload.shop.inn : null
+    state.value.ogrn = typeof payload.shop?.ogrn === 'string' ? payload.shop.ogrn : null
     state.value.loaded = true
     state.value.loading = false
   }
@@ -153,6 +162,9 @@ export function useTenant() {
       shop: {
         name: event.context.tenant.shop.name,
         slug: event.context.tenant.shop.slug,
+        legalName: event.context.tenant.shop.legal_name ?? null,
+        inn: event.context.tenant.shop.inn ?? null,
+        ogrn: event.context.tenant.shop.ogrn ?? null,
       },
       uiSettings: event.context.tenant.uiSettings,
       isCustomDomain: !!event.context.tenant.isCustomDomain,
@@ -244,7 +256,7 @@ export function useTenant() {
         shopId: string
         tenantSlug?: string
         isCustomDomain?: boolean
-        shop?: { name?: string }
+        shop?: { name?: string; legalName?: string | null; inn?: string | null; ogrn?: string | null }
         uiSettings?: Record<string, unknown>
       }>('/api/tenant', {
         query,
@@ -274,6 +286,9 @@ export function useTenant() {
       state.value.shopName = null
       state.value.logoUrl = null
       state.value.description = null
+      state.value.legalName = null
+      state.value.inn = null
+      state.value.ogrn = null
       state.value.theme = {}
       try {
         await loadTenantSettings()

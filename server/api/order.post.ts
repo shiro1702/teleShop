@@ -670,6 +670,8 @@ export default defineEventHandler(async (event) => {
     status: 'new',
     fulfillment_type: fulfillmentType,
     payment_method: paymentMethod,
+    payment_status: paymentMethod === 'online' ? 'pending' : 'unpaid',
+    payment_provider: paymentMethod === 'online' ? 'yookassa' : null,
     subtotal: Math.round(total),
     delivery_cost: Math.round(deliveryCost),
     total: grandTotal,
