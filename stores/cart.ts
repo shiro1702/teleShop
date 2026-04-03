@@ -239,6 +239,11 @@ export const useCartStore = defineStore('cart', {
         }
       }
     },
+    decrementByProductId(productId: string) {
+      const item = this.items.find((i) => i.id === productId)
+      if (!item) return
+      this.updateQuantity(item.cartItemId, item.quantity - 1)
+    },
     clear() {
       this.items = []
       persistCart(this.scopeKey, this.items)
