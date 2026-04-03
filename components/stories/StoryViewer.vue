@@ -19,52 +19,55 @@
         </div>
       </div>
 
-      <button
-        type="button"
-        class="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 rounded-full bg-black/40 p-2 text-white"
-        aria-label="Закрыть"
-        @click="close"
-      >
-        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-
-      <div
-        class="relative flex min-h-0 flex-1 items-center justify-center"
-        @click="onTapContent"
-      >
-        <template v-if="currentSlide">
-          <img
-            v-if="isImageUrl(currentSlide.mediaUrl)"
-            :src="currentSlide.mediaUrl"
-            :alt="campaign.title"
-            class="max-h-full max-w-full object-contain"
+      <div class="relative flex min-h-0 flex-1 items-center justify-center p-3 sm:p-6">
+        <div class="relative h-full w-full max-h-[780px] max-w-[400px]">
+          <button
+            type="button"
+            class="absolute -right-2 -top-2 z-20 rounded-full bg-black/55 p-2 text-white shadow-sm sm:-right-3 sm:-top-3"
+            aria-label="Закрыть"
+            @click.stop="close"
           >
-          <video
-            v-else
-            :key="currentSlide.id"
-            ref="videoRef"
-            class="max-h-full max-w-full object-contain"
-            :src="currentSlide.mediaUrl"
-            autoplay
-            playsinline
-            @ended="onVideoEnded"
-          />
-        </template>
-      </div>
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <div
+            class="relative flex h-full w-full max-h-[780px] max-w-[400px] overflow-hidden rounded-3xl bg-black"
+            @click="onTapContent"
+          >
+            <template v-if="currentSlide">
+              <img
+                v-if="isImageUrl(currentSlide.mediaUrl)"
+                :src="currentSlide.mediaUrl"
+                :alt="campaign.title"
+                class="h-full w-full object-cover"
+              >
+              <video
+                v-else
+                :key="currentSlide.id"
+                ref="videoRef"
+                class="h-full w-full object-cover"
+                :src="currentSlide.mediaUrl"
+                autoplay
+                playsinline
+                @ended="onVideoEnded"
+              />
+            </template>
 
-      <div
-        v-if="currentSlide && currentSlide.actionType !== 'none'"
-        class="shrink-0 border-t border-white/10 bg-black/60 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
-      >
-        <button
-          type="button"
-          class="w-full rounded-xl bg-white py-3 text-base font-semibold text-gray-900"
-          @click.stop="onActionClick"
-        >
-          {{ actionLabel }}
-        </button>
+            <div
+              v-if="currentSlide && currentSlide.actionType !== 'none'"
+              class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pb-3 pt-16 sm:px-4 sm:pb-4"
+            >
+              <button
+                type="button"
+                class="w-full rounded-xl bg-white py-3 text-base font-semibold text-gray-900"
+                @click.stop="onActionClick"
+              >
+                {{ actionLabel }}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </Teleport>

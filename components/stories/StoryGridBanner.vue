@@ -13,10 +13,19 @@
         class="absolute inset-0 h-full w-full object-cover"
       >
       <div
+        v-else
+        class="absolute inset-0 flex items-center justify-center px-4 text-center"
+        :style="{ backgroundColor: fallbackBg, color: mainText }"
+      >
+        <span class="text-sm font-semibold">
+          {{ cleanTitle }}
+        </span>
+      </div>
+      <div
         class="relative mt-auto bg-gradient-to-t from-black/70 to-transparent p-4 pt-16"
       >
         <p class="text-sm font-semibold text-white drop-shadow">
-          {{ campaign.title }}
+          {{ cleanTitle }}
         </p>
         <p class="mt-1 text-xs text-white/90">
           Сториз
@@ -42,9 +51,19 @@ defineEmits<{
 const { tenant } = useTenant()
 const theme = computed(() => tenant.value.theme || {})
 const cardBg = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
+const fallbackBg = computed(() => theme.value.primary_50 || '#f3f4f6')
+const mainText = computed(() => theme.value.text_primary || '#111827')
 
 const coverUrl = computed(() => {
-  const first = props.campaign.slides?.[0]
-  return first?.mediaUrl || props.campaign.previewUrl || ''
+  const firstImageSlide = props.campaign.slides?.find((s) => isImageUrl(s.mediaUrl))
+  if (firstImageSlide?.mediaUrl) return firstImageSlide.mediaUrl
+  if (isImageUrl(props.campaign.previewUrl || '')) return props.campaign.previewUrl || ''
+  return ''
 })
+
+const cleanTitle = computed(() => props.campaign.title.replace(/^\[DEMO\]\s*/i, '').trim())
+
+function isImageUrl(url: string): boolean {
+  return /\.(png|jpe?g|gif|webp)(\?|$)/i.test(url) || url.includes('/image')
+}
 </script>

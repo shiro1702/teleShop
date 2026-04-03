@@ -2,8 +2,9 @@
   <div class="min-h-screen" :style="pageStyle">
     <div class="sticky top-16 z-40 backdrop-blur" :style="topBarStyle">
       <StoriesTopBar
-        v-if="storiesTopBar.length"
+        v-if="storiesLoading || storiesTopBar.length"
         :campaigns="storiesTopBar"
+        :loading="storiesLoading"
         @open="openStoryCampaign"
       />
       <div class="mx-auto max-w-6xl px-4 py-3 sm:px-6">
@@ -410,7 +411,11 @@ const route = useRoute()
 const { tenant, tenantKey, tenantPath } = useTenant()
 const viewerOpen = ref(false)
 const viewerCampaign = ref<StoryCampaignDto | null>(null)
-const { topBar: storiesTopBar, catalogGrid: storiesCatalogGrid } = useStories(tenantKey)
+const {
+  loading: storiesLoading,
+  topBar: storiesTopBar,
+  catalogGrid: storiesCatalogGrid,
+} = useStories(tenantKey)
 
 const sectionsWithStoryCells = computed(() => {
   const storyCampaigns = storiesCatalogGrid.value
