@@ -1,6 +1,11 @@
 <template>
   <div class="min-h-screen" :style="pageStyle">
     <div class="sticky top-16 z-40 backdrop-blur" :style="topBarStyle">
+      <StoriesTopBar
+        v-if="storiesTopBar.length"
+        :campaigns="storiesTopBar"
+        @open="openStoryCampaign"
+      />
       <div class="mx-auto max-w-6xl px-4 py-3 sm:px-6">
         <div class="flex items-center gap-3">
           <nav class="-mx-4 flex flex-1 items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
@@ -91,7 +96,7 @@
       </section>
 
       <section
-        v-for="section in cartStore.productsByCategory"
+        v-for="section in sectionsWithStoryCells"
         :key="section.category"
         :id="section.category"
         class="mb-10 scroll-mt-28"
@@ -102,8 +107,21 @@
         <ul
           class="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4"
         >
-          <li v-for="product in section.products" :key="product.id" class="flex">
-            <ProductCard :product="product" @open="openProduct(product)" />
+          <li
+            v-for="(cell, cellIdx) in section.cells"
+            :key="cell.type === 'product' ? cell.product.id : `story-${cell.campaign.id}-${cellIdx}`"
+            class="flex"
+          >
+            <ProductCard
+              v-if="cell.type === 'product'"
+              :product="cell.product"
+              @open="openProduct(cell.product)"
+            />
+            <StoryGridBanner
+              v-else
+              :campaign="cell.campaign"
+              @open="openStoryCampaign"
+            />
           </li>
         </ul>
       </section>
@@ -358,6 +376,13 @@
         </div>
       </Transition>
     </Teleport>
+
+    <StoryViewer
+      v-model="viewerOpen"
+      :campaign="viewerCampaign"
+      :shop-id="tenantKey"
+      @action="onStoryAction"
+    />
   </div>
 </template>
 
@@ -371,12 +396,89 @@ import { useTenant } from '../composables/useTenant'
 import { useTelegram } from '../composables/useTelegram'
 import { useCartStore } from '../stores/cart'
 import { resolveCartScopeKey } from '../utils/cartScope'
+import StoriesTopBar from '../components/stories/StoriesTopBar.vue'
+import StoryGridBanner from '../components/stories/StoryGridBanner.vue'
+import StoryViewer from '../components/stories/StoryViewer.vue'
+import { useStories } from '../composables/useStories'
+import type { StoryCampaignDto, StorySlideDto } from '../types/stories'
+import { buildDefaultCartSelections, findProductById } from '../utils/storyCart'
 
 const cartStore = useCartStore()
 const { isTelegram, webApp } = useTelegram()
 const router = useRouter()
 const route = useRoute()
 const { tenant, tenantKey, tenantPath } = useTenant()
+const viewerOpen = ref(false)
+const viewerCampaign = ref<StoryCampaignDto | null>(null)
+const { topBar: storiesTopBar, catalogGrid: storiesCatalogGrid } = useStories(tenantKey)
+
+const sectionsWithStoryCells = computed(() => {
+  const storyCampaigns = storiesCatalogGrid.value
+  let globalCount = 0
+  let storyIdx = 0
+  return cartStore.productsByCategory.map((section) => {
+    const cells: Array<
+      | { type: 'product'; product: Product }
+      | { type: 'story'; campaign: StoryCampaignDto }
+    > = []
+    for (const product of section.products) {
+      cells.push({ type: 'product', product })
+      globalCount++
+      if (globalCount % 6 === 0 && storyCampaigns.length) {
+        const camp = storyCampaigns[storyIdx % storyCampaigns.length]
+        storyIdx++
+        cells.push({ type: 'story', campaign: camp })
+      }
+    }
+    return { ...section, cells }
+  })
+})
+
+function openStoryCampaign(c: StoryCampaignDto) {
+  viewerCampaign.value = c
+  viewerOpen.value = true
+}
+
+function onStoryAction(payload: { slide: StorySlideDto; actionType: string }) {
+  const { slide, actionType } = payload
+  const raw = slide.actionPayload || {}
+  if (actionType === 'add_to_cart') {
+    const itemId =
+      typeof raw.item_id === 'string'
+        ? raw.item_id
+        : typeof raw.product_id === 'string'
+          ? raw.product_id
+          : ''
+    const qty = typeof raw.qty === 'number' && raw.qty > 0 ? Math.floor(raw.qty) : 1
+    const product = findProductById(cartStore.products, itemId)
+    if (!product) {
+      if (typeof window !== 'undefined') window.alert('Товар не найден в меню')
+      return
+    }
+    const { modifiers, parameters } = buildDefaultCartSelections(product)
+    cartStore.addItem(product, qty, modifiers, parameters)
+    viewerOpen.value = false
+    return
+  }
+  if (actionType === 'open_category') {
+    const cat =
+      typeof raw.category === 'string'
+        ? raw.category
+        : typeof raw.category_name === 'string'
+          ? raw.category_name
+          : ''
+    if (cat && typeof document !== 'undefined') {
+      const el = document.getElementById(cat)
+      el?.scrollIntoView({ behavior: 'smooth' })
+    }
+    viewerOpen.value = false
+    return
+  }
+  if (actionType === 'apply_promo') {
+    if (typeof window !== 'undefined') window.alert('Промокоды пока недоступны')
+  }
+}
+
 const selectedProduct = ref<Product | null>(null)
 const showOrderSuccess = ref(false)
 const lastOrderId = ref<string | null>(null)
@@ -844,6 +946,25 @@ watch(tenantKey, () => {
   void loadCatalog()
   void loadRestaurantModes()
 })
+
+watch(
+  () => [route.query.story_campaign_id, storiesTopBar.value, storiesCatalogGrid.value] as const,
+  () => {
+    const raw = route.query.story_campaign_id
+    const id = typeof raw === 'string' ? raw.trim() : ''
+    if (!id) return
+    const all = [...storiesTopBar.value, ...storiesCatalogGrid.value]
+    const found = all.find((c) => c.id === id)
+    if (found) {
+      viewerCampaign.value = found
+      viewerOpen.value = true
+      const nextQuery = { ...route.query } as Record<string, string | string[] | undefined>
+      delete nextQuery.story_campaign_id
+      void router.replace({ path: route.path, query: nextQuery })
+    }
+  },
+  { immediate: true },
+)
 
 async function loadCatalog() {
   if (isCatalogLoading.value) return
