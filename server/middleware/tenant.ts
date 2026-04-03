@@ -17,6 +17,7 @@ const REQUIRED_PATHS = [
   '/api/restaurants',
   '/api/restaurant-zones',
   '/api/cart-bridge',
+  '/api/stories',
 ]
 
 const CUSTOM_DOMAIN_REWRITE_PATHS = new Set(['/', '/cart', '/checkout'])
