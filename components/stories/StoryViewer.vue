@@ -2,28 +2,17 @@
   <Teleport to="body">
     <div
       v-if="campaign && modelValue"
-      class="fixed inset-0 z-[100] flex flex-col bg-black"
+      class="fixed inset-0 z-[100] flex flex-col bg-black/80"
       role="dialog"
       aria-modal="true"
     >
-      <div class="flex shrink-0 gap-1 px-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <div
-          v-for="(_, i) in campaign.slides"
-          :key="i"
-          class="h-1 flex-1 overflow-hidden rounded-full bg-white/25"
-        >
-          <div
-            class="h-full bg-white transition-[width] duration-100 ease-linear"
-            :style="{ width: progressWidth(i) }"
-          />
-        </div>
-      </div>
 
       <div class="relative flex min-h-0 flex-1 items-center justify-center p-3 sm:p-6">
         <div class="relative h-full w-full max-h-[780px] max-w-[400px]">
+
           <button
             type="button"
-            class="absolute -right-2 -top-2 z-20 rounded-full bg-black/55 p-2 text-white shadow-sm sm:-right-3 sm:-top-3"
+            class="absolute right-1 top-1 z-20 rounded-full bg-black/55 p-2 text-white shadow-sm sm:-right-12 sm:-top-0"
             aria-label="Закрыть"
             @click.stop="close"
           >
@@ -65,6 +54,18 @@
               >
                 {{ actionLabel }}
               </button>
+            </div>
+            <div class="absolute top-0 right-0 left-0 z-20 flex shrink-0 gap-1 p-4">
+              <div
+                v-for="(_, i) in campaign.slides"
+                :key="i"
+                class="h-1 flex-1 overflow-hidden rounded-full bg-white/25"
+              >
+                <div
+                  class="h-full bg-white transition-[width] duration-100 ease-linear"
+                  :style="{ width: progressWidth(i) }"
+                />
+              </div>
             </div>
           </div>
         </div>
