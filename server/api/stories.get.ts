@@ -6,6 +6,7 @@ import {
   isTargetingEmpty,
   type ViewerContext,
 } from '~/server/utils/storyTargeting'
+import { buildDemoStoryCampaigns } from '~/server/utils/demoStories'
 
 function normalizeUserId(raw: unknown): string | null {
   if (!raw || typeof raw !== 'object') return null
@@ -115,6 +116,19 @@ export default defineEventHandler(async (event) => {
 
   const campaignIds = filtered.map((c) => (c as { id: string }).id)
   if (campaignIds.length === 0) {
+    const allowDemo = import.meta.dev || process.env.STORIES_DEMO === '1'
+    if (allowDemo) {
+      const demo = buildDemoStoryCampaigns(shopId)
+      const topBar = demo.filter((c) => c.placement === 'top_bar' && c.slides.length > 0)
+      const catalogGrid = demo.filter((c) => c.placement === 'catalog_grid' && c.slides.length > 0)
+      return {
+        ok: true,
+        shopId,
+        topBar,
+        catalogGrid,
+        campaigns: demo,
+      }
+    }
     return {
       ok: true,
       shopId,

@@ -37,7 +37,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { StoryCampaignDto } from '~/types/stories'
+import type { StoryCampaignDto, StorySlideDto } from '~/types/stories'
 import { useTenant } from '~/composables/useTenant'
 
 const props = defineProps<{
@@ -55,7 +55,7 @@ const fallbackBg = computed(() => theme.value.primary_50 || '#f3f4f6')
 const mainText = computed(() => theme.value.text_primary || '#111827')
 
 const coverUrl = computed(() => {
-  const firstImageSlide = props.campaign.slides?.find((s) => isImageUrl(s.mediaUrl))
+  const firstImageSlide = props.campaign.slides?.find((s: StorySlideDto) => isImageUrl(s.mediaUrl))
   if (firstImageSlide?.mediaUrl) return firstImageSlide.mediaUrl
   if (isImageUrl(props.campaign.previewUrl || '')) return props.campaign.previewUrl || ''
   return ''

@@ -1,6 +1,7 @@
 import { ref, watch, type Ref } from 'vue'
 import { $fetch } from 'ofetch'
 import type { StoriesApiResponse, StoryCampaignDto } from '~/types/stories'
+import { getStoriesFromCache, setStoriesCache } from '~/utils/storiesCache'
 
 export function useStories(shopIdRef: Ref<string | null | undefined>) {
   const loading = ref(false)
@@ -15,6 +16,16 @@ export function useStories(shopIdRef: Ref<string | null | undefined>) {
       catalogGrid.value = []
       return
     }
+
+    const cached = getStoriesFromCache(shopId)
+    if (cached) {
+      topBar.value = cached.topBar
+      catalogGrid.value = cached.catalogGrid
+      loading.value = false
+      error.value = null
+      return
+    }
+
     loading.value = true
     error.value = null
     try {
@@ -23,8 +34,11 @@ export function useStories(shopIdRef: Ref<string | null | undefined>) {
         query: { shop_id: shopId },
       })
       if (res?.ok) {
-        topBar.value = res.topBar ?? []
-        catalogGrid.value = res.catalogGrid ?? []
+        const tb = res.topBar ?? []
+        const cg = res.catalogGrid ?? []
+        topBar.value = tb
+        catalogGrid.value = cg
+        setStoriesCache(shopId, tb, cg)
       } else {
         topBar.value = []
         catalogGrid.value = []

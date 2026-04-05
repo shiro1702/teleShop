@@ -380,7 +380,9 @@
     <StoryViewer
       v-model="viewerOpen"
       :campaign="viewerCampaign"
+      :campaigns="storyViewerNavigableCampaigns"
       :shop-id="tenantKey"
+      @campaign-change="viewerCampaign = $event"
       @action="onStoryAction"
     />
   </div>
@@ -415,6 +417,25 @@ const {
   topBar: storiesTopBar,
   catalogGrid: storiesCatalogGrid,
 } = useStories(tenantKey)
+
+/** Порядок: сначала лента сверху, затем уникальные из каталога — для свайпа между группами в просмотрщике */
+const storyViewerNavigableCampaigns = computed(() => {
+  const seen = new Set<string>()
+  const out: StoryCampaignDto[] = []
+  for (const c of storiesTopBar.value) {
+    if (!seen.has(c.id)) {
+      seen.add(c.id)
+      out.push(c)
+    }
+  }
+  for (const c of storiesCatalogGrid.value) {
+    if (!seen.has(c.id)) {
+      seen.add(c.id)
+      out.push(c)
+    }
+  }
+  return out
+})
 
 const sectionsWithStoryCells = computed(() => {
   const storyCampaigns = storiesCatalogGrid.value

@@ -6,7 +6,7 @@
         class="absolute left-1 top-1/2 z-10 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border bg-white/90 text-gray-700 shadow-sm backdrop-blur md:inline-flex"
         :style="{ borderColor: borderColor }"
         aria-label="Прокрутить сторисы влево"
-        @click="scrollBy(-260)"
+        @click="scrollBy(-scrollDelta)"
       >
         ←
       </button>
@@ -16,7 +16,7 @@
           <div
             v-for="i in skeletonCount"
             :key="`story-skeleton-${i}`"
-            class="h-[240px] w-[200px] shrink-0 animate-pulse overflow-hidden rounded-2xl border"
+            class="h-[176px] w-[128px] shrink-0 animate-pulse overflow-hidden rounded-2xl border sm:h-[240px] sm:w-[200px]"
             :style="{ borderColor: borderColor, backgroundColor: fallbackBg }"
           >
             <div
@@ -30,13 +30,13 @@
           v-for="c in campaigns"
           :key="c.id"
           type="button"
-          class="group relative h-[240px] w-[200px] shrink-0 overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+          class="group relative h-[176px] w-[128px] shrink-0 overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:h-[240px] sm:w-[200px]"
           :style="{ borderColor: borderColor, backgroundColor: cardBg }"
           @click="$emit('open', c)"
         >
           <img
-            v-if="c.previewUrl"
-            :src="c.previewUrl"
+            v-if="campaignPreviewUrl(c)"
+            :src="campaignPreviewUrl(c)"
             :alt="titleWithoutDemo(c.title)"
             class="h-full w-full object-cover"
           >
@@ -57,7 +57,7 @@
         class="absolute right-1 top-1/2 z-10 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border bg-white/90 text-gray-700 shadow-sm backdrop-blur md:inline-flex"
         :style="{ borderColor: borderColor }"
         aria-label="Прокрутить сторисы вправо"
-        @click="scrollBy(260)"
+        @click="scrollBy(scrollDelta)"
       >
         →
       </button>
@@ -82,6 +82,8 @@ defineEmits<{
 const { tenant } = useTenant()
 const scrollEl = ref<HTMLElement | null>(null)
 const skeletonCount = 4
+/** ~ширина карточки + gap для кнопок прокрутки */
+const scrollDelta = 220
 const theme = computed(() => tenant.value.theme || {})
 const borderColor = computed(() => theme.value.primary_100 || '#e5e7eb')
 const cardBg = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
@@ -91,6 +93,16 @@ const fallbackBg = computed(() => theme.value.primary_50 || '#f3f4f6')
 
 function titleWithoutDemo(title: string): string {
   return title.replace(/^\[DEMO\]\s*/i, '').trim()
+}
+
+function isImageUrl(url: string): boolean {
+  return /\.(png|jpe?g|gif|webp)(\?|$)/i.test(url) || url.includes('/image')
+}
+
+function campaignPreviewUrl(c: StoryCampaignDto): string {
+  if (c.previewUrl) return c.previewUrl
+  const slide = c.slides?.find((s) => isImageUrl(s.mediaUrl))
+  return slide?.mediaUrl ?? ''
 }
 
 function scrollBy(delta: number) {
