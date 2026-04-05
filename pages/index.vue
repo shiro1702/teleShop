@@ -96,6 +96,47 @@
       </section>
 
       <section
+        v-if="isCatalogLoading"
+        class="mb-10"
+      >
+        <div class="mb-4 h-7 w-44 animate-pulse rounded-lg" :style="{ backgroundColor: theme.primary_100 || '#e5e7eb' }" />
+        <ul class="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
+          <li
+            v-for="idx in 8"
+            :key="`card-skeleton-${idx}`"
+            class="overflow-hidden rounded-xl border shadow-sm"
+            :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }"
+          >
+            <div class="aspect-square w-full animate-pulse" :style="{ backgroundColor: pageBgColor }" />
+            <div class="space-y-3 p-4">
+              <div class="h-5 w-4/5 animate-pulse rounded" :style="{ backgroundColor: pageBgColor }" />
+              <div class="h-4 w-full animate-pulse rounded" :style="{ backgroundColor: pageBgColor }" />
+              <div class="h-4 w-2/3 animate-pulse rounded" :style="{ backgroundColor: pageBgColor }" />
+              <div class="h-11 w-full animate-pulse rounded-lg" :style="{ backgroundColor: pageBgColor }" />
+            </div>
+          </li>
+        </ul>
+      </section>
+      <template v-else>
+        <section
+          v-for="section in cartStore.productsByCategory"
+          :key="section.category"
+          :id="section.category"
+          class="mb-10 scroll-mt-28"
+        >
+          <h2 class="mb-4 text-lg font-semibold" :style="{ color: mainTextColor }">
+            {{ section.label }}
+          </h2>
+          <ul
+            class="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4"
+          >
+            <li v-for="product in section.products" :key="product.id" class="flex">
+              <ProductCard :product="product" @open="openProduct(product)" />
+            </li>
+          </ul>
+        </section>
+      </template>
+      <section
         v-for="section in sectionsWithStoryCells"
         :key="section.category"
         :id="section.category"
@@ -561,6 +602,13 @@ type RestaurantOps = {
 }
 
 const CHECKOUT_STORAGE_KEY = 'teleshop_checkout_state'
+const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000
+const CATALOG_CACHE_KEY_PREFIX = 'teleshop-catalog'
+
+type CatalogCacheEntry = {
+  ts: number
+  items: Product[]
+}
 
 const restaurantOps = ref<RestaurantOps[]>([])
 const isRestaurantModesLoaded = ref(false)
@@ -605,6 +653,43 @@ function readCheckoutStateLocal(): any | null {
     return JSON.parse(raw) as any
   } catch {
     return null
+  }
+}
+
+function getCurrentRestaurantIdFromQuery(): string | null {
+  return readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
+}
+
+function buildCatalogCacheKey(shopId: string | null, restaurantId: string | null) {
+  const shopPart = shopId && shopId.trim() ? shopId.trim() : 'default'
+  const restaurantPart = restaurantId && restaurantId.trim() ? restaurantId.trim() : 'default'
+  return `${CATALOG_CACHE_KEY_PREFIX}:${shopPart}:${restaurantPart}`
+}
+
+function readCatalogCache(cacheKey: string): Product[] | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(cacheKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CatalogCacheEntry
+    if (!parsed || typeof parsed.ts !== 'number' || !Array.isArray(parsed.items)) return null
+    if (Date.now() - parsed.ts > CATALOG_CACHE_TTL_MS) return null
+    return parsed.items
+  } catch {
+    return null
+  }
+}
+
+function writeCatalogCache(cacheKey: string, items: Product[]) {
+  if (typeof window === 'undefined') return
+  try {
+    const payload: CatalogCacheEntry = {
+      ts: Date.now(),
+      items,
+    }
+    localStorage.setItem(cacheKey, JSON.stringify(payload))
+  } catch {
+    // ignore quota/private mode
   }
 }
 
@@ -973,6 +1058,15 @@ watch(tenantKey, () => {
 })
 
 watch(
+  () => [route.query.branch_id, route.query.restaurant_id] as const,
+  () => {
+    applyCartScope()
+    void loadCatalog()
+    void loadRestaurantModes()
+  },
+)
+
+watch(
   () => [route.query.story_campaign_id, storiesTopBar.value, storiesCatalogGrid.value] as const,
   () => {
     const raw = route.query.story_campaign_id
@@ -993,14 +1087,31 @@ watch(
 
 async function loadCatalog() {
   if (isCatalogLoading.value) return
+  const restaurantId = getCurrentRestaurantIdFromQuery()
+  const cacheKey = buildCatalogCacheKey(tenantKey.value || null, restaurantId)
+  const cachedItems = readCatalogCache(cacheKey)
+  if (cachedItems && cachedItems.length) {
+    cartStore.setProducts(cachedItems)
+    return
+  }
+
   isCatalogLoading.value = true
   try {
+    const query: Record<string, string> = {}
+    if (tenantKey.value) query.shop_id = tenantKey.value
+    if (restaurantId) query.restaurant_id = restaurantId
+
+    const headers: Record<string, string> = {}
+    if (tenantKey.value) headers['x-shop-id'] = tenantKey.value
+    if (restaurantId) headers['x-restaurant-id'] = restaurantId
+
     const res = await $fetch<{ ok: boolean; items: Product[] }>('/api/products', {
-      query: tenantKey.value ? { shop_id: tenantKey.value } : undefined,
-      headers: tenantKey.value ? { 'x-shop-id': tenantKey.value } : undefined,
+      query: Object.keys(query).length ? query : undefined,
+      headers: Object.keys(headers).length ? headers : undefined,
     })
     if (res?.ok && Array.isArray(res.items)) {
       cartStore.setProducts(res.items)
+      writeCatalogCache(cacheKey, res.items)
     }
   } catch {
     // fallback remains in store (MOCK_PRODUCTS) for local/dev compatibility
