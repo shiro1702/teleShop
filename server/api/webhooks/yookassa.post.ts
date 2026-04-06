@@ -1,5 +1,6 @@
 import { createError, defineEventHandler, getHeader, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
+import { accrueLoyaltyEarnForPaidOrder } from '~/server/utils/pricingPromoBonus'
 
 type YooWebhookPayload = {
   event?: string
@@ -80,6 +81,10 @@ export default defineEventHandler(async (event) => {
     .eq('shop_id', intent.shop_id)
   if (updateOrderError) {
     throw createError({ statusCode: 500, statusMessage: 'Failed to update order payment status' })
+  }
+
+  if (nextOrderPaymentStatus === 'paid') {
+    await accrueLoyaltyEarnForPaidOrder(client, intent.order_id, intent.shop_id)
   }
 
   const { error: updateIntentError } = await client

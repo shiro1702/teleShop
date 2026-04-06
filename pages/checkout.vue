@@ -107,7 +107,7 @@
               {{ cartStore.count }} шт.
             </span>
             <span class="text-sm font-semibold text-primary">
-              {{ formatPrice(cartStore.total) }}
+              {{ formatPrice(displayGoodsTotal) }}
             </span>
           </div>
         </div>
@@ -155,6 +155,68 @@
                   Очистить корзину
                 </button>
               </ul>
+
+              <div v-if="cartStore.items.length > 0" class="mt-4 space-y-3 border-t pt-4" :style="{ borderColor }">
+                <label class="block text-sm">
+                  <span :style="{ color: mutedTextColor }">Промокод</span>
+                  <div class="mt-1 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      v-model="promoCodeInput"
+                      class="themed-input flex-1 rounded-lg border px-3 py-2"
+                      :style="inputStyle"
+                      placeholder="Например STUDENT24"
+                      autocomplete="off"
+                    >
+                    <button
+                      type="button"
+                      class="inline-flex min-w-28 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+                      :disabled="isPromoApplyLoading || !cartStore.items.length"
+                      @click="runPromoApply"
+                    >
+                      <span
+                        v-if="isPromoApplyLoading"
+                        class="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-white"
+                        aria-hidden="true"
+                      />
+                      <span v-else>Применить</span>
+                    </button>
+                  </div>
+                </label>
+                <p v-if="promoError" class="text-sm text-red-600">
+                  {{ promoError }}
+                </p>
+                <p v-else-if="promoSuccess" class="text-sm text-emerald-700">
+                  {{ promoSuccess }}
+                </p>
+                <div v-if="isAuthorizedForOrder && loyaltyBalance !== null" class="text-sm">
+                  <div v-if="promoPreview?.bonusesEnabled === false" class="text-xs" :style="{ color: mutedTextColor }">
+                    Бонусная программа временно отключена в настройках ресторана.
+                  </div>
+                  <template v-else-if="hasSpendableBonuses">
+                    <div class="flex items-center justify-between">
+                      <span :style="{ color: mutedTextColor }">Списать бонусов</span>
+                      <span class="font-medium" :style="{ color: mainTextColor }">
+                        {{ bonusToSpend }} / {{ maxBonusAvailable }}
+                      </span>
+                    </div>
+                    <input
+                      v-model.number="bonusToSpend"
+                      type="range"
+                      min="0"
+                      :max="maxBonusAvailable"
+                      step="1"
+                      class="mt-2 w-full cursor-pointer accent-primary"
+                      @change="runPromoPreview"
+                    >
+                    <p class="mt-1 text-xs" :style="{ color: mutedTextColor }">
+                      Можно списать до {{ maxBonusAvailable }} бонусов (с учетом лимита заказа и вашего баланса).
+                    </p>
+                  </template>
+                  <p v-else class="text-xs" :style="{ color: mutedTextColor }">
+                    Бонусов для списания нет.
+                  </p>
+                </div>
+              </div>
             </template>
           </div>
 
@@ -166,18 +228,46 @@
           >
             <div class="space-y-1 text-sm">
               <div class="flex items-center justify-between">
-                <span :style="{ color: mutedTextColor }">Товары</span>
+                <div class="min-w-0">
+                  <span :style="{ color: mutedTextColor }">Товары</span>
+                  <p class="truncate text-xs" :style="{ color: mutedTextColor }" :title="orderItemsSummary">
+                    {{ orderItemsSummary }}
+                  </p>
+                </div>
                 <span class="font-semibold" :style="{ color: mainTextColor }">
-                  {{ formatPrice(cartStore.total) }}
+                  {{ formatPrice(promoSubtotalBeforeDiscount) }}
+                </span>
+              </div>
+              <div v-if="hasPromoCodeApplied" class="flex items-center justify-between">
+                <span :style="{ color: mutedTextColor }">Промокод {{ appliedPromoCode }}</span>
+                <span class="font-semibold text-amber-500">
+                  −{{ formatPrice(promoDiscountAmount) }}
+                </span>
+              </div>
+              <div
+                v-if="promoPreview?.ok && typeof promoPreview.bonusSpent === 'number' && promoPreview.bonusSpent > 0"
+                class="flex items-center justify-between"
+              >
+                <span :style="{ color: mutedTextColor }">Списано бонусов</span>
+                <span class="font-semibold text-emerald-600">
+                  −{{ formatPrice(promoPreview.bonusSpent) }}
+                </span>
+              </div>
+              <div v-if="bonusEarnEstimate > 0" class="flex items-center justify-between">
+                <span :style="{ color: mutedTextColor }">
+                  Начислим бонусов{{ loyaltyEarnPercent > 0 ? ` (${loyaltyEarnPercent}%)` : '' }}
+                </span>
+                <span class="font-semibold text-emerald-600">
+                  +{{ bonusEarnEstimate }}
                 </span>
               </div>
               <div class="flex items-center justify-between">
                 <span :style="{ color: mutedTextColor }">Доставка</span>
                 <span
                   class="font-semibold"
-                  :class="cartStore.deliveryCost === 0 ? 'text-emerald-600' : 'text-gray-900'"
+                  :class="step1DeliveryCost === 0 ? 'text-emerald-600' : 'text-gray-900'"
                 >
-                  {{ cartStore.deliveryCost === 0 ? '0 ₽' : formatPrice(cartStore.deliveryCost) }}
+                  {{ step1DeliveryCost === 0 ? '0 ₽' : formatPrice(step1DeliveryCost) }}
                 </span>
               </div>
               <div class="flex items-center justify-between border-t border-dashed pt-2" :style="{ borderColor }">
@@ -185,7 +275,7 @@
                   Итого
                 </span>
                 <span class="text-xl font-bold text-primary">
-                  {{ formatPrice(cartStore.grandTotal) }}
+                  {{ formatPrice(step1GrandTotal) }}
                 </span>
               </div>
             </div>
@@ -205,6 +295,35 @@
               >
                 Минимальная сумма заказа для вашей зоны — {{ formatPrice(cartStore.deliverySummary.minOrderAmount) }}.
               </p>
+            </div>
+          </div>
+          <div
+            v-if="deliveryProgress"
+            class="mt-4 rounded-2xl p-4 sm:p-5"
+            :style="cardStyle"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-2xl font-bold" :style="{ color: mainTextColor }">
+                  {{ step1DeliveryCost === 0 ? 'Доставка бесплатно' : formatPrice(step1DeliveryCost) }}
+                </div>
+                <p class="text-sm" :style="{ color: mutedTextColor }">
+                  {{
+                    deliveryProgress.remaining > 0
+                      ? `Добавьте ещё ${formatPrice(deliveryProgress.remaining)} до бесплатной доставки`
+                      : 'Порог бесплатной доставки достигнут'
+                  }}
+                </p>
+              </div>
+              <div class="text-sm font-medium" :style="{ color: mutedTextColor }">
+                {{ formatPrice(deliveryProgress.threshold) }}
+              </div>
+            </div>
+            <div class="mt-3 h-3 overflow-hidden rounded-full" :style="{ backgroundColor: borderColor }">
+              <div
+                class="h-full rounded-full bg-amber-400 transition-all duration-300"
+                :style="{ width: `${deliveryProgress.progress}%` }"
+              />
             </div>
           </div>
           </section>
@@ -541,9 +660,37 @@
             <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
               <div class="space-y-2 text-sm">
                 <div class="flex items-center justify-between">
-                  <span class="text-gray-600">Товары</span>
+                  <div class="min-w-0">
+                    <span class="text-gray-600">Товары</span>
+                    <p class="truncate text-xs text-gray-500" :title="orderItemsSummary">
+                      {{ orderItemsSummary }}
+                    </p>
+                  </div>
                   <span class="font-semibold text-gray-900">
-                    {{ formatPrice(cartStore.total) }}
+                    {{ formatPrice(promoSubtotalBeforeDiscount) }}
+                  </span>
+                </div>
+                <div v-if="hasPromoCodeApplied" class="flex items-center justify-between">
+                  <span class="text-gray-600">Промокод {{ appliedPromoCode }}</span>
+                  <span class="font-semibold text-amber-500">
+                    −{{ formatPrice(promoDiscountAmount) }}
+                  </span>
+                </div>
+                <div
+                  v-if="promoPreview?.ok && typeof promoPreview.bonusSpent === 'number' && promoPreview.bonusSpent > 0"
+                  class="flex items-center justify-between"
+                >
+                  <span class="text-gray-600">Списано бонусов</span>
+                  <span class="font-semibold text-emerald-600">
+                    −{{ formatPrice(promoPreview.bonusSpent) }}
+                  </span>
+                </div>
+                <div v-if="bonusEarnEstimate > 0" class="flex items-center justify-between">
+                  <span class="text-gray-600">
+                    Начислим бонусов{{ loyaltyEarnPercent > 0 ? ` (${loyaltyEarnPercent}%)` : '' }}
+                  </span>
+                  <span class="font-semibold text-emerald-600">
+                    +{{ bonusEarnEstimate }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between">
@@ -708,6 +855,14 @@ const cardStyle = computed(() => ({
   backgroundColor: cardBgColor.value,
   color: mainTextColor.value,
 }))
+const inputBgColor = computed(() => theme.value.surface_input || cardBgColor.value)
+const inputBorderColor = computed(() => theme.value.surface_input_border || borderColor.value)
+const inputStyle = computed(() => ({
+  borderColor: inputBorderColor.value,
+  backgroundColor: inputBgColor.value,
+  color: mainTextColor.value,
+  '--input-placeholder-color': mutedTextColor.value,
+}))
 
 const secondaryButtonStyle = computed(() => ({
   border: `1px solid ${borderColor.value}`,
@@ -734,6 +889,30 @@ const state = reactive<CheckoutState>({
 })
 
 const isPlacing = ref(false)
+const promoCodeInput = ref('')
+const appliedPromoCode = ref('')
+const bonusToSpend = ref(0)
+const promoPreview = ref<{
+  ok?: boolean
+  error?: string
+  bonusesEnabled?: boolean
+  loyaltyEarnPercent?: number
+  bonusEarnEstimate?: number
+  subtotalAfterPromo?: number
+  discountAmount?: number
+  payableGoods?: number
+  bonusSpent?: number
+  maxBonusForOrder?: number
+  balance?: number
+} | null>(null)
+const promoError = ref('')
+const promoSuccess = ref('')
+const loyaltyBalance = ref<number | null>(null)
+const isPromoApplyLoading = ref(false)
+const isPromoPreviewLoading = ref(false)
+let promoPreviewSeq = 0
+let promoPreviewTimer: ReturnType<typeof setTimeout> | null = null
+
 const changeFrom = ref<string>('')
 const showClearCartModal = ref(false)
 const step1InlineNavRef = ref<HTMLElement | null>(null)
@@ -767,14 +946,18 @@ const {
   deleteSavedAddress,
 } = useCheckoutAddress()
 
-const shopIdFromRoute = computed(() =>
-  tenantKey.value,
-)
+const shopIdFromRoute = computed(() => {
+  const fromTenantState = typeof tenantKey.value === 'string' ? tenantKey.value.trim() : ''
+  const fromRouteSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  const fromQuery = typeof route.query.shop_id === 'string' ? route.query.shop_id.trim() : ''
+  return fromTenantState || fromRouteSlug || fromQuery || null
+})
 
 function applyCartScope() {
   const scope = resolveCartScopeKey(route, shopIdFromRoute.value)
   cartStore.setScope(scope)
 }
+applyCartScope()
 
 const {
   selectedPickupPointId,
@@ -848,15 +1031,256 @@ const summaryDeliveryLabel = computed(() =>
       : 'Доставка',
 )
 
-const summaryDeliveryCost = computed(() =>
-  state.fulfillmentType === 'delivery'
-    ? cartStore.deliveryCost
-    : 0,
+const displayGoodsTotal = computed(() =>
+  promoPreview.value?.ok && typeof promoPreview.value.payableGoods === 'number'
+    ? promoPreview.value.payableGoods
+    : cartStore.total,
 )
 
-const summaryGrandTotal = computed(() =>
-  cartStore.total + summaryDeliveryCost.value,
+const promoSubtotalBeforeDiscount = computed(() => cartStore.total)
+const promoDiscountAmount = computed(() =>
+  promoPreview.value?.ok && typeof promoPreview.value.discountAmount === 'number'
+    ? Math.max(0, promoPreview.value.discountAmount)
+    : 0,
 )
+const maxBonusAvailable = computed(() => {
+  if (promoPreview.value?.bonusesEnabled === false) return 0
+  const byPreview = promoPreview.value?.ok && typeof promoPreview.value.maxBonusForOrder === 'number'
+    ? promoPreview.value.maxBonusForOrder
+    : null
+  const byBalance = typeof loyaltyBalance.value === 'number' ? loyaltyBalance.value : 0
+  const resolved = byPreview != null ? Math.min(byPreview, byBalance) : byBalance
+  return Math.max(0, Math.floor(Number.isFinite(resolved) ? resolved : 0))
+})
+const hasSpendableBonuses = computed(() => maxBonusAvailable.value > 0)
+const hasPromoCodeApplied = computed(() =>
+  !!appliedPromoCode.value.trim()
+  && !!promoPreview.value?.ok
+  && (promoDiscountAmount.value > 0 || Number(promoPreview.value?.subtotalAfterPromo || 0) !== cartStore.total),
+)
+const orderItemsSummary = computed(() =>
+  cartStore.items
+    .map((item: { name: string; quantity: number }) => `${item.name} × ${item.quantity}`)
+    .join(', '),
+)
+const bonusEarnEstimate = computed(() => {
+  if (!isAuthorizedForOrder.value) return 0
+  if (!promoPreview.value?.ok) return 0
+  const estimate = promoPreview.value.bonusEarnEstimate
+  return typeof estimate === 'number' && Number.isFinite(estimate) ? Math.max(0, Math.floor(estimate)) : 0
+})
+const loyaltyEarnPercent = computed(() => {
+  if (!promoPreview.value?.ok) return 0
+  const pct = promoPreview.value.loyaltyEarnPercent
+  return typeof pct === 'number' && Number.isFinite(pct) ? Math.max(0, pct) : 0
+})
+
+const summaryDeliveryCost = computed(() => {
+  if (state.fulfillmentType !== 'delivery') return 0
+  const zone = cartStore.deliveryZone
+  if (!zone) return cartStore.deliveryCost
+  const sub =
+    promoPreview.value?.ok && typeof promoPreview.value.subtotalAfterPromo === 'number'
+      ? promoPreview.value.subtotalAfterPromo
+      : cartStore.total
+  return sub >= zone.freeDeliveryThreshold ? 0 : zone.deliveryCost
+})
+
+const summaryGrandTotal = computed(
+  () => displayGoodsTotal.value + summaryDeliveryCost.value,
+)
+
+const step1DeliveryCost = computed(() => {
+  if (state.fulfillmentType === 'pickup' || state.fulfillmentType === 'qr-menu') return 0
+  return summaryDeliveryCost.value
+})
+
+const step1GrandTotal = computed(() => displayGoodsTotal.value + step1DeliveryCost.value)
+const deliveryProgress = computed(() => {
+  if (state.fulfillmentType !== 'delivery') return null
+  const zone = cartStore.deliveryZone
+  if (!zone || !Number.isFinite(zone.freeDeliveryThreshold) || zone.freeDeliveryThreshold <= 0) return null
+  const subtotalForThreshold =
+    promoPreview.value?.ok && typeof promoPreview.value.subtotalAfterPromo === 'number'
+      ? promoPreview.value.subtotalAfterPromo
+      : cartStore.total
+  const remaining = Math.max(0, zone.freeDeliveryThreshold - subtotalForThreshold)
+  const progress = Math.max(0, Math.min(100, Math.round((subtotalForThreshold / zone.freeDeliveryThreshold) * 100)))
+  return {
+    threshold: zone.freeDeliveryThreshold,
+    remaining,
+    progress,
+  }
+})
+
+async function runPromoApply() {
+  promoError.value = ''
+  promoSuccess.value = ''
+  if (!cartStore.items.length) return
+  const inputCode = promoCodeInput.value.trim()
+  if (!inputCode) {
+    appliedPromoCode.value = ''
+    await runPromoPreview()
+    return
+  }
+
+  isPromoApplyLoading.value = true
+  try {
+    const res = await $fetch<{
+      ok: boolean
+      error?: string
+      promoCode?: string
+      discountAmount?: number
+    }>('/api/promo/apply', {
+      method: 'POST',
+      headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+      body: {
+        items: cartStore.items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          cartItemId: item.cartItemId,
+          selectedModifiers: item.selectedModifiers ?? [],
+          selectedParameters: item.selectedParameters ?? [],
+        })),
+        promoCode: inputCode,
+      },
+    })
+
+    if (!res?.ok) {
+      appliedPromoCode.value = ''
+      promoPreview.value = null
+      promoError.value = res?.error || 'Промокод не применён'
+      return
+    }
+
+    appliedPromoCode.value = (res.promoCode || inputCode).toUpperCase()
+    promoCodeInput.value = appliedPromoCode.value
+    promoSuccess.value = typeof res.discountAmount === 'number' && res.discountAmount > 0
+      ? `Скидка применена: вы экономите ${formatPrice(res.discountAmount)}`
+      : 'Промокод применён'
+    await runPromoPreview()
+  } catch (e: any) {
+    appliedPromoCode.value = ''
+    promoPreview.value = null
+    promoError.value = e?.data?.message || e?.message || 'Ошибка применения промокода'
+  } finally {
+    isPromoApplyLoading.value = false
+  }
+}
+
+async function runPromoPreview() {
+  const requestSeq = ++promoPreviewSeq
+  isPromoPreviewLoading.value = true
+  promoError.value = ''
+  promoSuccess.value = ''
+  if (!cartStore.items.length) {
+    promoPreview.value = null
+    if (requestSeq === promoPreviewSeq) {
+      isPromoPreviewLoading.value = false
+    }
+    return
+  }
+  try {
+    const res = await $fetch<{
+      ok: boolean
+      error?: string
+      bonusesEnabled?: boolean
+      loyaltyEarnPercent?: number
+      bonusEarnEstimate?: number
+      subtotalAfterPromo?: number
+      discountAmount?: number
+      payableGoods?: number
+      bonusSpent?: number
+      maxBonusForOrder?: number
+      balance?: number
+    }>('/api/promo/preview', {
+      method: 'POST',
+      headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+      body: {
+        items: cartStore.items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          cartItemId: item.cartItemId,
+          selectedModifiers: item.selectedModifiers ?? [],
+          selectedParameters: item.selectedParameters ?? [],
+        })),
+        promoCode: appliedPromoCode.value.trim() || null,
+        bonusPointsToSpend: bonusToSpend.value || 0,
+      },
+    })
+    if (requestSeq !== promoPreviewSeq) return
+    if (res && typeof res === 'object' && res.ok === false) {
+      promoPreview.value = null
+      promoError.value = res.error || 'Промокод не применён'
+      promoSuccess.value = ''
+      return
+    }
+    promoPreview.value = res
+    promoError.value = ''
+    if (!appliedPromoCode.value.trim()) {
+      promoSuccess.value = ''
+    }
+  } catch (e: any) {
+    if (requestSeq !== promoPreviewSeq) return
+    promoPreview.value = null
+    promoError.value = e?.data?.message || e?.message || 'Ошибка проверки промокода'
+  } finally {
+    if (requestSeq === promoPreviewSeq) {
+      isPromoPreviewLoading.value = false
+    }
+  }
+}
+
+watch(maxBonusAvailable, (nextMax: number) => {
+  if (bonusToSpend.value > nextMax) {
+    bonusToSpend.value = nextMax
+    void runPromoPreview()
+  }
+})
+
+async function loadLoyaltyBalance() {
+  if (!supabaseUser.value || !shopIdFromRoute.value) {
+    loyaltyBalance.value = null
+    return
+  }
+  try {
+    const res = await $fetch<{ ok: boolean; balance: number }>('/api/loyalty/balance', {
+      headers: { 'x-shop-id': shopIdFromRoute.value },
+    })
+    loyaltyBalance.value = res.balance
+  } catch {
+    loyaltyBalance.value = null
+  }
+}
+
+watch([supabaseUser, shopIdFromRoute], () => {
+  void loadLoyaltyBalance()
+}, { immediate: true })
+
+const promoPreviewWatchSignature = computed(() => JSON.stringify({
+  items: cartStore.items.map(item => ({
+    id: item.id,
+    price: item.price,
+    quantity: item.quantity,
+    cartItemId: item.cartItemId,
+    selectedModifiers: item.selectedModifiers ?? [],
+    selectedParameters: item.selectedParameters ?? [],
+  })),
+  promoCode: appliedPromoCode.value.trim(),
+  bonusToSpend: bonusToSpend.value || 0,
+  shopId: shopIdFromRoute.value || '',
+}))
+
+watch(promoPreviewWatchSignature, () => {
+  if (promoPreviewTimer) clearTimeout(promoPreviewTimer)
+  promoPreviewTimer = setTimeout(() => {
+    void runPromoPreview()
+  }, 450)
+}, { immediate: true })
 
 const step1NextButtonLabel = computed(() =>
   hasDeliveryOption.value && hasPickupOption.value
@@ -932,6 +1356,9 @@ function serializeState() {
     changeFrom: changeFrom.value,
     selectedPickupPointId: selectedPickupPointId.value,
     selectedRestaurantId: selectedRestaurantId.value,
+    promoCodeInput: promoCodeInput.value,
+    appliedPromoCode: appliedPromoCode.value,
+    bonusToSpend: bonusToSpend.value,
   })
 }
 
@@ -967,6 +1394,15 @@ function restoreFromPlainObject(obj: any) {
   }
   if (typeof obj.selectedRestaurantId === 'string') {
     selectedRestaurantId.value = obj.selectedRestaurantId
+  }
+  if (typeof obj.promoCodeInput === 'string') {
+    promoCodeInput.value = obj.promoCodeInput
+  }
+  if (typeof obj.appliedPromoCode === 'string') {
+    appliedPromoCode.value = obj.appliedPromoCode
+  }
+  if (typeof obj.bonusToSpend === 'number' && Number.isFinite(obj.bonusToSpend)) {
+    bonusToSpend.value = Math.max(0, Math.floor(obj.bonusToSpend))
   }
 }
 
@@ -1017,6 +1453,10 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (promoPreviewTimer) {
+    clearTimeout(promoPreviewTimer)
+    promoPreviewTimer = null
+  }
   cleanupInlineNavObservers?.()
   cleanupInlineNavObservers = null
 })
@@ -1103,8 +1543,12 @@ watch(
     addressLine: addressLine.value,
     flat: flat.value,
     comment: comment.value,
+    changeFrom: changeFrom.value,
     selectedPickupPointId: selectedPickupPointId.value,
     selectedRestaurantId: selectedRestaurantId.value,
+    promoCodeInput: promoCodeInput.value,
+    appliedPromoCode: appliedPromoCode.value,
+    bonusToSpend: bonusToSpend.value,
   }),
   () => {
     const data = serializeState()
@@ -1114,7 +1558,6 @@ watch(
 )
 
 onMounted(async () => {
-  applyCartScope()
   const saved = await loadCheckoutStateCloud()
   if (saved) {
     restoreFromPlainObject(saved)
@@ -1175,6 +1618,8 @@ async function placeOrder() {
       changeFrom: state.paymentMethod === 'cash' && Number.isFinite(Number.parseInt(changeFrom.value, 10))
         ? Number.parseInt(changeFrom.value, 10)
         : null,
+      promoCode: appliedPromoCode.value.trim() || null,
+      bonusPointsToSpend: bonusToSpend.value || 0,
     }
 
     if (isTelegram.value && webApp.value?.initData) {
@@ -1312,6 +1757,10 @@ async function continueInTelegramFromCheckout() {
 .step-backward-enter-from {
   opacity: 0;
   transform: translateX(-12px);
+}
+
+.themed-input::placeholder {
+  color: var(--input-placeholder-color);
 }
 </style>
 

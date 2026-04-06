@@ -134,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import {
   dashboardOrderStatusLabels,
   getAllowedOrderStatusTransitions,
@@ -173,6 +173,13 @@ const pending = ref(true)
 const loadError = ref<string | null>(null)
 const savingByOrder = ref<Record<string, boolean>>({})
 let pollHandle: number | null = null
+
+function stopOrdersPoll() {
+  if (pollHandle != null) {
+    window.clearInterval(pollHandle)
+    pollHandle = null
+  }
+}
 
 const statuses: DashboardOrderStatus[] = [
   'new',
@@ -346,13 +353,19 @@ onMounted(async () => {
   initFiltersFromQuery()
   await loadRestaurants()
   await loadOrders()
+  stopOrdersPoll()
   pollHandle = window.setInterval(() => void loadOrders({ silent: true }), 3000)
 })
 
+onBeforeRouteLeave(() => {
+  stopOrdersPoll()
+})
+
 onBeforeUnmount(() => {
-  if (pollHandle != null) {
-    window.clearInterval(pollHandle)
-    pollHandle = null
-  }
+  stopOrdersPoll()
+})
+
+onDeactivated(() => {
+  stopOrdersPoll()
 })
 </script>
