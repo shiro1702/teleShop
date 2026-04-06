@@ -116,7 +116,8 @@ export default defineEventHandler(async (event) => {
 
   const campaignIds = filtered.map((c) => (c as { id: string }).id)
   if (campaignIds.length === 0) {
-    const allowDemo = import.meta.dev || process.env.STORIES_DEMO === '1'
+    /** Демо-сторис только по явному флагу — иначе любой магазин без кампаний в БД получал бы тестовый набор в dev */
+    const allowDemo = process.env.STORIES_DEMO === '1'
     if (allowDemo) {
       const demo = buildDemoStoryCampaigns(shopId)
       const topBar = demo.filter((c) => c.placement === 'top_bar' && c.slides.length > 0)
