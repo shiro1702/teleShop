@@ -1,84 +1,74 @@
 <template>
   <div class="min-h-screen" :style="pageStyle">
-    <div class="sticky top-16 z-40 backdrop-blur" :style="topBarStyle">
-      <StoriesTopBar
-        v-if="storiesLoading || storiesTopBar.length"
-        :campaigns="storiesTopBar"
-        :loading="storiesLoading"
-        @open="openStoryCampaign"
-      />
-      <div class="mx-auto max-w-6xl px-4 py-3 sm:px-6">
-        <div class="flex items-center gap-3">
-          <nav class="-mx-4 flex flex-1 items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
-            <template v-if="isCatalogLoading">
-              <span
-                v-for="idx in 6"
-                :key="`chip-skeleton-${idx}`"
-                class="h-9 w-24 shrink-0 animate-pulse rounded-full border"
-                :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: pageBgColor }"
-              />
-            </template>
-            <a
-              v-else
-              v-for="section in cartStore.productsByCategory"
-              :key="section.category"
-              :href="`#${section.category}`"
-            class="shrink-0 rounded-full px-4 py-2 text-sm font-medium transition hover:border-primary hover:bg-primary-50"
-            :style="chipStyle"
-            >
-              {{ section.label }}
-            </a>
-          </nav>
-
-          <div
-            v-if="isRestaurantModesLoaded && showFulfillmentSelector"
-            class="hidden shrink-0 items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 sm:flex"
-            :style="{ borderColor: theme.primary_100 || '#e5e7eb' }"
+    <StoriesTopBar
+      v-if="storiesLoading || storiesTopBar.length"
+      :campaigns="storiesTopBar"
+      :loading="storiesLoading"
+      @open="openStoryCampaign"
+      :style="topBarStyle"
+    />
+    <div class="mx-auto max-w-6xl px-4 py-3 sm:px-6 sticky top-16 z-40 backdrop-blur" :style="topBarStyle">
+      <div class="flex items-center gap-3">
+        <nav class="-mx-4 flex flex-1 items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
+          <a
+            v-for="section in cartStore.productsByCategory"
+            :key="section.category"
+            :href="`#${section.category}`"
+          class="shrink-0 rounded-full px-4 py-2 text-sm font-medium transition hover:border-primary hover:bg-primary-50"
+          :style="chipStyle"
           >
-            <button
-              type="button"
-              class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
-              :class="selectedFulfillmentType === 'delivery'
-                ? 'bg-primary text-white shadow-sm'
-                : 'text-gray-600 hover:bg-gray-100'"
-              @click="setFulfillmentType('delivery')"
-            >
-              Доставка
-            </button>
-            <button
-              type="button"
-              class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
-              :class="selectedFulfillmentType === 'pickup'
-                ? 'bg-primary text-white shadow-sm'
-                : 'text-gray-600 hover:bg-gray-100'"
-              @click="setFulfillmentType('pickup')"
-            >
-              Самовывоз
-            </button>
-          </div>
+            {{ section.label }}
+          </a>
+        </nav>
 
+        <div
+          v-if="isRestaurantModesLoaded && showFulfillmentSelector"
+          class="hidden shrink-0 items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 sm:flex"
+          :style="{ borderColor: theme.primary_100 || '#e5e7eb' }"
+        >
           <button
             type="button"
-            class="hidden shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 sm:flex"
-            @click="goToCheckout"
+            class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
+            :class="selectedFulfillmentType === 'delivery'
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'"
+            @click="setFulfillmentType('delivery')"
           >
-            <span>Корзина</span>
-            <span
-              v-if="isRestaurantModesLoaded"
-              class="text-xs font-semibold text-white/90"
-            >
-              {{ fulfillmentTypeLabel }}
-            </span>
-            <template v-if="cartStore.count > 0">
-              <span class="text-orange-100">
-                {{ cartStore.count }} шт.
-              </span>
-              <span class="font-semibold text-white">
-                {{ formatPrice(cartStore.total) }}
-              </span>
-            </template>
+            Доставка
+          </button>
+          <button
+            type="button"
+            class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
+            :class="selectedFulfillmentType === 'pickup'
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'"
+            @click="setFulfillmentType('pickup')"
+          >
+            Самовывоз
           </button>
         </div>
+
+        <button
+          type="button"
+          class="hidden shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 sm:flex"
+          @click="goToCheckout"
+        >
+          <span>Корзина</span>
+          <span
+            v-if="isRestaurantModesLoaded"
+            class="text-xs font-semibold text-white/90"
+          >
+            {{ fulfillmentTypeLabel }}
+          </span>
+          <template v-if="cartStore.count > 0">
+            <span class="text-orange-100">
+              {{ cartStore.count }} шт.
+            </span>
+            <span class="font-semibold text-white">
+              {{ formatPrice(cartStore.total) }}
+            </span>
+          </template>
+        </button>
       </div>
     </div>
 
@@ -431,7 +421,9 @@
     <StoryViewer
       v-model="viewerOpen"
       :campaign="viewerCampaign"
+      :campaigns="storyViewerNavigableCampaigns"
       :shop-id="tenantKey"
+      @campaign-change="viewerCampaign = $event"
       @action="onStoryAction"
     />
   </div>
@@ -466,6 +458,25 @@ const {
   topBar: storiesTopBar,
   catalogGrid: storiesCatalogGrid,
 } = useStories(tenantKey)
+
+/** Порядок: сначала лента сверху, затем уникальные из каталога — для свайпа между группами в просмотрщике */
+const storyViewerNavigableCampaigns = computed(() => {
+  const seen = new Set<string>()
+  const out: StoryCampaignDto[] = []
+  for (const c of storiesTopBar.value) {
+    if (!seen.has(c.id)) {
+      seen.add(c.id)
+      out.push(c)
+    }
+  }
+  for (const c of storiesCatalogGrid.value) {
+    if (!seen.has(c.id)) {
+      seen.add(c.id)
+      out.push(c)
+    }
+  }
+  return out
+})
 
 const sectionsWithStoryCells = computed(() => {
   const storyCampaigns = storiesCatalogGrid.value

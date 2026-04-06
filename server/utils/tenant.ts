@@ -90,12 +90,13 @@ export function extractBotIdFromInitData(initData: string): number | null {
 }
 
 export async function resolveShopIdFromEvent(event: H3Event): Promise<string | null> {
-  const headerShop = getHeader(event, 'x-shop-id')
-  if (headerShop?.trim()) return headerShop.trim()
-
   const query = getQuery(event)
   const queryShop = typeof query.shop_id === 'string' ? query.shop_id : null
+  /** Явный shop_id в URL важнее заголовка: иначе x-shop-id от другой вкладки/клиента подменял магазин при ?shop_id=... */
   if (queryShop?.trim()) return queryShop.trim()
+
+  const headerShop = getHeader(event, 'x-shop-id')
+  if (headerShop?.trim()) return headerShop.trim()
 
   const rawInitDataHeader = getHeader(event, 'x-telegram-init-data')
   if (rawInitDataHeader?.trim()) {
@@ -205,22 +206,32 @@ export async function getShopByBotId(event: H3Event, botId: number): Promise<Ten
 }
 
 export async function requireTenantShop(event: H3Event): Promise<{ shopId: string; shop: TenantShop }> {
+  const query = getQuery(event)
+  const queryShopRaw = typeof query.shop_id === 'string' ? query.shop_id.trim() : ''
+  if (queryShopRaw) {
+    const shop = await getShopById(event, queryShopRaw)
+    if (!shop || !shop.is_active) {
+      throw createError({ statusCode: 404, message: 'Shop not found' })
+    }
+    return { shopId: shop.id, shop }
+  }
+
   const tenant = event.context.tenant
   if (tenant?.shopId && tenant.shop?.is_active) {
     return { shopId: tenant.shopId, shop: tenant.shop }
   }
 
-  const shopId = await resolveShopIdFromEvent(event)
-  if (!shopId) {
+  const ref = await resolveShopIdFromEvent(event)
+  if (!ref) {
     throw createError({ statusCode: 400, message: 'Missing shop_id' })
   }
 
-  const shop = await getShopById(event, shopId)
+  const shop = await getShopById(event, ref)
   if (!shop || !shop.is_active) {
     throw createError({ statusCode: 404, message: 'Shop not found' })
   }
 
-  return { shopId, shop }
+  return { shopId: shop.id, shop }
 }
 
 /**
