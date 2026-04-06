@@ -12,6 +12,7 @@ type DashboardPermission =
   | 'orders.status.change'
   | 'orders.kanban.move'
   | 'menu.manage'
+  | 'marketing.manage'
   | 'branches.view'
   | 'branches.create'
   | 'branches.archive'
@@ -24,6 +25,7 @@ const ownerPermissions: DashboardPermission[] = [
   'orders.status.change',
   'orders.kanban.move',
   'menu.manage',
+  'marketing.manage',
   'branches.view',
   'branches.create',
   'branches.archive',
@@ -36,6 +38,7 @@ const managerPermissions: DashboardPermission[] = [
   'orders.view',
   'orders.status.change',
   'menu.manage',
+  'marketing.manage',
   'branches.view',
   'branches.create',
 ]

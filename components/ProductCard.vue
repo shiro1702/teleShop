@@ -66,7 +66,7 @@
               class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md transition hover:bg-gray-100/10"
               :style="{ color: mainTextColor }"
               aria-label="Убавить"
-              @click.stop="cartStore.updateQuantity(product.id, quantity - 1)"
+              @click.stop="cartStore.decrementByProductId(product.id)"
             >
               −
             </button>

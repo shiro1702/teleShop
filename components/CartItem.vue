@@ -67,7 +67,6 @@
             class="flex h-10 w-10 shrink-0 items-center justify-center rounded-l-lg transition disabled:opacity-40"
             :style="{ color: mainTextColor }"
             aria-label="Уменьшить"
-            :disabled="item.quantity <= 1"
             @click="cartStore.updateQuantity(item.cartItemId, item.quantity - 1)"
           >
             −

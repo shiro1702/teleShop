@@ -10,6 +10,8 @@
           <nav class="flex items-center gap-4 whitespace-nowrap text-sm text-gray-600">
             <NuxtLink v-if="can('orders.view')" to="/dashboard/orders" class="hover:text-gray-900">Заказы</NuxtLink>
             <NuxtLink v-if="can('menu.manage')" to="/dashboard/menu" class="hover:text-gray-900">Меню</NuxtLink>
+            <NuxtLink v-if="can('menu.manage')" to="/dashboard/stories" class="hover:text-gray-900">Сториз</NuxtLink>
+            <NuxtLink v-if="can('marketing.manage')" to="/dashboard/marketing" class="hover:text-gray-900">Маркетинг</NuxtLink>
             <NuxtLink v-if="can('branches.view')" to="/dashboard/branches" class="hover:text-gray-900">Филиалы</NuxtLink>
             <NuxtLink v-if="can('team.manage')" to="/dashboard/team" class="hover:text-gray-900">Команда</NuxtLink>
             <NuxtLink v-if="can('settings.org.edit')" to="/dashboard/settings/organization" class="hover:text-gray-900">Настройки</NuxtLink>

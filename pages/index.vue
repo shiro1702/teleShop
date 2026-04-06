@@ -1,69 +1,74 @@
 <template>
   <div class="min-h-screen" :style="pageStyle">
-    <div class="sticky top-16 z-40 backdrop-blur" :style="topBarStyle">
-      <div class="mx-auto max-w-6xl px-4 py-3 sm:px-6">
-        <div class="flex items-center gap-3">
-          <nav class="-mx-4 flex flex-1 items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
-            <a
-              v-for="section in cartStore.productsByCategory"
-              :key="section.category"
-              :href="`#${section.category}`"
-            class="shrink-0 rounded-full px-4 py-2 text-sm font-medium transition hover:border-primary hover:bg-primary-50"
-            :style="chipStyle"
-            >
-              {{ section.label }}
-            </a>
-          </nav>
-
-          <div
-            v-if="isRestaurantModesLoaded && showFulfillmentSelector"
-            class="hidden shrink-0 items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 sm:flex"
-            :style="{ borderColor: theme.primary_100 || '#e5e7eb' }"
+    <StoriesTopBar
+      v-if="storiesLoading || storiesTopBar.length"
+      :campaigns="storiesTopBar"
+      :loading="storiesLoading"
+      @open="openStoryCampaign"
+      :style="topBarStyle"
+    />
+    <div class="mx-auto max-w-6xl px-4 py-3 sm:px-6 sticky top-16 z-40 backdrop-blur" :style="topBarStyle">
+      <div class="flex items-center gap-3">
+        <nav class="-mx-4 flex flex-1 items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
+          <a
+            v-for="section in cartStore.productsByCategory"
+            :key="section.category"
+            :href="`#${section.category}`"
+          class="shrink-0 rounded-full px-4 py-2 text-sm font-medium transition hover:border-primary hover:bg-primary-50"
+          :style="chipStyle"
           >
-            <button
-              type="button"
-              class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
-              :class="selectedFulfillmentType === 'delivery'
-                ? 'bg-primary text-white shadow-sm'
-                : 'text-gray-600 hover:bg-gray-100'"
-              @click="setFulfillmentType('delivery')"
-            >
-              Доставка
-            </button>
-            <button
-              type="button"
-              class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
-              :class="selectedFulfillmentType === 'pickup'
-                ? 'bg-primary text-white shadow-sm'
-                : 'text-gray-600 hover:bg-gray-100'"
-              @click="setFulfillmentType('pickup')"
-            >
-              Самовывоз
-            </button>
-          </div>
+            {{ section.label }}
+          </a>
+        </nav>
 
+        <div
+          v-if="isRestaurantModesLoaded && showFulfillmentSelector"
+          class="hidden shrink-0 items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 sm:flex"
+          :style="{ borderColor: theme.primary_100 || '#e5e7eb' }"
+        >
           <button
             type="button"
-            class="hidden shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 sm:flex"
-            @click="goToCheckout"
+            class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
+            :class="selectedFulfillmentType === 'delivery'
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'"
+            @click="setFulfillmentType('delivery')"
           >
-            <span>Корзина</span>
-            <span
-              v-if="isRestaurantModesLoaded"
-              class="text-xs font-semibold text-white/90"
-            >
-              {{ fulfillmentTypeLabel }}
-            </span>
-            <template v-if="cartStore.count > 0">
-              <span class="text-orange-100">
-                {{ cartStore.count }} шт.
-              </span>
-              <span class="font-semibold text-white">
-                {{ formatPrice(cartStore.total) }}
-              </span>
-            </template>
+            Доставка
+          </button>
+          <button
+            type="button"
+            class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
+            :class="selectedFulfillmentType === 'pickup'
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'"
+            @click="setFulfillmentType('pickup')"
+          >
+            Самовывоз
           </button>
         </div>
+
+        <button
+          type="button"
+          class="hidden shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 sm:flex"
+          @click="goToCheckout"
+        >
+          <span>Корзина</span>
+          <span
+            v-if="isRestaurantModesLoaded"
+            class="text-xs font-semibold text-white/90"
+          >
+            {{ fulfillmentTypeLabel }}
+          </span>
+          <template v-if="cartStore.count > 0">
+            <span class="text-orange-100">
+              {{ cartStore.count }} шт.
+            </span>
+            <span class="font-semibold text-white">
+              {{ formatPrice(cartStore.total) }}
+            </span>
+          </template>
+        </button>
       </div>
     </div>
 
@@ -91,7 +96,48 @@
       </section>
 
       <section
-        v-for="section in cartStore.productsByCategory"
+        v-if="isCatalogLoading"
+        class="mb-10"
+      >
+        <div class="mb-4 h-7 w-44 animate-pulse rounded-lg" :style="{ backgroundColor: theme.primary_100 || '#e5e7eb' }" />
+        <ul class="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
+          <li
+            v-for="idx in 8"
+            :key="`card-skeleton-${idx}`"
+            class="overflow-hidden rounded-xl border shadow-sm"
+            :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }"
+          >
+            <div class="aspect-square w-full animate-pulse" :style="{ backgroundColor: pageBgColor }" />
+            <div class="space-y-3 p-4">
+              <div class="h-5 w-4/5 animate-pulse rounded" :style="{ backgroundColor: pageBgColor }" />
+              <div class="h-4 w-full animate-pulse rounded" :style="{ backgroundColor: pageBgColor }" />
+              <div class="h-4 w-2/3 animate-pulse rounded" :style="{ backgroundColor: pageBgColor }" />
+              <div class="h-11 w-full animate-pulse rounded-lg" :style="{ backgroundColor: pageBgColor }" />
+            </div>
+          </li>
+        </ul>
+      </section>
+      <template v-else>
+        <section
+          v-for="section in cartStore.productsByCategory"
+          :key="section.category"
+          :id="section.category"
+          class="mb-10 scroll-mt-28"
+        >
+          <h2 class="mb-4 text-lg font-semibold" :style="{ color: mainTextColor }">
+            {{ section.label }}
+          </h2>
+          <ul
+            class="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4"
+          >
+            <li v-for="product in section.products" :key="product.id" class="flex">
+              <ProductCard :product="product" @open="openProduct(product)" />
+            </li>
+          </ul>
+        </section>
+      </template>
+      <section
+        v-for="section in sectionsWithStoryCells"
         :key="section.category"
         :id="section.category"
         class="mb-10 scroll-mt-28"
@@ -102,8 +148,21 @@
         <ul
           class="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4"
         >
-          <li v-for="product in section.products" :key="product.id" class="flex">
-            <ProductCard :product="product" @open="openProduct(product)" />
+          <li
+            v-for="(cell, cellIdx) in section.cells"
+            :key="cell.type === 'product' ? cell.product.id : `story-${cell.campaign.id}-${cellIdx}`"
+            class="flex"
+          >
+            <ProductCard
+              v-if="cell.type === 'product'"
+              :product="cell.product"
+              @open="openProduct(cell.product)"
+            />
+            <StoryGridBanner
+              v-else
+              :campaign="cell.campaign"
+              @open="openStoryCampaign"
+            />
           </li>
         </ul>
       </section>
@@ -358,6 +417,15 @@
         </div>
       </Transition>
     </Teleport>
+
+    <StoryViewer
+      v-model="viewerOpen"
+      :campaign="viewerCampaign"
+      :campaigns="storyViewerNavigableCampaigns"
+      :shop-id="tenantKey"
+      @campaign-change="viewerCampaign = $event"
+      @action="onStoryAction"
+    />
   </div>
 </template>
 
@@ -371,12 +439,112 @@ import { useTenant } from '../composables/useTenant'
 import { useTelegram } from '../composables/useTelegram'
 import { useCartStore } from '../stores/cart'
 import { resolveCartScopeKey } from '../utils/cartScope'
+import StoriesTopBar from '../components/stories/StoriesTopBar.vue'
+import StoryGridBanner from '../components/stories/StoryGridBanner.vue'
+import StoryViewer from '../components/stories/StoryViewer.vue'
+import { useStories } from '../composables/useStories'
+import type { StoryCampaignDto, StorySlideDto } from '../types/stories'
+import { buildDefaultCartSelections, findProductById } from '../utils/storyCart'
 
 const cartStore = useCartStore()
 const { isTelegram, webApp } = useTelegram()
 const router = useRouter()
 const route = useRoute()
 const { tenant, tenantKey, tenantPath } = useTenant()
+const viewerOpen = ref(false)
+const viewerCampaign = ref<StoryCampaignDto | null>(null)
+const {
+  loading: storiesLoading,
+  topBar: storiesTopBar,
+  catalogGrid: storiesCatalogGrid,
+} = useStories(tenantKey)
+
+/** Порядок: сначала лента сверху, затем уникальные из каталога — для свайпа между группами в просмотрщике */
+const storyViewerNavigableCampaigns = computed(() => {
+  const seen = new Set<string>()
+  const out: StoryCampaignDto[] = []
+  for (const c of storiesTopBar.value) {
+    if (!seen.has(c.id)) {
+      seen.add(c.id)
+      out.push(c)
+    }
+  }
+  for (const c of storiesCatalogGrid.value) {
+    if (!seen.has(c.id)) {
+      seen.add(c.id)
+      out.push(c)
+    }
+  }
+  return out
+})
+
+const sectionsWithStoryCells = computed(() => {
+  const storyCampaigns = storiesCatalogGrid.value
+  let globalCount = 0
+  let storyIdx = 0
+  return cartStore.productsByCategory.map((section) => {
+    const cells: Array<
+      | { type: 'product'; product: Product }
+      | { type: 'story'; campaign: StoryCampaignDto }
+    > = []
+    for (const product of section.products) {
+      cells.push({ type: 'product', product })
+      globalCount++
+      if (globalCount % 6 === 0 && storyCampaigns.length) {
+        const camp = storyCampaigns[storyIdx % storyCampaigns.length]
+        storyIdx++
+        cells.push({ type: 'story', campaign: camp })
+      }
+    }
+    return { ...section, cells }
+  })
+})
+
+function openStoryCampaign(c: StoryCampaignDto) {
+  viewerCampaign.value = c
+  viewerOpen.value = true
+}
+
+function onStoryAction(payload: { slide: StorySlideDto; actionType: string }) {
+  const { slide, actionType } = payload
+  const raw = slide.actionPayload || {}
+  if (actionType === 'add_to_cart') {
+    const itemId =
+      typeof raw.item_id === 'string'
+        ? raw.item_id
+        : typeof raw.product_id === 'string'
+          ? raw.product_id
+          : ''
+    const qty = typeof raw.qty === 'number' && raw.qty > 0 ? Math.floor(raw.qty) : 1
+    const product = findProductById(cartStore.products, itemId)
+    if (!product) {
+      if (typeof window !== 'undefined') window.alert('Товар не найден в меню')
+      return
+    }
+    const { modifiers, parameters } = buildDefaultCartSelections(product)
+    cartStore.addItem(product, qty, modifiers, parameters)
+    viewerOpen.value = false
+    return
+  }
+  if (actionType === 'open_category') {
+    const cat =
+      typeof raw.category === 'string'
+        ? raw.category
+        : typeof raw.category_name === 'string'
+          ? raw.category_name
+          : ''
+    if (cat && typeof document !== 'undefined') {
+      const el = document.getElementById(cat)
+      el?.scrollIntoView({ behavior: 'smooth' })
+    }
+    viewerOpen.value = false
+    return
+  }
+  if (actionType === 'apply_promo') {
+    if (typeof window !== 'undefined') window.alert('Промокоды пока недоступны')
+  }
+}
+
 const selectedProduct = ref<Product | null>(null)
 const showOrderSuccess = ref(false)
 const lastOrderId = ref<string | null>(null)
@@ -434,6 +602,13 @@ type RestaurantOps = {
 }
 
 const CHECKOUT_STORAGE_KEY = 'teleshop_checkout_state'
+const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000
+const CATALOG_CACHE_KEY_PREFIX = 'teleshop-catalog'
+
+type CatalogCacheEntry = {
+  ts: number
+  items: Product[]
+}
 
 const restaurantOps = ref<RestaurantOps[]>([])
 const isRestaurantModesLoaded = ref(false)
@@ -478,6 +653,43 @@ function readCheckoutStateLocal(): any | null {
     return JSON.parse(raw) as any
   } catch {
     return null
+  }
+}
+
+function getCurrentRestaurantIdFromQuery(): string | null {
+  return readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
+}
+
+function buildCatalogCacheKey(shopId: string | null, restaurantId: string | null) {
+  const shopPart = shopId && shopId.trim() ? shopId.trim() : 'default'
+  const restaurantPart = restaurantId && restaurantId.trim() ? restaurantId.trim() : 'default'
+  return `${CATALOG_CACHE_KEY_PREFIX}:${shopPart}:${restaurantPart}`
+}
+
+function readCatalogCache(cacheKey: string): Product[] | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(cacheKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CatalogCacheEntry
+    if (!parsed || typeof parsed.ts !== 'number' || !Array.isArray(parsed.items)) return null
+    if (Date.now() - parsed.ts > CATALOG_CACHE_TTL_MS) return null
+    return parsed.items
+  } catch {
+    return null
+  }
+}
+
+function writeCatalogCache(cacheKey: string, items: Product[]) {
+  if (typeof window === 'undefined') return
+  try {
+    const payload: CatalogCacheEntry = {
+      ts: Date.now(),
+      items,
+    }
+    localStorage.setItem(cacheKey, JSON.stringify(payload))
+  } catch {
+    // ignore quota/private mode
   }
 }
 
@@ -845,16 +1057,61 @@ watch(tenantKey, () => {
   void loadRestaurantModes()
 })
 
+watch(
+  () => [route.query.branch_id, route.query.restaurant_id] as const,
+  () => {
+    applyCartScope()
+    void loadCatalog()
+    void loadRestaurantModes()
+  },
+)
+
+watch(
+  () => [route.query.story_campaign_id, storiesTopBar.value, storiesCatalogGrid.value] as const,
+  () => {
+    const raw = route.query.story_campaign_id
+    const id = typeof raw === 'string' ? raw.trim() : ''
+    if (!id) return
+    const all = [...storiesTopBar.value, ...storiesCatalogGrid.value]
+    const found = all.find((c) => c.id === id)
+    if (found) {
+      viewerCampaign.value = found
+      viewerOpen.value = true
+      const nextQuery = { ...route.query } as Record<string, string | string[] | undefined>
+      delete nextQuery.story_campaign_id
+      void router.replace({ path: route.path, query: nextQuery })
+    }
+  },
+  { immediate: true },
+)
+
 async function loadCatalog() {
   if (isCatalogLoading.value) return
+  const restaurantId = getCurrentRestaurantIdFromQuery()
+  const cacheKey = buildCatalogCacheKey(tenantKey.value || null, restaurantId)
+  const cachedItems = readCatalogCache(cacheKey)
+  if (cachedItems && cachedItems.length) {
+    cartStore.setProducts(cachedItems)
+    return
+  }
+
   isCatalogLoading.value = true
   try {
+    const query: Record<string, string> = {}
+    if (tenantKey.value) query.shop_id = tenantKey.value
+    if (restaurantId) query.restaurant_id = restaurantId
+
+    const headers: Record<string, string> = {}
+    if (tenantKey.value) headers['x-shop-id'] = tenantKey.value
+    if (restaurantId) headers['x-restaurant-id'] = restaurantId
+
     const res = await $fetch<{ ok: boolean; items: Product[] }>('/api/products', {
-      query: tenantKey.value ? { shop_id: tenantKey.value } : undefined,
-      headers: tenantKey.value ? { 'x-shop-id': tenantKey.value } : undefined,
+      query: Object.keys(query).length ? query : undefined,
+      headers: Object.keys(headers).length ? headers : undefined,
     })
     if (res?.ok && Array.isArray(res.items)) {
       cartStore.setProducts(res.items)
+      writeCatalogCache(cacheKey, res.items)
     }
   } catch {
     // fallback remains in store (MOCK_PRODUCTS) for local/dev compatibility

@@ -1,7 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — типы Node могут быть не подключены в проекте
 import crypto from 'node:crypto'
-import type { H3Event } from 'h3'
 import type { DeliveryZoneProperties } from '../../utils/deliveryZones'
 import { serverSupabaseUser, serverSupabaseServiceRole } from '#supabase/server'
 import {
@@ -13,48 +12,14 @@ import {
   type TenantRestaurantZone,
 } from '~/server/utils/tenant'
 import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
+import type { CartItemPayload } from '~/server/utils/orderLinePricing'
+import { loadTenantProductsForOrder, sumCartLines } from '~/server/utils/orderLinePricing'
 import {
-  catalogGroupsToOrderValidationShape,
-  fetchProductParameterGroupsByProductId,
-} from '~/server/utils/productParametersCatalog'
-
-interface SelectedModifierPayload {
-  groupId: string
-  groupName: string
-  optionId: string
-  optionName: string
-  pricingType?: 'delta' | 'multiplier'
-  priceDelta: number
-  priceMultiplier?: number | null
-}
-
-interface SelectedParameterPayload {
-  parameterKindId: string
-  productParameterId: string
-  optionId: string
-  optionName: string
-  price: number
-  weightG?: number | null
-  volumeMl?: number | null
-  pieces?: number | null
-}
-
-interface CartItemPayload {
-  id: string
-  cartItemId?: string
-  name: string
-  price: number
-  quantity: number
-  selectedModifiers?: SelectedModifierPayload[]
-  selectedParameters?: SelectedParameterPayload[]
-}
-
-interface ProductRow {
-  id: string
-  name: string
-  price: number
-  parameters: any[]
-}
+  applyPromoToCart,
+  capBonusSpend,
+  fetchShopLoyaltySettings,
+  getCustomerBalance,
+} from '~/server/utils/pricingPromoBonus'
 
 interface TelegramUser {
   id: number
@@ -121,6 +86,12 @@ function formatPaymentMethod(method: PaymentMethod | undefined): string {
   return 'Наличными курьеру'
 }
 
+type PromoBreakdown = {
+  discountAmount: number
+  bonusSpent: number
+  subtotalAfterPromo: number
+}
+
 function buildOrderMessage(
   orderRef: string,
   items: CartItemPayload[],
@@ -136,10 +107,15 @@ function buildOrderMessage(
     comment?: string | null
     paymentMethod?: PaymentMethod
     changeFrom?: number | null
+    promo?: PromoBreakdown | null
   },
 ): string {
   const username = user.username ? `@${user.username}` : [user.first_name, user.last_name].filter(Boolean).join(' ') || `ID ${user.id}`
-  const grandTotal = total + deliveryCost
+  const payableGoods =
+    options.promo != null
+      ? Math.max(0, options.promo.subtotalAfterPromo - options.promo.bonusSpent)
+      : total
+  const grandTotal = payableGoods + deliveryCost
   const isPickup = options.fulfillmentType === 'pickup'
   const isQrMenu = options.fulfillmentType === 'qr-menu'
   
@@ -169,13 +145,23 @@ function buildOrderMessage(
     return lines
   })
 
+  const extraPromo: string[] = []
+  if (options.promo && options.promo.discountAmount > 0) {
+    extraPromo.push(`🎁 Скидка по промокоду: −${formatPrice(options.promo.discountAmount)}`)
+  }
+  if (options.promo && options.promo.bonusSpent > 0) {
+    extraPromo.push(`⭐ Списано бонусами: −${formatPrice(options.promo.bonusSpent)}`)
+  }
+
   const lines: string[] = [
     `📦 Заказ #${orderRef}`,
     '',
     'Состав:',
     ...formattedItems,
     '',
-    `💰 Товары: ${formatPrice(total)}`,
+    ...extraPromo,
+    ...(extraPromo.length ? [''] : []),
+    `💰 Товары к оплате: ${formatPrice(payableGoods)}`,
     isPickup
       ? '🏬 Способ получения: Самовывоз'
       : isQrMenu
@@ -225,9 +211,14 @@ function buildClientOrderMessage(
     comment?: string | null
     paymentMethod?: PaymentMethod
     changeFrom?: number | null
+    promo?: PromoBreakdown | null
   },
 ): string {
-  const grandTotal = total + deliveryCost
+  const payableGoods =
+    options.promo != null
+      ? Math.max(0, options.promo.subtotalAfterPromo - options.promo.bonusSpent)
+      : total
+  const grandTotal = payableGoods + deliveryCost
   const isPickup = options.fulfillmentType === 'pickup'
   const isQrMenu = options.fulfillmentType === 'qr-menu'
   
@@ -257,13 +248,23 @@ function buildClientOrderMessage(
     return lines
   })
 
+  const extraPromo: string[] = []
+  if (options.promo && options.promo.discountAmount > 0) {
+    extraPromo.push(`🎁 Скидка по промокоду: −${formatPrice(options.promo.discountAmount)}`)
+  }
+  if (options.promo && options.promo.bonusSpent > 0) {
+    extraPromo.push(`⭐ Списано бонусами: −${formatPrice(options.promo.bonusSpent)}`)
+  }
+
   const lines: string[] = [
     `🧾 Ваш заказ #${orderRef} принят!`,
     '',
     'Состав заказа:',
     ...formattedItems,
     '',
-    `💰 Товары: ${formatPrice(total)}`,
+    ...extraPromo,
+    ...(extraPromo.length ? [''] : []),
+    `💰 Товары к оплате: ${formatPrice(payableGoods)}`,
     isPickup
       ? '🏬 Способ получения: Самовывоз'
       : isQrMenu
@@ -295,39 +296,6 @@ function buildClientOrderMessage(
     'Мы будем присылать сюда обновления статуса: приготовление, передача курьеру и доставка 🚚🍣🍱',
   )
   return lines.join('\n')
-}
-
-async function loadTenantProductsForOrder(
-  event: H3Event,
-  shopId: string,
-  productIds: string[],
-): Promise<Map<string, ProductRow>> {
-  const serviceClient = await serverSupabaseServiceRole(event)
-  const { data, error } = await serviceClient
-    .from('products')
-    .select('id,name,price,category_id')
-    .eq('shop_id', shopId)
-    .in('id', productIds)
-
-  if (error) {
-    console.error('Error querying products for order:', error)
-    throw createError({ statusCode: 500, message: 'Failed to load products for this shop' })
-  }
-
-  const rows = (Array.isArray(data) ? data : []) as any[]
-  const paramByProduct = await fetchProductParameterGroupsByProductId(serviceClient, shopId, rows)
-
-  const map = new Map<string, ProductRow>()
-  for (const row of rows) {
-    const groups = paramByProduct[row.id]
-    map.set(row.id, {
-      id: row.id,
-      name: row.name,
-      price: row.price,
-      parameters: groups ? catalogGroupsToOrderValidationShape(groups) : [],
-    })
-  }
-  return map
 }
 
 export default defineEventHandler(async (event) => {
@@ -381,6 +349,8 @@ export default defineEventHandler(async (event) => {
     fulfillmentType?: FulfillmentType
     paymentMethod?: PaymentMethod
     changeFrom?: number | null
+    promoCode?: string | null
+    bonusPointsToSpend?: number | null
   } | null>(event)
   if (!body?.items?.length) {
     throw createError({ statusCode: 400, message: 'Expected { items }' })
@@ -399,68 +369,109 @@ export default defineEventHandler(async (event) => {
   const restaurantId = typeof body.restaurantId === 'string' ? body.restaurantId.trim() : ''
   const restaurant: TenantRestaurant = await requireRestaurantForShop(event, tenantShopId, restaurantId)
 
-  // Пересчитываем сумму на сервере по tenant-каталогу, не доверяя ценам с клиента
+  const serviceClient = await serverSupabaseServiceRole(event)
+
+  let user: TelegramUser | null = null
+  let customerProfileId: string | null = null
+  if (body.initData && typeof body.initData === 'string') {
+    user = validateInitData(body.initData, botToken)
+    if (!user) {
+      throw createError({ statusCode: 401, message: 'Invalid initData' })
+    }
+    const { data: tmaProfile } = await serviceClient
+      .from('profiles')
+      .select('id')
+      .eq('telegram_id', user.id)
+      .maybeSingle()
+    customerProfileId = tmaProfile?.id ? String(tmaProfile.id) : null
+  } else {
+    const supabaseUser = await serverSupabaseUser(event)
+    if (!supabaseUser) {
+      throw createError({ statusCode: 401, message: 'Unauthorized' })
+    }
+    const rawUser = supabaseUser as any
+    const userId =
+      typeof rawUser.id === 'string'
+        ? rawUser.id
+        : typeof rawUser.sub === 'string'
+          ? rawUser.sub
+          : null
+    if (!userId) {
+      console.error('Supabase user has invalid id/sub in order (WEB):', supabaseUser)
+      throw createError({ statusCode: 401, message: 'Unauthorized' })
+    }
+    customerProfileId = userId
+    const { data: profile, error: profileError } = await serviceClient
+      .from('profiles')
+      .select('telegram_id')
+      .eq('id', userId)
+      .maybeSingle()
+    if (profileError) {
+      console.error('Error querying profile for order (WEB):', profileError)
+      throw createError({ statusCode: 500, message: 'Failed to read profile' })
+    }
+    if (!profile || profile.telegram_id == null) {
+      throw createError({ statusCode: 409, message: 'Telegram not linked' })
+    }
+    user = { id: profile.telegram_id as number }
+  }
+
   const uniqueProductIds = Array.from(new Set(body.items.map((item) => item.id)))
-  const productMap = await loadTenantProductsForOrder(event, tenantShopId, uniqueProductIds)
+  const productMap = await loadTenantProductsForOrder(serviceClient, tenantShopId, uniqueProductIds)
 
-  // TODO: В идеале нужно также валидировать цены модификаторов на сервере
-  const itemsWithServerPrice: CartItemPayload[] = body.items.map((item) => {
-    const product = productMap.get(item.id)
-    if (!product) {
-      throw createError({
-        statusCode: 400,
-        message: `Product ${item.id} not found in current shop`,
-      })
-    }
-    const quantity = item.quantity > 0 ? item.quantity : 0
-    
-    let basePrice = product.price
-    if (item.selectedParameters && item.selectedParameters.length > 0) {
-      const param = item.selectedParameters[0]
-      const dbParamGroup = product.parameters?.find((p: any) => p.id === param.productParameterId)
-      if (dbParamGroup) {
-        const dbOption = dbParamGroup.product_parameter_options?.find((o: any) => o.id === param.optionId && o.is_active)
-        if (dbOption) {
-          basePrice = dbOption.price
-        } else {
-          throw createError({
-            statusCode: 400,
-            message: `Invalid parameter option ${param.optionId} for product ${item.id}`,
-          })
-        }
-      }
-    } else if (product.parameters && product.parameters.some((p: any) => p.is_required)) {
-      throw createError({
-        statusCode: 400,
-        message: `Product ${item.id} requires parameter selection`,
-      })
-    }
+  const promoResult = await applyPromoToCart(
+    serviceClient,
+    tenantShopId,
+    body.items,
+    productMap,
+    body.promoCode,
+    customerProfileId,
+  )
+  if (!promoResult.ok) {
+    throw createError({
+      statusCode: 400,
+      message: promoResult.errorMessage || 'Промокод не применён',
+    })
+  }
 
-    let multiplier = 1
-    let delta = 0
-    if (item.selectedModifiers && item.selectedModifiers.length > 0) {
-      for (const mod of item.selectedModifiers) {
-        if (mod.pricingType === 'multiplier') {
-          multiplier *= (mod.priceMultiplier ?? 1)
-        } else {
-          delta += (mod.priceDelta || 0)
-        }
-      }
-    }
-    const unitPrice = Math.round(basePrice * multiplier + delta)
-    
-    return {
-      id: product.id,
-      cartItemId: item.cartItemId,
-      name: product.name,
-      price: unitPrice,
-      quantity,
-      selectedModifiers: item.selectedModifiers,
-      selectedParameters: item.selectedParameters
-    }
-  })
+  let itemsWithServerPrice: CartItemPayload[] = promoResult.pricedLines
+  const discountAmount = promoResult.discountAmount
+  const promoRow = promoResult.promoRow
+  const promoSnapshot = promoResult.promoSnapshot as { subtotalAfterPromo?: number }
 
-  const total = itemsWithServerPrice.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  let subtotalAfterPromo =
+    typeof promoSnapshot.subtotalAfterPromo === 'number'
+      ? promoSnapshot.subtotalAfterPromo
+      : sumCartLines(itemsWithServerPrice)
+
+  const loyaltySettings = await fetchShopLoyaltySettings(serviceClient, tenantShopId)
+  const requestedBonus =
+    typeof body.bonusPointsToSpend === 'number' && Number.isFinite(body.bonusPointsToSpend)
+      ? Math.max(0, Math.floor(body.bonusPointsToSpend))
+      : 0
+
+  if (requestedBonus > 0 && !customerProfileId) {
+    throw createError({ statusCode: 400, message: 'Списание бонусов доступно только авторизованным пользователям' })
+  }
+  if (requestedBonus > 0 && !loyaltySettings.bonuses_enabled) {
+    throw createError({ statusCode: 400, message: 'Списание бонусов временно отключено' })
+  }
+
+  const balance = customerProfileId
+    ? await getCustomerBalance(serviceClient, tenantShopId, customerProfileId)
+    : 0
+
+  const bonusSpent = capBonusSpend(loyaltySettings, balance, subtotalAfterPromo, requestedBonus)
+
+  if (requestedBonus > 0 && bonusSpent < requestedBonus) {
+    throw createError({
+      statusCode: 400,
+      message: 'Недостаточно бонусов или превышен лимит оплаты бонусами',
+    })
+  }
+
+  const payableGoods = Math.max(0, subtotalAfterPromo - bonusSpent)
+
   const fulfillmentType: FulfillmentType =
     body.fulfillmentType === 'pickup'
       ? 'pickup'
@@ -512,7 +523,7 @@ export default defineEventHandler(async (event) => {
   const deliveryCost: number = (() => {
     if (fulfillmentType === 'pickup' || fulfillmentType === 'qr-menu') return 0
     if (!deliveryZoneValidated) return 0
-    return total >= deliveryZoneValidated.freeDeliveryThreshold ? 0 : deliveryZoneValidated.deliveryCost
+    return subtotalAfterPromo >= deliveryZoneValidated.freeDeliveryThreshold ? 0 : deliveryZoneValidated.deliveryCost
   })()
 
   const addressLine = body.address?.line?.trim() || null
@@ -535,67 +546,28 @@ export default defineEventHandler(async (event) => {
       ? Math.floor(body.changeFrom)
       : null
 
-  // Определяем пользователя: либо через initData (TMA), либо через Supabase-сессию (WEB)
-  let user: TelegramUser | null = null
-  let customerProfileId: string | null = null
-  if (body.initData && typeof body.initData === 'string') {
-    // Telegram Mini App: авторизация через initData
-    user = validateInitData(body.initData, botToken)
-    if (!user) {
-      throw createError({ statusCode: 401, message: 'Invalid initData' })
-    }
-  } else {
-    // Веб-режим: авторизация через Supabase-сессию и profiles.telegram_id
-    const supabaseUser = await serverSupabaseUser(event)
-    if (!supabaseUser) {
-      throw createError({ statusCode: 401, message: 'Unauthorized' })
-    }
-
-    // В Supabase JWT id может лежать в поле sub, а не id.
-    const rawUser = supabaseUser as any
-    const userId =
-      typeof rawUser.id === 'string'
-        ? rawUser.id
-        : typeof rawUser.sub === 'string'
-          ? rawUser.sub
-          : null
-
-    if (!userId) {
-      console.error('Supabase user has invalid id/sub in order (WEB):', supabaseUser)
-      throw createError({ statusCode: 401, message: 'Unauthorized' })
-    }
-
-    customerProfileId = userId
-
-    const serviceClient = await serverSupabaseServiceRole(event)
-
-    const { data: profile, error: profileError } = await serviceClient
-      .from('profiles')
-      .select('telegram_id')
-      .eq('id', userId)
-      .maybeSingle()
-
-    if (profileError) {
-      console.error('Error querying profile for order (WEB):', profileError)
-      throw createError({ statusCode: 500, message: 'Failed to read profile' })
-    }
-
-    if (!profile || profile.telegram_id == null) {
-      // Пользователь авторизован в Supabase, но Telegram еще не привязан
-      throw createError({ statusCode: 409, message: 'Telegram not linked' })
-    }
-
-    user = {
-      id: profile.telegram_id as number,
-    }
+  const grandTotal = Math.round(payableGoods + deliveryCost)
+  if (paymentMethod === 'online' && grandTotal < 1) {
+    throw createError({
+      statusCode: 400,
+      message: 'Минимальная сумма для онлайн-оплаты 1 ₽',
+    })
   }
+
+  const promoBreakdown: PromoBreakdown | null =
+    discountAmount > 0 || bonusSpent > 0
+      ? {
+          discountAmount,
+          bonusSpent,
+          subtotalAfterPromo,
+        }
+      : null
 
   const now = new Date()
   // В таблице `public.orders.id` тип `uuid`, поэтому используем UUID, чтобы
   // фронт (и роуты дашборда) могли однозначно находить заказ.
   const orderId = crypto.randomUUID()
   const orderCreatedAtIso = now.toISOString()
-  const serviceClient = await serverSupabaseServiceRole(event)
   const { data: generatedOrderNumber, error: orderNumberError } = await serviceClient.rpc('next_order_human_number', {
     p_shop_id: tenantShopId,
     p_restaurant_id: restaurant.id,
@@ -610,15 +582,24 @@ export default defineEventHandler(async (event) => {
       ? generatedOrderNumber.trim()
       : orderId.slice(0, 8)
 
-  const text = buildOrderMessage(orderNumber, itemsWithServerPrice, total, deliveryCost, fulfillmentType === 'delivery' ? deliveryZoneValidated : null, user, {
-    fulfillmentType,
-    pickupPoint,
-    addressLine,
-    flat,
-    comment,
-    paymentMethod,
-    changeFrom,
-  })
+  const text = buildOrderMessage(
+    orderNumber,
+    itemsWithServerPrice,
+    payableGoods,
+    deliveryCost,
+    fulfillmentType === 'delivery' ? deliveryZoneValidated : null,
+    user,
+    {
+      fulfillmentType,
+      pickupPoint,
+      addressLine,
+      flat,
+      comment,
+      paymentMethod,
+      changeFrom,
+      promo: promoBreakdown,
+    },
+  )
 
   const callbackData = `work_${user.id}_${orderId}`
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -645,7 +626,6 @@ export default defineEventHandler(async (event) => {
 
   // Persist order for dashboard & kitchen.
   // Note: WEB/TMA modes are normalized to `user.id` (Telegram id) above.
-  const grandTotal = Math.round(total + deliveryCost)
   const initialMetadata = {
     timeline: [
       {
@@ -672,7 +652,11 @@ export default defineEventHandler(async (event) => {
     payment_method: paymentMethod,
     payment_status: paymentMethod === 'online' ? 'pending' : 'unpaid',
     payment_provider: paymentMethod === 'online' ? 'yookassa' : null,
-    subtotal: Math.round(total),
+    subtotal: Math.round(subtotalAfterPromo),
+    discount_amount: discountAmount,
+    bonus_amount_spent: bonusSpent,
+    promo_code_id: promoRow?.id ?? null,
+    promo_snapshot: promoSnapshot,
     delivery_cost: Math.round(deliveryCost),
     total: grandTotal,
     items: itemsWithServerPrice,
@@ -695,6 +679,46 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, message: 'Failed to create order' })
   }
 
+  if (promoRow) {
+    const { error: promoUseErr } = await serviceClient.from('promo_code_uses').insert({
+      promo_code_id: promoRow.id,
+      shop_id: tenantShopId,
+      order_id: orderId,
+      customer_profile_id: customerProfileId,
+    })
+    if (promoUseErr) {
+      console.error('promo_code_uses insert:', promoUseErr)
+    }
+  }
+
+  if (bonusSpent > 0 && customerProfileId) {
+    const { error: spendLedErr } = await serviceClient.from('loyalty_ledger').insert({
+      shop_id: tenantShopId,
+      customer_profile_id: customerProfileId,
+      order_id: orderId,
+      delta: -bonusSpent,
+      reason: 'spend_order',
+      meta: {},
+    })
+    if (spendLedErr) {
+      console.error('loyalty_ledger spend_order:', spendLedErr)
+    } else {
+      const newBal = balance - bonusSpent
+      const { error: balErr } = await serviceClient.from('shop_customer_balances').upsert(
+        {
+          shop_id: tenantShopId,
+          customer_profile_id: customerProfileId,
+          balance: newBal,
+          last_activity_at: orderCreatedAtIso,
+        },
+        { onConflict: 'shop_id,customer_profile_id' },
+      )
+      if (balErr) {
+        console.error('shop_customer_balances upsert:', balErr)
+      }
+    }
+  }
+
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`
   const res = await fetch(url, {
     method: 'POST',
@@ -710,15 +734,23 @@ export default defineEventHandler(async (event) => {
 
   // Дополнительное уведомление клиента о создании заказа (ошибки не критичны)
   try {
-    const clientText = buildClientOrderMessage(orderNumber, itemsWithServerPrice, total, deliveryCost, fulfillmentType === 'delivery' ? deliveryZoneValidated : null, {
-      fulfillmentType,
-      pickupPoint,
-      addressLine,
-      flat,
-      comment,
-      paymentMethod,
-      changeFrom,
-    })
+    const clientText = buildClientOrderMessage(
+      orderNumber,
+      itemsWithServerPrice,
+      payableGoods,
+      deliveryCost,
+      fulfillmentType === 'delivery' ? deliveryZoneValidated : null,
+      {
+        fulfillmentType,
+        pickupPoint,
+        addressLine,
+        flat,
+        comment,
+        paymentMethod,
+        changeFrom,
+        promo: promoBreakdown,
+      },
+    )
     const clientPayload: any = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
