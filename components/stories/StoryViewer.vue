@@ -2,28 +2,29 @@
   <Teleport to="body">
     <div
       v-if="activeCampaign && modelValue"
-      class="fixed inset-0 z-[100] flex flex-col bg-black"
+      class="fixed inset-0 z-[100] flex flex-col bg-black/75"
       role="dialog"
       aria-modal="true"
     >
-      <div class="flex shrink-0 gap-1 px-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <div
-          v-for="(_, i) in activeCampaign.slides"
-          :key="i"
-          class="h-1 flex-1 overflow-hidden rounded-full bg-white/25"
-        >
-          <div
-            class="h-full bg-white transition-[width] duration-100 ease-linear"
-            :style="{ width: progressWidth(i) }"
-          />
-        </div>
-      </div>
-
       <div class="relative flex min-h-0 flex-1 items-center justify-center p-3 sm:p-6">
         <div class="relative h-full w-full max-h-[780px] max-w-[400px]">
+          
+          <div class="flex shrink-0 gap-1 p-4 absolute top-0 right-0 left-0 z-20">
+            <div
+              v-for="(_, i) in activeCampaign.slides"
+              :key="i"
+              class="h-1 flex-1 overflow-hidden rounded-full bg-white/25"
+            >
+              <div
+                class="h-full bg-white transition-[width] duration-100 ease-linear"
+                :style="{ width: progressWidth(i) }"
+              />
+            </div>
+          </div>
+
           <button
             type="button"
-            class="absolute -right-2 -top-2 z-20 rounded-full bg-black/55 p-2 text-white shadow-sm sm:-right-3 sm:-top-3"
+            class="absolute -right-2 -top-2 z-20 rounded-full bg-black/55 p-2 text-white shadow-sm sm:-right-12 sm:top-0"
             aria-label="Закрыть"
             @click.stop="close"
           >
@@ -145,6 +146,7 @@ const canSwipeCampaigns = computed(() => props.campaigns.length > 1)
 
 const surfaceTransformStyle = computed(() => ({
   transform: `translateX(${dragX.value}px)`,
+  opacity: `${(200-Math.abs(dragX.value))/200}`,
   transition: pointerDragging.value
     ? 'none'
     : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)',
