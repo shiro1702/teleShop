@@ -230,9 +230,6 @@
               <div class="flex items-center justify-between">
                 <div class="min-w-0">
                   <span :style="{ color: mutedTextColor }">Товары</span>
-                  <p class="truncate text-xs" :style="{ color: mutedTextColor }" :title="orderItemsSummary">
-                    {{ orderItemsSummary }}
-                  </p>
                 </div>
                 <span class="font-semibold" :style="{ color: mainTextColor }">
                   {{ formatPrice(promoSubtotalBeforeDiscount) }}
@@ -659,12 +656,10 @@
 
             <div class="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
               <div class="space-y-2 text-sm">
-                <div class="flex items-center justify-between">
+                <div class="flex items-start justify-between">
                   <div class="min-w-0">
                     <span class="text-gray-600">Товары</span>
-                    <p class="truncate text-xs text-gray-500" :title="orderItemsSummary">
-                      {{ orderItemsSummary }}
-                    </p>
+                    <p class="truncate text-xs text-gray-500" :title="orderItemsSummary" v-html="orderItemsSummary"></p>
                   </div>
                   <span class="font-semibold text-gray-900">
                     {{ formatPrice(promoSubtotalBeforeDiscount) }}
@@ -1061,7 +1056,7 @@ const hasPromoCodeApplied = computed(() =>
 const orderItemsSummary = computed(() =>
   cartStore.items
     .map((item: { name: string; quantity: number }) => `${item.name} × ${item.quantity}`)
-    .join(', '),
+    .join(',<br/>'),
 )
 const bonusEarnEstimate = computed(() => {
   if (!isAuthorizedForOrder.value) return 0

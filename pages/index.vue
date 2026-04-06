@@ -7,8 +7,8 @@
       @open="openStoryCampaign"
       :style="topBarStyle"
     />
-    <div class="mx-auto max-w-6xl px-4 py-3 sm:px-6 sticky top-16 z-40 backdrop-blur" :style="topBarStyle">
-      <div class="flex items-center gap-3">
+    <div class="w-full sticky top-16 z-40 backdrop-blur" :style="topBarStyle">
+      <div class="flex items-center gap-3 mx-auto max-w-6xl px-4 py-3 sm:px-6">
         <nav class="-mx-4 flex flex-1 items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
           <a
             v-for="section in cartStore.productsByCategory"

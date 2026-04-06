@@ -1,6 +1,6 @@
 <template>
-  <div v-if="loading || campaigns.length" class="mx-auto max-w-6xl px-4 py-3 sm:px-6">
-    <div class="relative">
+  <div v-if="loading || campaigns.length" class="w-full">
+    <div class="relative mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
       <button
         v-show="campaigns.length"
         type="button"
