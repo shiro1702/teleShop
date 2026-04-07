@@ -1,5 +1,17 @@
 <template>
   <section class="space-y-6">
+    <div class="pointer-events-none fixed right-4 top-4 z-[100] flex w-full max-w-sm flex-col gap-2">
+      <div
+        v-for="toast in toasts"
+        :key="toast.id"
+        class="pointer-events-auto rounded-lg border px-3 py-2 text-sm shadow-lg"
+        :class="toast.kind === 'error'
+          ? 'border-red-200 bg-red-50 text-red-700'
+          : 'border-green-200 bg-green-50 text-green-700'"
+      >
+        {{ toast.message }}
+      </div>
+    </div>
     <div class="space-y-1">
       <h1 class="text-2xl font-semibold">Настройки организации</h1>
       <p class="text-sm text-gray-600">Бренд, стиль и пресеты витрины ресторана.</p>
@@ -154,7 +166,7 @@
         </div>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="save('Айдентика сохранена.')">
+        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="saveIdentity">
           {{ saving ? 'Сохраняем...' : 'Сохранить айдентику' }}
         </button>
       </div>
@@ -255,7 +267,7 @@
         </div>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="save('Контакты и операционные настройки сохранены.')">
+        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="saveContactsAndOps">
           {{ saving ? 'Сохраняем...' : 'Сохранить контакты и операционные настройки' }}
         </button>
       </div>
@@ -367,7 +379,7 @@
       </div>
 
       <div class="flex flex-wrap gap-2">
-        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="save('Стили сохранены.')">
+        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="saveStyles">
           {{ saving ? 'Сохраняем...' : 'Сохранить стили' }}
         </button>
         <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="isReadonly || saving || !hasRollback" @click="rollback">
@@ -434,6 +446,8 @@ const originalSettings = ref<OrganizationSettings | null>(null)
 const newPresetTitle = ref('')
 const newPresetMood = ref('')
 const activeMainTab = ref<'identity' | 'contacts' | 'styles'>('identity')
+const toasts = ref<Array<{ id: number; kind: 'success' | 'error'; message: string }>>([])
+let toastSeq = 0
 
 const form = reactive<OrganizationStyleConfig>({
   identity: {
@@ -714,14 +728,22 @@ function resetForm() {
   if (originalSettings.value) fillSettings(originalSettings.value)
 }
 
-async function save(successText = 'Настройки сохранены.') {
+function pushToast(kind: 'success' | 'error', message: string) {
+  const id = ++toastSeq
+  toasts.value.push({ id, kind, message })
+  setTimeout(() => {
+    toasts.value = toasts.value.filter((item) => item.id !== id)
+  }, 4500)
+}
+
+async function saveByEndpoint(endpoint: string, successText: string, fallbackErrorText: string) {
   if (isReadonly.value || validationErrors.value.length) return
   syncCuisineToSettings()
   saving.value = true
   errorMessage.value = ''
   successMessage.value = ''
   try {
-    const response = await $fetch<OrganizationStyleResponse>('/api/dashboard/organization/style', {
+    const response = await $fetch<OrganizationStyleResponse>(endpoint, {
       method: 'PUT',
       body: {
         data: cloneConfig(form),
@@ -735,11 +757,30 @@ async function save(successText = 'Настройки сохранены.') {
     auditLog.value = response.auditLog
     hasRollback.value = response.hasRollback
     successMessage.value = successText
+    pushToast('success', successText)
   } catch (err: any) {
-    errorMessage.value = err?.data?.statusMessage || err?.message || 'Не удалось сохранить настройки.'
+    const message = err?.data?.statusMessage || err?.message || fallbackErrorText
+    errorMessage.value = message
+    pushToast('error', message)
   } finally {
     saving.value = false
   }
+}
+
+async function saveIdentity() {
+  await saveByEndpoint('/api/dashboard/organization/style/identity', 'Айдентика сохранена.', 'Не удалось сохранить айдентику.')
+}
+
+async function saveContactsAndOps() {
+  await saveByEndpoint(
+    '/api/dashboard/organization/style/contacts',
+    'Контакты и операционные настройки сохранены.',
+    'Не удалось сохранить контакты и операционные настройки.',
+  )
+}
+
+async function saveStyles() {
+  await saveByEndpoint('/api/dashboard/organization/style/styles', 'Стили сохранены.', 'Не удалось сохранить стили.')
 }
 
 async function rollback() {
