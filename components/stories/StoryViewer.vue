@@ -5,9 +5,11 @@
       class="fixed inset-0 z-[100] flex flex-col bg-black/75"
       role="dialog"
       aria-modal="true"
+      @click.stop="close"
     >
-      <div class="relative flex min-h-0 flex-1 items-center justify-center p-3 sm:p-6">
-        <div class="relative h-full w-full max-h-[780px] max-w-[400px]">
+      <div class="relative flex min-h-0 flex-1 items-center justify-center p-3 sm:p-6"
+>
+        <div class="relative h-full w-full max-h-[780px] max-w-[400px]" @click.stop="">
           
           <div class="flex shrink-0 gap-1 p-4 absolute top-0 right-0 left-0 z-20">
             <div
