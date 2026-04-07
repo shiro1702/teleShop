@@ -4,7 +4,7 @@
       v-if="storiesLoading || storiesTopBar.length"
       :campaigns="storiesTopBar"
       :loading="storiesLoading"
-      @open="openStoryCampaign"
+      @open="openTopBarStoryCampaign"
       :style="topBarStyle"
     />
     <div class="w-full sticky top-16 z-40 backdrop-blur" :style="topBarStyle">
@@ -161,7 +161,7 @@
             <StoryGridBanner
               v-else
               :campaign="cell.campaign"
-              @open="openStoryCampaign"
+              @open="openCatalogStoryCampaign"
             />
           </li>
         </ul>
@@ -422,6 +422,7 @@
       v-model="viewerOpen"
       :campaign="viewerCampaign"
       :campaigns="storyViewerNavigableCampaigns"
+      :auto-advance-campaigns="viewerAutoAdvanceCampaigns"
       :shop-id="tenantKey"
       @campaign-change="viewerCampaign = $event"
       @action="onStoryAction"
@@ -453,6 +454,7 @@ const route = useRoute()
 const { tenant, tenantKey, tenantPath } = useTenant()
 const viewerOpen = ref(false)
 const viewerCampaign = ref<StoryCampaignDto | null>(null)
+const viewerAutoAdvanceCampaigns = ref(false)
 const {
   loading: storiesLoading,
   topBar: storiesTopBar,
@@ -500,7 +502,14 @@ const sectionsWithStoryCells = computed(() => {
   })
 })
 
-function openStoryCampaign(c: StoryCampaignDto) {
+function openTopBarStoryCampaign(c: StoryCampaignDto) {
+  viewerAutoAdvanceCampaigns.value = true
+  viewerCampaign.value = c
+  viewerOpen.value = true
+}
+
+function openCatalogStoryCampaign(c: StoryCampaignDto) {
+  viewerAutoAdvanceCampaigns.value = false
   viewerCampaign.value = c
   viewerOpen.value = true
 }
@@ -1075,6 +1084,7 @@ watch(
     const all = [...storiesTopBar.value, ...storiesCatalogGrid.value]
     const found = all.find((c) => c.id === id)
     if (found) {
+      viewerAutoAdvanceCampaigns.value = false
       viewerCampaign.value = found
       viewerOpen.value = true
       const nextQuery = { ...route.query } as Record<string, string | string[] | undefined>

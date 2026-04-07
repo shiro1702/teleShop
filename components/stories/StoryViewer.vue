@@ -91,10 +91,15 @@ const props = withDefaults(
     campaign: StoryCampaignDto | null
     /** Порядок как в ленте — для свайпа между группами */
     campaigns?: StoryCampaignDto[]
+    /** Автопереход к следующей группе после последнего слайда */
+    autoAdvanceCampaigns?: boolean
     shopId: string | null
     modelValue: boolean
   }>(),
-  { campaigns: () => [] },
+  {
+    campaigns: () => [],
+    autoAdvanceCampaigns: false,
+  },
 )
 
 const emit = defineEmits<{
@@ -257,6 +262,22 @@ function nextSlide() {
   if (slideIndex.value < c.slides.length - 1) {
     slideIndex.value += 1
   } else {
+    if (!props.autoAdvanceCampaigns) {
+      close()
+      return
+    }
+    const nextCampaignIndex = navIndex.value + 1
+    const nextCampaign = props.campaigns[nextCampaignIndex]
+    if (nextCampaign) {
+      navIndex.value = nextCampaignIndex
+      slideIndex.value = 0
+      tick.value = 0
+      dragX.value = 0
+      playbackPaused.value = false
+      recordedSlides.clear()
+      emit('campaign-change', nextCampaign)
+      return
+    }
     close()
   }
 }
