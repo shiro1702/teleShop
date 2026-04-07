@@ -132,6 +132,7 @@ function derivePrimaryVariants(brandPrimary: string) {
 function deriveTenantThemeFromStyle(cfg: {
   tokens: {
     brandPrimary: string
+    textOnPrimary: string
     brandSecondary: string
     brandAccent: string
     surfaceBackground: string
@@ -145,6 +146,7 @@ function deriveTenantThemeFromStyle(cfg: {
 }) {
   return {
     ...derivePrimaryVariants(cfg.tokens.brandPrimary),
+    on_primary: cfg.tokens.textOnPrimary,
     secondary: cfg.tokens.brandSecondary,
     accent: cfg.tokens.brandAccent,
     surface_background: cfg.tokens.surfaceBackground,

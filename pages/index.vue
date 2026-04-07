@@ -30,7 +30,7 @@
             type="button"
             class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
             :class="selectedFulfillmentType === 'delivery'
-              ? 'bg-primary text-white shadow-sm'
+              ? 'bg-primary text-on-primary shadow-sm'
               : 'text-gray-600 hover:bg-gray-100'"
             @click="setFulfillmentType('delivery')"
           >
@@ -40,7 +40,7 @@
             type="button"
             class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
             :class="selectedFulfillmentType === 'pickup'
-              ? 'bg-primary text-white shadow-sm'
+              ? 'bg-primary text-on-primary shadow-sm'
               : 'text-gray-600 hover:bg-gray-100'"
             @click="setFulfillmentType('pickup')"
           >
@@ -50,7 +50,7 @@
 
         <button
           type="button"
-          class="hidden shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 sm:flex"
+          class="hidden shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 sm:flex"
           @click="goToCheckout"
         >
           <span>Корзина</span>
@@ -199,7 +199,7 @@
             </p>
             <button
               type="button"
-            class="mt-4 w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
+            class="mt-4 w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700"
               @click="showOrderSuccess = false"
             >
               Понятно
@@ -223,7 +223,7 @@
           type="button"
           class="flex-1 rounded-lg px-3 py-2 text-xs font-medium transition"
           :class="selectedFulfillmentType === 'delivery'
-            ? 'bg-primary text-white shadow-sm'
+            ? 'bg-primary text-on-primary shadow-sm'
             : 'text-gray-600 hover:bg-gray-100'"
           @click="setFulfillmentType('delivery')"
         >
@@ -233,7 +233,7 @@
           type="button"
           class="flex-1 rounded-lg px-3 py-2 text-xs font-medium transition"
           :class="selectedFulfillmentType === 'pickup'
-            ? 'bg-primary text-white shadow-sm'
+            ? 'bg-primary text-on-primary shadow-sm'
             : 'text-gray-600 hover:bg-gray-100'"
           @click="setFulfillmentType('pickup')"
         >
@@ -243,7 +243,7 @@
 
       <button
         type="button"
-        class="flex w-full items-center justify-between gap-3 rounded-lg bg-primary px-4 py-3 text-base font-medium text-white shadow-md"
+        class="flex w-full items-center justify-between gap-3 rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary shadow-md"
         @click="goToCheckout"
       >
         <div class="flex items-center gap-2">
@@ -352,7 +352,7 @@
                       <!-- Badge для количества в корзине -->
                       <span 
                         v-if="getParameterQuantityInCart(opt.id) > 0" 
-                        class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-sm"
+                        class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary shadow-sm"
                       >
                         {{ getParameterQuantityInCart(opt.id) }}
                       </span>
@@ -392,7 +392,7 @@
                       <!-- Badge для количества в корзине -->
                       <span 
                         v-if="getOptionQuantityInCart(opt.id) > 0" 
-                        class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-sm"
+                        class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary shadow-sm"
                       >
                         {{ getOptionQuantityInCart(opt.id) }}
                       </span>
@@ -405,7 +405,7 @@
             <div class="shrink-0 border-t p-4 sm:p-5 bg-white" :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }">
               <button
                 type="button"
-                class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
+                class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
                 :disabled="!isModifiersValid"
                 @click="addSelectedToCart"
               >
@@ -619,6 +619,13 @@ type CatalogCacheEntry = {
   items: Product[]
 }
 
+function buildCheckoutStorageKey(scopeKey: string | null | undefined) {
+  const scope = typeof scopeKey === 'string' ? scopeKey.trim() : ''
+  return scope ? `${CHECKOUT_STORAGE_KEY}:${scope}` : CHECKOUT_STORAGE_KEY
+}
+
+const checkoutStorageKey = computed(() => buildCheckoutStorageKey(tenantKey.value))
+
 const restaurantOps = ref<RestaurantOps[]>([])
 const isRestaurantModesLoaded = ref(false)
 const selectedFulfillmentType = ref<FulfillmentType>('delivery')
@@ -657,7 +664,7 @@ const selectedRestaurantIdForCheckout = computed(() => {
 function readCheckoutStateLocal(): any | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = localStorage.getItem(CHECKOUT_STORAGE_KEY)
+    const raw = localStorage.getItem(checkoutStorageKey.value)
     if (!raw) return null
     return JSON.parse(raw) as any
   } catch {
@@ -705,7 +712,7 @@ function writeCatalogCache(cacheKey: string, items: Product[]) {
 function persistCheckoutStateLocal(data: string) {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(CHECKOUT_STORAGE_KEY, data)
+    localStorage.setItem(checkoutStorageKey.value, data)
   } catch {
     // ignore
   }
@@ -717,7 +724,7 @@ function persistCheckoutStateCloud(data: string) {
     return
   }
 
-  ;(webApp.value as any).CloudStorage.setItem(CHECKOUT_STORAGE_KEY, data, () => {
+  ;(webApp.value as any).CloudStorage.setItem(checkoutStorageKey.value, data, () => {
     persistCheckoutStateLocal(data)
   })
 }

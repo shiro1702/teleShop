@@ -43,6 +43,7 @@ export const SYSTEM_STYLE_PRESETS: OrganizationStylePreset[] = [
     config: {
       tokens: {
         brandPrimary: '#B3472A',
+        textOnPrimary: '#FFFFFF',
         brandSecondary: '#D9A441',
         brandAccent: '#6E3B2A',
         surfaceBackground: '#FFF9F5',
@@ -63,6 +64,7 @@ export const SYSTEM_STYLE_PRESETS: OrganizationStylePreset[] = [
     config: {
       tokens: {
         brandPrimary: '#1F6FEB',
+        textOnPrimary: '#FFFFFF',
         brandSecondary: '#7AA2F7',
         brandAccent: '#0EA5E9',
         surfaceBackground: '#F7FAFC',
@@ -83,6 +85,7 @@ export const SYSTEM_STYLE_PRESETS: OrganizationStylePreset[] = [
     config: {
       tokens: {
         brandPrimary: '#F97316',
+        textOnPrimary: '#111827',
         brandSecondary: '#FDBA74',
         brandAccent: '#FB7185',
         surfaceBackground: '#111827',
@@ -103,6 +106,7 @@ export const SYSTEM_STYLE_PRESETS: OrganizationStylePreset[] = [
     config: {
       tokens: {
         brandPrimary: '#8B5CF6',
+        textOnPrimary: '#FFFFFF',
         brandSecondary: '#C4B5FD',
         brandAccent: '#F472B6',
         surfaceBackground: '#FDF4FF',
@@ -271,6 +275,7 @@ function normalizeConfig(raw: any): OrganizationStyleConfig {
     },
     tokens: {
       brandPrimary: typeof config.tokens?.brandPrimary === 'string' ? config.tokens.brandPrimary : defaults.tokens.brandPrimary,
+      textOnPrimary: typeof config.tokens?.textOnPrimary === 'string' ? config.tokens.textOnPrimary : defaults.tokens.textOnPrimary,
       brandSecondary: typeof config.tokens?.brandSecondary === 'string' ? config.tokens.brandSecondary : defaults.tokens.brandSecondary,
       brandAccent: typeof config.tokens?.brandAccent === 'string' ? config.tokens.brandAccent : defaults.tokens.brandAccent,
       surfaceBackground: typeof config.tokens?.surfaceBackground === 'string' ? config.tokens.surfaceBackground : defaults.tokens.surfaceBackground,

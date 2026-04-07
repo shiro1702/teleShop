@@ -10,6 +10,7 @@ export type OrganizationStyleIdentity = {
 
 export type OrganizationStyleTokens = {
   brandPrimary: string
+  textOnPrimary: string
   brandSecondary: string
   brandAccent: string
   surfaceBackground: string

@@ -12,7 +12,7 @@
         @error="onImageError"
       />
       <div class="absolute top-2 right-2 flex flex-col gap-1 items-end">
-        <div v-if="quantity > 0" class="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-white shadow-sm">
+        <div v-if="quantity > 0" class="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-on-primary shadow-sm">
           {{ quantity }} шт
         </div>
         <div v-if="(product.modifiers && product.modifiers.length > 0) || (product.parameters && product.parameters.length > 0)" class="rounded-full bg-white/90 backdrop-blur px-2 py-1 text-[10px] font-medium text-gray-700 shadow-sm">
@@ -50,7 +50,7 @@
           <button
             v-if="quantity === 0"
             type="button"
-            class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
+            class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700"
             @click.stop="cartStore.addItem(product)"
           >
             В корзину
@@ -75,7 +75,7 @@
             </span>
             <button
               type="button"
-              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-white transition hover:opacity-90"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-on-primary transition hover:opacity-90"
               aria-label="Добавить"
               @click.stop="cartStore.addItem(product)"
             >

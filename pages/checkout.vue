@@ -135,7 +135,7 @@
               </p>
               <NuxtLink
                 :to="tenantPath('/')"
-                class="mt-4 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
+                class="mt-4 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700"
               >
                 Перейти к товарам
               </NuxtLink>
@@ -169,7 +169,7 @@
                     >
                     <button
                       type="button"
-                      class="inline-flex min-w-28 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+                      class="inline-flex min-w-28 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary disabled:cursor-not-allowed disabled:bg-gray-300"
                       :disabled="isPromoApplyLoading || !cartStore.items.length"
                       @click="runPromoApply"
                     >
@@ -280,7 +280,7 @@
             <div class="flex flex-1 flex-col gap-2 sm:max-w-xs">
               <button
                 type="button"
-                class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                 :disabled="!canGoToAddress"
                 @click="goToStep(2)"
               >
@@ -367,7 +367,7 @@
                     type="button"
                     class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition"
                     :class="state.fulfillmentType === 'delivery'
-                      ? 'bg-primary text-white shadow-sm'
+                      ? 'bg-primary text-on-primary shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'"
                     @click="state.fulfillmentType = 'delivery'"
                   >
@@ -378,7 +378,7 @@
                     type="button"
                     class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition"
                     :class="state.fulfillmentType === 'pickup'
-                      ? 'bg-primary text-white shadow-sm'
+                      ? 'bg-primary text-on-primary shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'"
                     @click="state.fulfillmentType = 'pickup'"
                   >
@@ -389,7 +389,7 @@
                     type="button"
                     class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition"
                     :class="state.fulfillmentType === 'qr-menu'
-                      ? 'bg-primary text-white shadow-sm'
+                      ? 'bg-primary text-on-primary shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'"
                     @click="state.fulfillmentType = 'qr-menu'"
                   >
@@ -724,7 +724,7 @@
                 <button
                   v-if="isAuthorizedForOrder"
                   type="button"
-                  class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
+                  class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
                   :disabled="isPlacing || !cartStore.items.length || !canGoToSummary"
                   @click="placeOrder"
                 >
@@ -735,7 +735,7 @@
                 <template v-else>
                   <button
                     type="button"
-                    class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 sm:w-auto"
+                    class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 sm:w-auto"
                     @click="authAndReturn"
                   >
                     Авторизоваться и оформить
@@ -767,7 +767,7 @@
       <button
         v-if="state.currentStep === 1"
         type="button"
-        class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+        class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
         :disabled="!canGoToAddress"
         @click="goToStep(2)"
       >
@@ -779,7 +779,7 @@
         <button
           v-if="isAuthorizedForOrder"
           type="button"
-          class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
           :disabled="isPlacing || !cartStore.items.length || !canGoToSummary"
           @click="placeOrder"
         >
@@ -789,7 +789,7 @@
         <template v-else>
           <button
             type="button"
-            class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
+            class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700"
             @click="authAndReturn"
           >
             Авторизоваться и оформить
@@ -876,6 +876,13 @@ type CheckoutState = {
 }
 
 const CHECKOUT_STORAGE_KEY = 'teleshop_checkout_state'
+
+function buildCheckoutStorageKey(scopeKey: string | null | undefined) {
+  const scope = typeof scopeKey === 'string' ? scopeKey.trim() : ''
+  return scope ? `${CHECKOUT_STORAGE_KEY}:${scope}` : CHECKOUT_STORAGE_KEY
+}
+
+const checkoutStorageKey = computed(() => buildCheckoutStorageKey(shopIdFromRoute.value))
 
 const state = reactive<CheckoutState>({
   currentStep: 1,
@@ -1401,6 +1408,15 @@ function restoreFromPlainObject(obj: any) {
   }
 }
 
+function resetScopedCheckoutFields() {
+  promoCodeInput.value = ''
+  appliedPromoCode.value = ''
+  bonusToSpend.value = 0
+  promoPreview.value = null
+  promoError.value = ''
+  promoSuccess.value = ''
+}
+
 function isClient() {
   return typeof window !== 'undefined'
 }
@@ -1479,7 +1495,7 @@ watch(
 function persistCheckoutStateLocal(data: string) {
   if (!isClient()) return
   try {
-    localStorage.setItem(CHECKOUT_STORAGE_KEY, data)
+    localStorage.setItem(checkoutStorageKey.value, data)
   } catch {
     // ignore
   }
@@ -1488,7 +1504,7 @@ function persistCheckoutStateLocal(data: string) {
 function loadCheckoutStateLocal() {
   if (!isClient()) return null
   try {
-    const raw = localStorage.getItem(CHECKOUT_STORAGE_KEY)
+    const raw = localStorage.getItem(checkoutStorageKey.value)
     if (!raw) return null
     return JSON.parse(raw)
   } catch {
@@ -1502,7 +1518,7 @@ function persistCheckoutStateCloud(data: string) {
     return
   }
 
-  (webApp.value as any).CloudStorage.setItem(CHECKOUT_STORAGE_KEY, data, () => {
+  (webApp.value as any).CloudStorage.setItem(checkoutStorageKey.value, data, () => {
     persistCheckoutStateLocal(data)
   })
 }
@@ -1514,7 +1530,7 @@ function loadCheckoutStateCloud(): Promise<any | null> {
 
   return new Promise((resolve) => {
     (webApp.value as any).CloudStorage.getItem(
-      CHECKOUT_STORAGE_KEY,
+      checkoutStorageKey.value,
       (_err: unknown, value: string | null) => {
         if (value) {
           try {
@@ -1554,9 +1570,7 @@ watch(
 
 onMounted(async () => {
   const saved = await loadCheckoutStateCloud()
-  if (saved) {
-    restoreFromPlainObject(saved)
-  }
+  if (saved) restoreFromPlainObject(saved)
 
   const stepParam = Number(route.query.step || 0)
   if (isCheckoutRoute.value && cartStore.items.length > 0) {
@@ -1573,6 +1587,13 @@ onMounted(async () => {
 watch(shopIdFromRoute, async () => {
   applyCartScope()
   await loadRestaurants()
+})
+
+watch(checkoutStorageKey, async (nextKey: string, prevKey: string) => {
+  if (nextKey === prevKey) return
+  resetScopedCheckoutFields()
+  const saved = await loadCheckoutStateCloud()
+  if (saved) restoreFromPlainObject(saved)
 })
 
 async function placeOrder() {
@@ -1647,7 +1668,7 @@ async function placeOrder() {
         persistCheckoutStateCloud(data)
         cartStore.clear()
         if (isClient()) {
-          localStorage.removeItem(CHECKOUT_STORAGE_KEY)
+          localStorage.removeItem(checkoutStorageKey.value)
           window.location.href = paymentRes.confirmationUrl
         }
         return
@@ -1657,7 +1678,7 @@ async function placeOrder() {
       persistCheckoutStateCloud(data)
       cartStore.clear()
       if (isClient()) {
-        localStorage.removeItem(CHECKOUT_STORAGE_KEY)
+        localStorage.removeItem(checkoutStorageKey.value)
       }
       await navigateTo({
         path: tenantPath('/orders'),

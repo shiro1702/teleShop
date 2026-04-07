@@ -160,7 +160,7 @@
             <div class="rounded border p-3" :style="{ backgroundColor: form.tokens.surfaceCard, borderRadius: `${form.radii.card}px` }">
               <p class="text-sm font-semibold">{{ settings.displayName || form.identity.name || 'Название ресторана' }}</p>
               <p class="mt-1 text-xs" :style="{ color: form.tokens.textMuted }">{{ form.identity.shortDescription || 'Короткое описание' }}</p>
-              <button class="mt-3 px-3 py-1.5 text-sm text-white" :style="{ backgroundColor: form.tokens.brandPrimary, borderRadius: `${form.radii.button}px` }">Открыть меню</button>
+              <button class="mt-3 px-3 py-1.5 text-sm" :style="{ backgroundColor: form.tokens.brandPrimary, color: form.tokens.textOnPrimary, borderRadius: `${form.radii.button}px` }">Открыть меню</button>
             </div>
           </div>
         </div>
@@ -288,9 +288,9 @@
             <div class="mt-3 rounded border p-3" :style="{ backgroundColor: form.tokens.surfaceCard, borderRadius: `${form.radii.modal}px` }">
               <p class="text-sm font-semibold">Кнопки</p>
               <div class="mt-2 flex flex-wrap gap-2">
-                <button class="px-3 py-1.5 text-xs text-white" :style="{ backgroundColor: form.tokens.brandPrimary, borderRadius: `${form.radii.button}px` }">Primary</button>
+                <button class="px-3 py-1.5 text-xs" :style="{ backgroundColor: form.tokens.brandPrimary, color: form.tokens.textOnPrimary, borderRadius: `${form.radii.button}px` }">Primary</button>
                 <button class="px-3 py-1.5 text-xs" :style="{ backgroundColor: form.tokens.brandSecondary, color: form.tokens.textPrimary, borderRadius: `${form.radii.button}px` }">Secondary</button>
-                <button class="px-3 py-1.5 text-xs text-white" :style="{ backgroundColor: form.tokens.brandAccent, borderRadius: `${form.radii.button}px` }">Accent</button>
+                <button class="px-3 py-1.5 text-xs" :style="{ backgroundColor: form.tokens.brandAccent, color: form.tokens.textOnPrimary, borderRadius: `${form.radii.button}px` }">Accent</button>
               </div>
             </div>
           </div>
@@ -461,6 +461,7 @@ const form = reactive<OrganizationStyleConfig>({
   },
   tokens: {
     brandPrimary: '#000000',
+    textOnPrimary: '#FFFFFF',
     brandSecondary: '#000000',
     brandAccent: '#000000',
     surfaceBackground: '#FFFFFF',
@@ -543,6 +544,7 @@ const fulfillmentOptions: Array<{
 
 const colorFields = [
   { key: 'brandPrimary', label: 'brand.primary' },
+  { key: 'textOnPrimary', label: 'text.onPrimary' },
   { key: 'brandSecondary', label: 'brand.secondary' },
   { key: 'brandAccent', label: 'brand.accent' },
   { key: 'surfaceBackground', label: 'surface.background' },
