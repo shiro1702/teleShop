@@ -1,4 +1,4 @@
-import { createError, defineEventHandler, getHeader } from 'h3'
+import { createError, defineEventHandler, getHeader, sendRedirect } from 'h3'
 import {
   extractBotIdFromInitData,
   getShopByBotId,
@@ -70,6 +70,16 @@ function shouldRewriteCustomDomainPath(path: string): boolean {
   return CUSTOM_DOMAIN_REWRITE_PATHS.has(normalizedPath)
 }
 
+function extractCityAndTenantFromPath(path: string): { citySlug: string; tenantSlug: string } | null {
+  const segments = path.split('?')[0].split('/').filter(Boolean)
+  if (segments.length < 2) return null
+  const [citySlug, tenantSlug] = segments
+  if (!citySlug || !tenantSlug) return null
+  if (['api', '_nuxt', '__nuxt_error', 'profile', 'link-telegram'].includes(citySlug)) return null
+  if (/\.[a-z0-9]+$/i.test(citySlug) || /\.[a-z0-9]+$/i.test(tenantSlug)) return null
+  return { citySlug, tenantSlug }
+}
+
 export default defineEventHandler(async (event) => {
   const path = event.path || ''
   const isCartBridgeGet = path.startsWith('/api/cart-bridge') && event.method === 'GET'
@@ -107,6 +117,10 @@ export default defineEventHandler(async (event) => {
 
   if (!shop) {
     if (!path.startsWith('/api/')) {
+      const cityAndTenant = extractCityAndTenantFromPath(path)
+      if (cityAndTenant) {
+        return sendRedirect(event, `/${cityAndTenant.citySlug}/`, 302)
+      }
       return
     }
     if (isCartBridgeGet) {
