@@ -221,6 +221,30 @@
               </button>
             </div>
           </div>
+          <div class="rounded-lg border border-gray-200 bg-white p-3">
+            <p class="mb-2 text-xs uppercase tracking-wide text-gray-500">Уведомить о задержке</p>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                class="rounded border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-800 disabled:opacity-50"
+                :disabled="!orderModalData.customerTelegramId || delayNotifyPending"
+                @click="notifyDelay(orderModalData.id, 'kitchen')"
+              >
+                Задержка (кухня)
+              </button>
+              <button
+                type="button"
+                class="rounded border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs text-orange-800 disabled:opacity-50"
+                :disabled="!orderModalData.customerTelegramId || delayNotifyPending"
+                @click="notifyDelay(orderModalData.id, 'delivery')"
+              >
+                Задержка (доставка)
+              </button>
+            </div>
+            <p v-if="!orderModalData.customerTelegramId" class="mt-1 text-xs text-gray-500">
+              У заказа нет Telegram ID клиента, уведомление недоступно.
+            </p>
+          </div>
           <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
             <p class="mb-2 text-xs uppercase tracking-wide text-gray-500">Состав заказа</p>
             <ul class="space-y-2">
@@ -337,6 +361,7 @@ const orderModalOpen = ref(false)
 const orderModalPending = ref(false)
 const orderModalError = ref<string | null>(null)
 const orderModalData = ref<KitchenOrder | null>(null)
+const delayNotifyPending = ref(false)
 
 type DuplicateGroup = {
   key: string
@@ -656,11 +681,15 @@ function modifierLabel(line: KitchenLine) {
 
 async function openOrderModal(order: KitchenOrder) {
   orderModalOpen.value = true
+  await fetchOrderDetails(order.id, order)
+}
+
+async function fetchOrderDetails(orderId: string, fallback?: KitchenOrder) {
   orderModalPending.value = true
   orderModalError.value = null
-  orderModalData.value = { ...order }
+  if (fallback) orderModalData.value = { ...fallback }
   try {
-    const res = await fetch(`/api/dashboard/orders/${order.id}`)
+    const res = await fetch(`/api/dashboard/orders/${orderId}`)
     const data = (await res.json()) as { ok?: boolean; order?: KitchenOrder; statusMessage?: string }
     if (!res.ok || !data?.order) {
       throw new Error(data?.statusMessage || 'Не удалось загрузить детали заказа')
@@ -675,5 +704,27 @@ async function openOrderModal(order: KitchenOrder) {
 
 function closeOrderModal() {
   orderModalOpen.value = false
+}
+
+async function notifyDelay(orderId: string, kind: 'kitchen' | 'delivery') {
+  delayNotifyPending.value = true
+  try {
+    const raw = window.prompt('Комментарий к задержке (необязательно):', '')
+    const comment = raw && raw.trim() ? raw.trim() : undefined
+    const res = await fetch(`/api/dashboard/orders/${orderId}/delay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, comment }),
+    })
+    const data = (await res.json().catch(() => null)) as { statusMessage?: string } | null
+    if (!res.ok) throw new Error(data?.statusMessage || 'Не удалось отправить уведомление о задержке')
+    if (orderModalOpen.value && orderModalData.value?.id === orderId) {
+      await fetchOrderDetails(orderId)
+    }
+  } catch (e: any) {
+    window.alert(e?.message || 'Ошибка отправки уведомления')
+  } finally {
+    delayNotifyPending.value = false
+  }
 }
 </script>

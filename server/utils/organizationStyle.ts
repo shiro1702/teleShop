@@ -358,7 +358,7 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
       prepTimeMinutes: asNullableNumber(ops.prepTimeMinutes),
       deliveryFee: asNullableNumber(ops.deliveryFee),
       freeDeliveryFrom: asNullableNumber(ops.freeDeliveryFrom),
-      fulfillmentTypes: fulfillmentTypes.length ? fulfillmentTypes : defaults.ops.fulfillmentTypes,
+      fulfillmentTypes,
       showcaseOrderFulfillment,
       orderAcceptanceMode,
       ordersPaused: Boolean(ops.ordersPaused),
