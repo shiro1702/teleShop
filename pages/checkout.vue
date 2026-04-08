@@ -735,7 +735,7 @@
                   Ресторан сейчас закрыт. Оформление заказа недоступно.
                 </p>
 
-                <template v-else>
+                <template v-else-if="!isAuthorizedForOrder">
                   <button
                     type="button"
                     class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 sm:w-auto"
