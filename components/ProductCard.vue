@@ -12,10 +12,10 @@
         @error="onImageError"
       />
       <div class="absolute top-2 right-2 flex flex-col gap-1 items-end">
-        <div v-if="quantity > 0" class="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-on-primary shadow-sm">
+        <div v-if="quantity > 0 && !isConfigurableProduct" class="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-on-primary shadow-sm">
           {{ quantity }} шт
         </div>
-        <div v-if="(product.modifiers && product.modifiers.length > 0) || (product.parameters && product.parameters.length > 0)" class="rounded-full bg-white/90 backdrop-blur px-2 py-1 text-[10px] font-medium text-gray-700 shadow-sm">
+        <div v-if="isConfigurableProduct" class="rounded-full bg-white/90 backdrop-blur px-2 py-1 text-[10px] font-medium text-gray-700 shadow-sm">
           Настраиваемый
         </div>
       </div>
@@ -36,12 +36,18 @@
 
         <!-- Если есть модификаторы или параметры, всегда показываем кнопку "Выбрать" (открывает модалку) -->
         <button
-          v-if="(product.modifiers && product.modifiers.length > 0) || (product.parameters && product.parameters.length > 0)"
+          v-if="isConfigurableProduct"
           type="button"
-          class="w-full rounded-lg px-4 py-3 text-base font-medium transition"
+          class="relative w-full rounded-lg px-4 py-3 text-base font-medium transition"
           :style="{ backgroundColor: theme.primary_50 || '#f3f4f6', color: theme.primary_700 || '#111827' }"
           @click.stop="emit('open', product)"
         >
+          <span
+            v-if="quantity > 0"
+            class="absolute right-2 top-1 rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-on-primary shadow-sm"
+          >
+            {{ quantity }} шт
+          </span>
           Выбрать
         </button>
 
@@ -109,6 +115,12 @@ const theme = computed(() => tenant.value.theme || {})
 const cardBgColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
 const mainTextColor = computed(() => theme.value.text_primary || 'var(--color-text-primary)')
 const mutedTextColor = computed(() => theme.value.text_muted || 'var(--color-text-muted)')
+const isConfigurableProduct = computed(() =>
+  Boolean(
+    (props.product.modifiers && props.product.modifiers.length > 0) ||
+      (props.product.parameters && props.product.parameters.length > 0),
+  ),
+)
 
 // Для товаров без модификаторов cartItemId совпадает с product.id
 const quantity = computed(() => cartStore.quantityByProductId(props.product.id))
