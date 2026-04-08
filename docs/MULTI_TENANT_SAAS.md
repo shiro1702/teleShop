@@ -171,6 +171,9 @@ export default defineNuxtRouteMiddleware((to) => {
 
 ## 4. Telegram-боты
 
+См. детальный план омниканальной мультитенантной маршрутизации и интеграции MAX:
+- `docs/OMNICHANNEL_MULTITENANT_PLAN_RU.md`
+
 ### 4.1. Собственный бот ресторана
 
 - В настройках организации: `telegram_bot_token`, `telegram_bot_id`, webhook URL на ваш бэкенд с идентификацией организации (секрет пути или verified token → `shop_id` / `org_id`).
