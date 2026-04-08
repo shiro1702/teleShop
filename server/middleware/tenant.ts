@@ -145,7 +145,9 @@ export default defineEventHandler(async (event) => {
     try {
       const record = await getStyleRecord(event, shop.id)
       const cfg = record.config
-      const nextLogo = typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : ''
+      const nextSmallLogo = typeof cfg.identity.logoSmallUrl === 'string' ? cfg.identity.logoSmallUrl.trim() : ''
+      const nextLargeLogo = typeof cfg.identity.logoLargeUrl === 'string' ? cfg.identity.logoLargeUrl.trim() : ''
+      const nextLogo = nextSmallLogo || (typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : '')
       const nextDesc = typeof cfg.identity.shortDescription === 'string' ? cfg.identity.shortDescription.trim() : ''
       const fallbackLogo = typeof uiSettings?.logo_url === 'string' ? (uiSettings as any).logo_url : ''
       const fallbackDesc = typeof uiSettings?.description === 'string' ? (uiSettings as any).description : ''
@@ -153,6 +155,7 @@ export default defineEventHandler(async (event) => {
       uiSettings = {
         ...uiSettings,
         logo_url: nextLogo || fallbackLogo,
+        logo_large_url: nextLargeLogo || nextLogo || fallbackLogo,
         description: nextDesc || fallbackDesc,
         ...deriveTenantThemeFromStyle(cfg),
         radius_button: `${cfg.radii.button}px`,

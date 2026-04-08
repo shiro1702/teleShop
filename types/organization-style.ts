@@ -2,7 +2,9 @@ export type OrganizationStyleIdentity = {
   name: string
   shortDescription: string
   fullDescription: string
+  logoSmallUrl: string
   logoUrl: string
+  logoLargeUrl: string
   faviconUrl: string
   restaurantCardImageUrl: string
   heroImageUrl: string

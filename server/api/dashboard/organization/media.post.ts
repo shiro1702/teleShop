@@ -5,7 +5,7 @@ import { requireDashboardAccess } from '~/server/utils/dashboard'
 const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/x-icon'])
 const MAX_SIZE_BYTES = 2 * 1024 * 1024
 
-type UploadKind = 'logo' | 'favicon' | 'restaurant-card' | 'hero'
+type UploadKind = 'logo' | 'logo-large' | 'favicon' | 'restaurant-card' | 'hero'
 
 type UploadMediaBody = {
   kind?: UploadKind
@@ -37,7 +37,7 @@ function validateDimensions(kind: UploadKind, width?: number, height?: number) {
   if (!Number.isFinite(width) || !Number.isFinite(height) || !width || !height) {
     throw createError({ statusCode: 400, statusMessage: 'Image dimensions are required' })
   }
-  if (kind === 'logo' && (width < 256 || height < 256)) {
+  if ((kind === 'logo' || kind === 'logo-large') && (width < 256 || height < 256)) {
     throw createError({ statusCode: 400, statusMessage: 'Logo must be at least 256x256' })
   }
 }
@@ -52,7 +52,7 @@ export default defineEventHandler(async (event) => {
   if (!body?.kind || !body.mimeType || !body.dataBase64 || !body.fileName) {
     throw createError({ statusCode: 400, statusMessage: 'kind, fileName, mimeType and dataBase64 are required' })
   }
-  if (!['logo', 'favicon', 'restaurant-card', 'hero'].includes(body.kind)) {
+  if (!['logo', 'logo-large', 'favicon', 'restaurant-card', 'hero'].includes(body.kind)) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid media kind' })
   }
   if (!ALLOWED_MIME.has(body.mimeType)) {

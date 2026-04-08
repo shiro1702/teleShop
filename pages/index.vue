@@ -56,15 +56,15 @@
           <span>Корзина</span>
           <span
             v-if="isRestaurantModesLoaded"
-            class="text-xs font-semibold text-white/90"
+            class="text-xs font-semibold"
           >
             {{ fulfillmentTypeLabel }}
           </span>
           <template v-if="cartStore.count > 0">
-            <span class="text-orange-100">
+            <span class="">
               {{ cartStore.count }} шт.
             </span>
-            <span class="font-semibold text-white">
+            <span class="font-semibold">
               {{ formatPrice(cartStore.total) }}
             </span>
           </template>
@@ -82,7 +82,7 @@
           <img
             :src="tenantLogoUrl"
             :alt="tenantName"
-            class="h-16 w-16 shrink-0 rounded-2xl border border-white/80 bg-white object-cover shadow-sm"
+            class="h-16 w-auto shrink-0 rounded-2xl border border-white/80 bg-white object-cover shadow-sm"
           />
           <div class="min-w-0">
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
@@ -253,7 +253,7 @@
           <span>Корзина</span>
           <span
             v-if="isRestaurantModesLoaded"
-            class="text-xs font-semibold text-white/90"
+            class="text-xs font-semibold"
           >
             {{ fulfillmentTypeLabel }}
           </span>
@@ -559,7 +559,7 @@ const showOrderSuccess = ref(false)
 const lastOrderId = ref<string | null>(null)
 const isCatalogLoading = ref(false)
 const tenantName = computed(() => tenant.value.shopName || 'Наш магазин')
-const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
+const tenantLogoUrl = computed(() => tenant.value.logoLargeUrl || tenant.value.logoUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
 const theme = computed(() => tenant.value.theme || {})
 

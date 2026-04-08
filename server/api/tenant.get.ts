@@ -12,7 +12,9 @@ export default defineEventHandler(async (event) => {
       const record = await getStyleRecord(event, shopId)
       const cfg = record.config
 
-      const nextLogo = typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : ''
+      const nextSmallLogo = typeof cfg.identity.logoSmallUrl === 'string' ? cfg.identity.logoSmallUrl.trim() : ''
+      const nextLargeLogo = typeof cfg.identity.logoLargeUrl === 'string' ? cfg.identity.logoLargeUrl.trim() : ''
+      const nextLogo = nextSmallLogo || (typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : '')
       const nextDesc = typeof cfg.identity.shortDescription === 'string' ? cfg.identity.shortDescription.trim() : ''
       const fallbackLogo = typeof uiSettings?.logo_url === 'string' ? uiSettings.logo_url : ''
       const fallbackDesc = typeof uiSettings?.description === 'string' ? uiSettings.description : ''
@@ -21,6 +23,7 @@ export default defineEventHandler(async (event) => {
         ...uiSettings,
         // MVP: если identity не заполнена — не ломаем старые shops.ui_settings.
         logo_url: nextLogo || fallbackLogo,
+        logo_large_url: nextLargeLogo || nextLogo || fallbackLogo,
         description: nextDesc || fallbackDesc,
         ...deriveTenantThemeFromStyle(cfg),
         // Радиусы пробрасываем в theme-систему CSS vars.
@@ -59,7 +62,9 @@ export default defineEventHandler(async (event) => {
     const record = await getStyleRecord(event, shopId)
     const cfg = record.config
 
-    const nextLogo = typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : ''
+    const nextSmallLogo = typeof cfg.identity.logoSmallUrl === 'string' ? cfg.identity.logoSmallUrl.trim() : ''
+    const nextLargeLogo = typeof cfg.identity.logoLargeUrl === 'string' ? cfg.identity.logoLargeUrl.trim() : ''
+    const nextLogo = nextSmallLogo || (typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : '')
     const nextDesc = typeof cfg.identity.shortDescription === 'string' ? cfg.identity.shortDescription.trim() : ''
     const fallbackLogo = typeof uiSettings?.logo_url === 'string' ? uiSettings.logo_url : ''
     const fallbackDesc = typeof uiSettings?.description === 'string' ? uiSettings.description : ''
@@ -67,6 +72,7 @@ export default defineEventHandler(async (event) => {
     uiSettings = {
       ...uiSettings,
       logo_url: nextLogo || fallbackLogo,
+      logo_large_url: nextLargeLogo || nextLogo || fallbackLogo,
       description: nextDesc || fallbackDesc,
       ...deriveTenantThemeFromStyle(cfg),
       radius_button: `${cfg.radii.button}px`,

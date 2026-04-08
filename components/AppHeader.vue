@@ -8,18 +8,11 @@
         <img
           :src="tenantLogoUrl"
           :alt="tenantName"
-          class="h-10 w-10 shrink-0 rounded-full object-cover"
+          class="h-10 w-auto shrink-0 object-cover"
         />
         <div class="min-w-0">
           <span class="block truncate text-sm font-semibold tracking-wide sm:text-base">
             {{ tenantName }}
-          </span>
-          <span
-            v-if="tenantDescription"
-            class="hidden truncate text-xs md:block"
-            :style="{ color: mutedTextColor }"
-          >
-            {{ tenantDescription }}
           </span>
         </div>
       </NuxtLink>
@@ -183,7 +176,7 @@ const bonusesMenuVisible = computed(() => {
   return !!(citySlug && tenantSlug) || !!tenant.value.tenantSlug
 })
 const tenantName = computed(() => tenant.value.shopName || 'PocketMenu')
-const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
+const tenantLogoUrl = computed(() => tenant.value.logoUrl || tenant.value.logoLargeUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
 const defaultCitySlug = computed(() =>
   (typeof config.public?.defaultCitySlug === 'string' && config.public.defaultCitySlug.trim())

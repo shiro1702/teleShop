@@ -129,7 +129,9 @@ export function getDefaultStyleConfig(): OrganizationStyleConfig {
       name: 'My Restaurant',
       shortDescription: '',
       fullDescription: '',
+      logoSmallUrl: '',
       logoUrl: '',
+      logoLargeUrl: '',
       faviconUrl: '',
       restaurantCardImageUrl: '',
       heroImageUrl: '',
@@ -178,7 +180,9 @@ async function getIdentityFromExistingData(event: any, shopId: string): Promise<
       name: restaurantName || shopName || base.identity.name,
       shortDescription: description,
       fullDescription: description,
+      logoSmallUrl: logoUrl,
       logoUrl,
+      logoLargeUrl: logoUrl,
       faviconUrl: '',
       restaurantCardImageUrl: '',
       heroImageUrl: '',
@@ -259,12 +263,17 @@ function normalizeAuditEntry(raw: any): OrganizationStyleAuditEntry | null {
 function normalizeConfig(raw: any): OrganizationStyleConfig {
   const defaults = getDefaultStyleConfig()
   const config = raw && typeof raw === 'object' ? raw : {}
+  const legacyLogoUrl = typeof config.identity?.logoUrl === 'string' ? config.identity.logoUrl : ''
+  const nextLogoSmall = typeof config.identity?.logoSmallUrl === 'string' ? config.identity.logoSmallUrl : legacyLogoUrl
+  const nextLogoLarge = typeof config.identity?.logoLargeUrl === 'string' ? config.identity.logoLargeUrl : legacyLogoUrl
   return {
     identity: {
       name: typeof config.identity?.name === 'string' ? config.identity.name : defaults.identity.name,
       shortDescription: typeof config.identity?.shortDescription === 'string' ? config.identity.shortDescription : defaults.identity.shortDescription,
       fullDescription: typeof config.identity?.fullDescription === 'string' ? config.identity.fullDescription : defaults.identity.fullDescription,
-      logoUrl: typeof config.identity?.logoUrl === 'string' ? config.identity.logoUrl : defaults.identity.logoUrl,
+      logoSmallUrl: nextLogoSmall || defaults.identity.logoSmallUrl,
+      logoUrl: legacyLogoUrl || nextLogoSmall || nextLogoLarge || defaults.identity.logoUrl,
+      logoLargeUrl: nextLogoLarge || nextLogoSmall || defaults.identity.logoLargeUrl,
       faviconUrl: typeof config.identity?.faviconUrl === 'string' ? config.identity.faviconUrl : defaults.identity.faviconUrl,
       restaurantCardImageUrl: typeof config.identity?.restaurantCardImageUrl === 'string'
         ? config.identity.restaurantCardImageUrl

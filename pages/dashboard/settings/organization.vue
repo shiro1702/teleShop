@@ -118,10 +118,16 @@
         </label>
         <div class="md:col-span-2 grid gap-3 md:grid-cols-2">
           <label class="text-sm">
-            <span class="mb-1 block text-gray-600">Логотип</span>
+            <span class="mb-1 block text-gray-600">Логотип (маленький, для шапки)</span>
             <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" :disabled="isReadonly || saving" @change="onFileChange($event, 'logo')">
             <p class="mt-1 text-xs text-gray-500">PNG/SVG/WebP, до 2MB, минимум 256x256.</p>
             <img v-if="form.identity.logoUrl" :src="form.identity.logoUrl" alt="logo" class="mt-2 h-14 w-14 rounded object-cover">
+          </label>
+          <label class="text-sm">
+            <span class="mb-1 block text-gray-600">Логотип (большой, для главной)</span>
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" :disabled="isReadonly || saving" @change="onFileChange($event, 'logo-large')">
+            <p class="mt-1 text-xs text-gray-500">Если не задан, автоматически используется маленький логотип из шапки.</p>
+            <img v-if="form.identity.logoLargeUrl || form.identity.logoUrl" :src="form.identity.logoLargeUrl || form.identity.logoUrl" alt="logo-large" class="mt-2 h-14 w-auto rounded object-cover">
           </label>
           <label class="text-sm">
             <span class="mb-1 block text-gray-600">Favicon</span>
@@ -454,7 +460,9 @@ const form = reactive<OrganizationStyleConfig>({
     name: '',
     shortDescription: '',
     fullDescription: '',
+    logoSmallUrl: '',
     logoUrl: '',
+    logoLargeUrl: '',
     faviconUrl: '',
     restaurantCardImageUrl: '',
     heroImageUrl: '',
@@ -883,7 +891,7 @@ async function savePreset() {
   }
 }
 
-async function onFileChange(event: Event, kind: 'logo' | 'favicon' | 'restaurant-card' | 'hero') {
+async function onFileChange(event: Event, kind: 'logo' | 'logo-large' | 'favicon' | 'restaurant-card' | 'hero') {
   if (isReadonly.value) return
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -906,6 +914,8 @@ async function onFileChange(event: Event, kind: 'logo' | 'favicon' | 'restaurant
     },
   })
   if (kind === 'logo') form.identity.logoUrl = response.url
+  if (kind === 'logo') form.identity.logoSmallUrl = response.url
+  if (kind === 'logo-large') form.identity.logoLargeUrl = response.url
   if (kind === 'favicon') form.identity.faviconUrl = response.url
   if (kind === 'restaurant-card') form.identity.restaurantCardImageUrl = response.url
   if (kind === 'hero') form.identity.heroImageUrl = response.url

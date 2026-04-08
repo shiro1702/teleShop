@@ -11,6 +11,7 @@ type TenantState = {
   theme: TenantTheme
   isCustomDomain: boolean
   logoUrl: string | null
+  logoLargeUrl: string | null
   description: string | null
   legalName: string | null
   inn: string | null
@@ -129,6 +130,7 @@ export function useTenant() {
     theme: {},
     isCustomDomain: false,
     logoUrl: null,
+    logoLargeUrl: null,
     description: null,
     legalName: null,
     inn: null,
@@ -149,6 +151,7 @@ export function useTenant() {
     state.value.theme = normalizedTheme
     state.value.isCustomDomain = !!payload.isCustomDomain
     state.value.logoUrl = getStringSetting(payload.uiSettings ?? null, 'logo_url', 'logoUrl')
+    state.value.logoLargeUrl = getStringSetting(payload.uiSettings ?? null, 'logo_large_url', 'logoLargeUrl')
     state.value.description = getStringSetting(payload.uiSettings ?? null, 'description', 'shop_description', 'shopDescription')
     state.value.legalName = typeof payload.shop?.legalName === 'string' ? payload.shop.legalName : null
     state.value.inn = typeof payload.shop?.inn === 'string' ? payload.shop.inn : null
@@ -287,6 +290,7 @@ export function useTenant() {
       state.value.shopId = null
       state.value.shopName = null
       state.value.logoUrl = null
+      state.value.logoLargeUrl = null
       state.value.description = null
       state.value.legalName = null
       state.value.inn = null
