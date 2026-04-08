@@ -55,7 +55,7 @@
         >
           <span>Корзина</span>
           <span
-            v-if="isRestaurantModesLoaded"
+            v-if="isRestaurantModesLoaded && showFulfillmentSelector"
             class="text-xs font-semibold"
           >
             {{ fulfillmentTypeLabel }}
@@ -252,7 +252,7 @@
           </svg>
           <span>Корзина</span>
           <span
-            v-if="isRestaurantModesLoaded"
+            v-if="isRestaurantModesLoaded && showFulfillmentSelector"
             class="text-xs font-semibold"
           >
             {{ fulfillmentTypeLabel }}
@@ -603,7 +603,7 @@ const mobileBarStyle = computed(() => ({
   backgroundColor: cardBgColor.value,
 }))
 
-type FulfillmentType = 'delivery' | 'pickup'
+type FulfillmentType = 'delivery' | 'pickup' | 'qr-menu'
 type RestaurantOps = {
   id: string
   supports_delivery: boolean
@@ -631,12 +631,16 @@ const isRestaurantModesLoaded = ref(false)
 const selectedFulfillmentType = ref<FulfillmentType>('delivery')
 
 const fulfillmentTypeLabel = computed(() =>
-  selectedFulfillmentType.value === 'pickup' ? 'Самовывоз' : 'Доставка',
+  selectedFulfillmentType.value === 'pickup'
+    ? 'Самовывоз'
+    : selectedFulfillmentType.value === 'qr-menu'
+      ? 'QR-меню'
+      : 'Доставка',
 )
 
 const derivedAllowedFulfillmentTypes = computed<FulfillmentType[]>(() => {
   const ops = restaurantOps.value
-  const fallback: FulfillmentType[] = ['delivery', 'pickup']
+  const fallback: FulfillmentType[] = ['delivery', 'pickup', 'qr-menu']
 
   if (!ops.length) return fallback
 
@@ -644,12 +648,14 @@ const derivedAllowedFulfillmentTypes = computed<FulfillmentType[]>(() => {
     const out: FulfillmentType[] = []
     if (ops[0].supports_delivery) out.push('delivery')
     if (ops[0].supports_pickup) out.push('pickup')
+    if (!out.length) out.push('qr-menu')
     return out
   }
 
   const out: FulfillmentType[] = []
   if (ops.some((r) => r.supports_delivery)) out.push('delivery')
   if (ops.some((r) => r.supports_pickup)) out.push('pickup')
+  if (!out.length) out.push('qr-menu')
   return out
 })
 
@@ -676,10 +682,10 @@ function getCurrentRestaurantIdFromQuery(): string | null {
   return readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
 }
 
-function buildCatalogCacheKey(shopId: string | null, restaurantId: string | null) {
+function buildCatalogCacheKey(shopId: string | null, restaurantId: string | null, fulfillmentType: FulfillmentType) {
   const shopPart = shopId && shopId.trim() ? shopId.trim() : 'default'
   const restaurantPart = restaurantId && restaurantId.trim() ? restaurantId.trim() : 'default'
-  return `${CATALOG_CACHE_KEY_PREFIX}:${shopPart}:${restaurantPart}`
+  return `${CATALOG_CACHE_KEY_PREFIX}:${shopPart}:${restaurantPart}:${fulfillmentType}`
 }
 
 function readCatalogCache(cacheKey: string): Product[] | null {
@@ -798,7 +804,11 @@ async function loadRestaurantModes() {
 
 // Initialize from stored state (before restaurants are loaded).
 const saved = readCheckoutStateLocal()
-if (saved?.fulfillmentType === 'delivery' || saved?.fulfillmentType === 'pickup') {
+if (
+  saved?.fulfillmentType === 'delivery'
+  || saved?.fulfillmentType === 'pickup'
+  || saved?.fulfillmentType === 'qr-menu'
+) {
   selectedFulfillmentType.value = saved.fulfillmentType
 }
 
@@ -1107,7 +1117,7 @@ watch(
 async function loadCatalog() {
   if (isCatalogLoading.value) return
   const restaurantId = getCurrentRestaurantIdFromQuery()
-  const cacheKey = buildCatalogCacheKey(tenantKey.value || null, restaurantId)
+  const cacheKey = buildCatalogCacheKey(tenantKey.value || null, restaurantId, selectedFulfillmentType.value)
   const cachedItems = readCatalogCache(cacheKey)
   if (cachedItems && cachedItems.length) {
     cartStore.setProducts(cachedItems)
