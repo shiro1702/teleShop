@@ -547,7 +547,7 @@ const fulfillmentOptions: Array<{
   { value: 'pickup', label: 'Самовывоз', description: 'Клиент оформляет и забирает заказ сам.' },
   { value: 'dine-in', label: 'В зале', description: 'Заказ для гостей внутри ресторана.' },
   { value: 'qr-menu', label: 'QR-меню', description: 'Гость сканирует QR, открывает меню и делает заказ с телефона.' },
-  { value: 'showcase-order', label: 'Витрина + к столу', description: 'Гость выбирает и оплачивает в витрине, заказ приносят сразу к столу.' },
+  { value: 'showcase-order', label: 'Витрина + к столу', description: 'Гость выбирает и оплачивает в витрине; ниже выбирается сценарий выдачи.' },
 ]
 
 const colorFields = [
