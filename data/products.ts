@@ -47,6 +47,12 @@ export interface Product {
   category: ProductCategory
   modifiers?: ModifierGroup[]
   parameters?: ProductParameterGroup[]
+  availability?: {
+    isOrderable: boolean
+    reason: string | null
+    deliveryRestrictedEffective?: boolean
+    effectiveTimeWindows?: Array<{ days: number[]; start: string; end: string }>
+  }
 }
 
 const SAMGYEPSAL_DESC =

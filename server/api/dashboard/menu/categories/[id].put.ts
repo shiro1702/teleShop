@@ -1,6 +1,7 @@
 import { createError, defineEventHandler, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
+import { assertValidTimeWindows } from '~/server/utils/menuAvailability'
 
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
@@ -24,13 +25,15 @@ export default defineEventHandler(async (event) => {
   if (body.sortOrder !== undefined) updates.sort_order = body.sortOrder
   if (body.isActive !== undefined) updates.is_active = body.isActive
   if (body.externalId !== undefined) updates.external_id = body.externalId || null
+  if (body.deliveryRestricted !== undefined) updates.delivery_restricted = !!body.deliveryRestricted
+  if (body.availabilityWindows !== undefined) updates.availability_windows = assertValidTimeWindows(body.availabilityWindows)
 
   const { data, error } = await client
     .from('categories')
     .update(updates)
     .eq('id', id)
     .eq('shop_id', access.shopId)
-    .select('id, name, sort_order, is_active, external_id, created_at')
+    .select('id, name, sort_order, is_active, external_id, delivery_restricted, availability_windows, created_at')
     .single()
 
   if (error) {
@@ -95,6 +98,8 @@ export default defineEventHandler(async (event) => {
       sortOrder: data.sort_order,
       isActive: data.is_active,
       externalId: data.external_id,
+      deliveryRestricted: !!data.delivery_restricted,
+      availabilityWindows: Array.isArray(data.availability_windows) ? data.availability_windows : [],
       createdAt: data.created_at
     }
   }

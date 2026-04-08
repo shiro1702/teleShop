@@ -1,6 +1,7 @@
 import { createError, defineEventHandler, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
+import { assertValidTimeWindows } from '~/server/utils/menuAvailability'
 
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
@@ -11,6 +12,7 @@ export default defineEventHandler(async (event) => {
   if (!name) {
     throw createError({ statusCode: 400, statusMessage: 'Name is required' })
   }
+  const availabilityWindows = assertValidTimeWindows(body.availabilityWindows)
 
   const { data, error } = await client
     .from('categories')
@@ -19,9 +21,11 @@ export default defineEventHandler(async (event) => {
       name,
       sort_order: body.sortOrder ?? 0,
       is_active: body.isActive ?? true,
-      external_id: body.externalId || null
+      external_id: body.externalId || null,
+      delivery_restricted: !!body.deliveryRestricted,
+      availability_windows: availabilityWindows
     })
-    .select('id, name, sort_order, is_active, external_id, created_at')
+    .select('id, name, sort_order, is_active, external_id, delivery_restricted, availability_windows, created_at')
     .single()
 
   if (error) {
@@ -68,6 +72,8 @@ export default defineEventHandler(async (event) => {
       sortOrder: data.sort_order,
       isActive: data.is_active,
       externalId: data.external_id,
+      deliveryRestricted: !!data.delivery_restricted,
+      availabilityWindows: Array.isArray(data.availability_windows) ? data.availability_windows : [],
       createdAt: data.created_at,
       productsCount: 0
     }

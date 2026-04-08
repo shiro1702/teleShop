@@ -46,9 +46,42 @@
             <input v-model="form.name" type="text" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" />
           </div>
           
-          <div class="flex items-center gap-2">
-            <input v-model="form.isActive" type="checkbox" id="isActive" class="rounded border-gray-300 text-primary focus:ring-primary" />
-            <label for="isActive" class="text-sm text-gray-700">Категория активна</label>
+          <div class="grid gap-2 sm:grid-cols-2">
+            <label class="flex items-center gap-2">
+              <input v-model="form.isActive" type="checkbox" id="isActive" class="rounded border-gray-300 text-primary focus:ring-primary" />
+              <span class="text-sm text-gray-700">Категория активна</span>
+            </label>
+            <label class="flex items-center gap-2">
+              <input v-model="form.deliveryRestricted" type="checkbox" class="rounded border-gray-300 text-primary focus:ring-primary" />
+              <span class="text-sm text-gray-700">Только в ресторане/самовывоз/QR (без доставки)</span>
+            </label>
+          </div>
+
+          <div class="border-t border-gray-200 pt-4">
+            <div class="mb-2 flex items-center justify-between">
+              <h3 class="text-sm font-medium text-gray-900">Окна доступности категории</h3>
+              <button type="button" class="text-sm text-primary hover:underline" @click="addWindow">Добавить окно</button>
+            </div>
+            <div v-if="!form.availabilityWindows.length" class="text-xs text-gray-500">Без ограничений по времени.</div>
+            <div v-for="(w, idx) in form.availabilityWindows" :key="idx" class="mb-2 rounded-lg border border-gray-200 p-2">
+              <div class="mb-2 grid grid-cols-2 gap-2">
+                <input v-model="w.start" type="time" class="rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+                <input v-model="w.end" type="time" class="rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+              </div>
+              <div class="flex flex-wrap gap-1">
+                <button
+                  v-for="d in dayOptions"
+                  :key="d.value"
+                  type="button"
+                  class="rounded border px-2 py-1 text-xs"
+                  :class="w.days.includes(d.value) ? 'border-primary bg-primary text-white' : 'border-gray-300 text-gray-700'"
+                  @click="toggleWindowDay(idx, d.value)"
+                >
+                  {{ d.label }}
+                </button>
+              </div>
+              <button type="button" class="mt-2 text-xs text-red-600 hover:underline" @click="removeWindow(idx)">Удалить окно</button>
+            </div>
           </div>
 
           <div>
@@ -134,6 +167,8 @@ type Category = {
   sortOrder: number
   isActive: boolean
   externalId: string | null
+  deliveryRestricted: boolean
+  availabilityWindows: Array<{ days: number[]; start: string; end: string }>
   productsCount: number
   modifierGroupIds?: string[]
   parameterKindIds?: string[]
@@ -163,9 +198,35 @@ const form = ref({
   isActive: true,
   sortOrder: 0,
   externalId: '',
+  deliveryRestricted: false,
+  availabilityWindows: [] as Array<{ days: number[]; start: string; end: string }>,
   modifierGroupIds: [] as string[],
   parameterKindIds: [] as string[]
 })
+const dayOptions = [
+  { value: 1, label: 'Пн' },
+  { value: 2, label: 'Вт' },
+  { value: 3, label: 'Ср' },
+  { value: 4, label: 'Чт' },
+  { value: 5, label: 'Пт' },
+  { value: 6, label: 'Сб' },
+  { value: 0, label: 'Вс' }
+]
+
+function addWindow() {
+  form.value.availabilityWindows.push({ days: [1, 2, 3, 4, 5], start: '08:00', end: '12:00' })
+}
+
+function removeWindow(idx: number) {
+  form.value.availabilityWindows.splice(idx, 1)
+}
+
+function toggleWindowDay(windowIdx: number, day: number) {
+  const row = form.value.availabilityWindows[windowIdx]
+  if (!row) return
+  if (row.days.includes(day)) row.days = row.days.filter((x: number) => x !== day)
+  else row.days = [...row.days, day].sort((a, b) => a - b)
+}
 
 function toggleModifierGroup(id: string) {
   const idx = form.value.modifierGroupIds.indexOf(id)
@@ -228,7 +289,16 @@ onMounted(fetchCategories)
 
 function openCreateModal() {
   editingCategory.value = null
-  form.value = { name: '', isActive: true, sortOrder: 0, externalId: '', modifierGroupIds: [], parameterKindIds: [] }
+  form.value = {
+    name: '',
+    isActive: true,
+    sortOrder: 0,
+    externalId: '',
+    deliveryRestricted: false,
+    availabilityWindows: [],
+    modifierGroupIds: [],
+    parameterKindIds: []
+  }
   isModalOpen.value = true
 }
 
@@ -239,6 +309,8 @@ function openEditModal(cat: Category) {
     isActive: cat.isActive, 
     sortOrder: cat.sortOrder, 
     externalId: cat.externalId || '',
+    deliveryRestricted: !!cat.deliveryRestricted,
+    availabilityWindows: JSON.parse(JSON.stringify(cat.availabilityWindows || [])),
     modifierGroupIds: cat.modifierGroupIds || [],
     parameterKindIds: cat.parameterKindIds || []
   }

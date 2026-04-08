@@ -1,6 +1,7 @@
 import { createError, defineEventHandler, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
+import { assertValidTimeWindows } from '~/server/utils/menuAvailability'
 
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
@@ -11,6 +12,11 @@ export default defineEventHandler(async (event) => {
   if (!name) throw createError({ statusCode: 400, statusMessage: 'Name is required' })
   if (body.price == null || body.price < 0) throw createError({ statusCode: 400, statusMessage: 'Valid price is required' })
   if (!body.categoryId) throw createError({ statusCode: 400, statusMessage: 'Category is required' })
+  const availabilityWindows = assertValidTimeWindows(body.availabilityWindows)
+  const deliveryRestrictedOverride =
+    body.deliveryRestrictedOverride === null || body.deliveryRestrictedOverride === undefined
+      ? null
+      : !!body.deliveryRestrictedOverride
 
   const { data, error } = await client
     .from('products')
@@ -24,9 +30,11 @@ export default defineEventHandler(async (event) => {
       category: 'migrated', // fallback for old column
       is_active: body.isActive ?? true,
       sort_order: body.sortOrder ?? 0,
-      external_id: body.externalId || null
+      external_id: body.externalId || null,
+      delivery_restricted_override: deliveryRestrictedOverride,
+      availability_windows: availabilityWindows
     })
-    .select('id, name, price, image, description, category_id, is_active, sort_order, external_id, created_at')
+    .select('id, name, price, image, description, category_id, is_active, sort_order, external_id, delivery_restricted_override, availability_windows, created_at')
     .single()
 
   if (error) {
@@ -122,6 +130,8 @@ export default defineEventHandler(async (event) => {
       isActive: data.is_active,
       sortOrder: data.sort_order,
       externalId: data.external_id,
+      deliveryRestrictedOverride: data.delivery_restricted_override === null ? null : !!data.delivery_restricted_override,
+      availabilityWindows: Array.isArray(data.availability_windows) ? data.availability_windows : [],
       createdAt: data.created_at
     }
   }

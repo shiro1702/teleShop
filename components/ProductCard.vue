@@ -1,8 +1,9 @@
 <template>
   <article
-    class="flex h-full w-full cursor-pointer flex-col overflow-hidden rounded-xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+    class="flex h-full w-full flex-col overflow-hidden rounded-xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
     :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }"
-    @click="emit('open', product)"
+    :class="isUnavailable ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'"
+    @click="!isUnavailable && emit('open', product)"
   >
     <div class="aspect-square w-full shrink-0 overflow-hidden bg-gray-100 relative">
       <img
@@ -30,6 +31,9 @@
         </p>
       </div>
       <div class="mt-3 shrink-0 space-y-3">
+        <p v-if="isUnavailable" class="rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">
+          {{ unavailableReason }}
+        </p>
         <p class="text-lg font-medium text-primary">
           {{ displayPrice }}
         </p>
@@ -40,6 +44,7 @@
           type="button"
           class="relative w-full rounded-lg px-4 py-3 text-base font-medium transition"
           :style="{ backgroundColor: theme.primary_50 || '#f3f4f6', color: theme.primary_700 || '#111827' }"
+            :disabled="isUnavailable"
           @click.stop="emit('open', product)"
         >
           <span
@@ -57,6 +62,7 @@
             v-if="quantity === 0"
             type="button"
             class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700"
+            :disabled="isUnavailable"
             @click.stop="cartStore.addItem(product)"
           >
             В корзину
@@ -83,6 +89,7 @@
               type="button"
               class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-on-primary transition hover:opacity-90"
               aria-label="Добавить"
+              :disabled="isUnavailable"
               @click.stop="cartStore.addItem(product)"
             >
               +
@@ -121,6 +128,8 @@ const isConfigurableProduct = computed(() =>
       (props.product.parameters && props.product.parameters.length > 0),
   ),
 )
+const isUnavailable = computed(() => props.product.availability?.isOrderable === false)
+const unavailableReason = computed(() => props.product.availability?.reason || 'Временно недоступно')
 
 // Для товаров без модификаторов cartItemId совпадает с product.id
 const quantity = computed(() => cartStore.quantityByProductId(props.product.id))

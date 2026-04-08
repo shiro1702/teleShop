@@ -748,6 +748,7 @@ function setFulfillmentType(next: FulfillmentType) {
   if (!derivedAllowedFulfillmentTypes.value.includes(next)) return
   selectedFulfillmentType.value = next
   persistFulfillmentTypeToCheckout(next)
+  void loadCatalog()
 }
 
 function readFirstQueryString(key: string): string | null {
@@ -807,6 +808,7 @@ function applyCartScope() {
 }
 
 function openProduct(product: Product) {
+  if (product.availability?.isOrderable === false) return
   selectedProduct.value = product
   const nextMods: Record<string, Set<string>> = {}
   const nextParams: Record<string, string> = {}
@@ -1121,9 +1123,13 @@ async function loadCatalog() {
     const headers: Record<string, string> = {}
     if (tenantKey.value) headers['x-shop-id'] = tenantKey.value
     if (restaurantId) headers['x-restaurant-id'] = restaurantId
+    headers['x-fulfillment-type'] = selectedFulfillmentType.value
 
     const res = await $fetch<{ ok: boolean; items: Product[] }>('/api/products', {
-      query: Object.keys(query).length ? query : undefined,
+      query: {
+        ...(Object.keys(query).length ? query : {}),
+        fulfillment_type: selectedFulfillmentType.value,
+      },
       headers: Object.keys(headers).length ? headers : undefined,
     })
     if (res?.ok && Array.isArray(res.items)) {

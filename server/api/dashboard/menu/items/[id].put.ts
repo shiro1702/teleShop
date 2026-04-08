@@ -1,6 +1,7 @@
 import { createError, defineEventHandler, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
+import { assertValidTimeWindows } from '~/server/utils/menuAvailability'
 
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
@@ -31,13 +32,18 @@ export default defineEventHandler(async (event) => {
   if (body.isActive !== undefined) updates.is_active = body.isActive
   if (body.sortOrder !== undefined) updates.sort_order = body.sortOrder
   if (body.externalId !== undefined) updates.external_id = body.externalId || null
+  if (body.deliveryRestrictedOverride !== undefined) {
+    updates.delivery_restricted_override =
+      body.deliveryRestrictedOverride === null ? null : !!body.deliveryRestrictedOverride
+  }
+  if (body.availabilityWindows !== undefined) updates.availability_windows = assertValidTimeWindows(body.availabilityWindows)
 
   const { data, error } = await client
     .from('products')
     .update(updates)
     .eq('id', id)
     .eq('shop_id', access.shopId)
-    .select('id, name, price, image, description, category_id, is_active, sort_order, external_id, created_at')
+    .select('id, name, price, image, description, category_id, is_active, sort_order, external_id, delivery_restricted_override, availability_windows, created_at')
     .single()
 
   if (error) {
@@ -158,6 +164,8 @@ export default defineEventHandler(async (event) => {
       isActive: data.is_active,
       sortOrder: data.sort_order,
       externalId: data.external_id,
+      deliveryRestrictedOverride: data.delivery_restricted_override === null ? null : !!data.delivery_restricted_override,
+      availabilityWindows: Array.isArray(data.availability_windows) ? data.availability_windows : [],
       createdAt: data.created_at
     }
   }

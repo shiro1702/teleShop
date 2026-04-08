@@ -1,6 +1,7 @@
 import { createError, defineEventHandler } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
+import { normalizeTimeWindows } from '~/server/utils/menuAvailability'
 
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
@@ -9,8 +10,8 @@ export default defineEventHandler(async (event) => {
   const { data, error } = await client
     .from('products')
     .select(`
-      id, name, price, image, description, category_id, is_active, sort_order, external_id, created_at, 
-      categories(id, name, category_modifier_groups(group_id), category_parameter_kinds(parameter_kind_id)),
+      id, name, price, image, description, category_id, is_active, sort_order, external_id, delivery_restricted_override, availability_windows, created_at, 
+      categories(id, name, delivery_restricted, availability_windows, category_modifier_groups(group_id), category_parameter_kinds(parameter_kind_id)),
       product_modifier_groups(group_id),
       product_modifier_group_overrides(group_id, is_disabled, disabled_option_ids),
       product_parameter_kinds(parameter_kind_id, is_required),
@@ -38,6 +39,10 @@ export default defineEventHandler(async (event) => {
       isActive: row.is_active,
       sortOrder: row.sort_order,
       externalId: row.external_id,
+      deliveryRestrictedOverride: row.delivery_restricted_override === null ? null : !!row.delivery_restricted_override,
+      categoryDeliveryRestricted: !!row.categories?.delivery_restricted,
+      availabilityWindows: normalizeTimeWindows(row.availability_windows),
+      categoryAvailabilityWindows: normalizeTimeWindows(row.categories?.availability_windows),
       createdAt: row.created_at,
       modifierGroupIds: row.product_modifier_groups?.map((g: any) => g.group_id) || [],
       categoryModifierGroupIds: row.categories?.category_modifier_groups?.map((g: any) => g.group_id) || [],

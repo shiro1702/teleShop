@@ -21,6 +21,7 @@ import {
   fetchShopLoyaltySettings,
   getCustomerBalance,
 } from '~/server/utils/pricingPromoBonus'
+import { evaluateMenuAvailability, normalizeTimeWindows } from '~/server/utils/menuAvailability'
 import { isOpenNowBySchedule, normalizeWeeklyWorkingHours, resolveEffectiveWorkingHours } from '~/utils/workingHours'
 
 interface TelegramUser {
@@ -496,6 +497,27 @@ export default defineEventHandler(async (event) => {
   if (!globallyAllowed.includes(fulfillmentType)) {
     throw createError({ statusCode: 400, message: `Fulfillment type "${fulfillmentType}" is disabled` })
   }
+
+  for (const item of body.items) {
+    const product = productMap.get(item.id)
+    if (!product) {
+      throw createError({ statusCode: 400, message: `Product ${item.id} not found in current shop` })
+    }
+    const availability = evaluateMenuAvailability({
+      fulfillmentType,
+      productDeliveryRestricted: product.deliveryRestrictedOverride,
+      categoryDeliveryRestricted: product.categoryDeliveryRestricted,
+      productTimeWindows: normalizeTimeWindows(product.availabilityWindows),
+      categoryTimeWindows: normalizeTimeWindows(product.categoryAvailabilityWindows),
+    })
+    if (!availability.isOrderable) {
+      throw createError({
+        statusCode: 400,
+        message: `Товар "${product.name}" недоступен: ${availability.reason || 'ограничение меню'}`,
+      })
+    }
+  }
+
   if (fulfillmentType === 'delivery' && !restaurant.supports_delivery) {
     throw createError({ statusCode: 400, message: 'Delivery is not available for selected restaurant' })
   }

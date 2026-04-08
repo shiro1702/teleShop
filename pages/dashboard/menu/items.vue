@@ -23,28 +23,29 @@
           <div class="border-b border-gray-100 bg-gray-50 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-600">
             {{ group.categoryName }}
           </div>
-          <ul class="divide-y divide-gray-100">
-            <li v-for="item in group.items" :key="item.id" class="flex items-center justify-between p-4 hover:bg-gray-50">
-              <div class="flex items-center gap-4">
-                <div class="h-12 w-12 overflow-hidden rounded bg-gray-100">
+          <div class="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
+            <article v-for="item in group.items" :key="item.id" class="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+              <div class="mb-3 flex items-start gap-3">
+                <div class="h-14 w-14 overflow-hidden rounded bg-gray-100">
                   <img v-if="item.image" :src="item.image" class="h-full w-full object-cover" />
                 </div>
-                <div>
-                  <div class="flex items-center gap-2">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
                     <span class="font-medium text-gray-900">{{ item.name }}</span>
                     <span v-if="!item.isActive" class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">Скрыт</span>
+                    <span v-if="(item.deliveryRestrictedOverride ?? item.categoryDeliveryRestricted) === true" class="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Без доставки</span>
                   </div>
                   <p class="mt-1 text-xs text-gray-500">
                     <span v-if="item.parameterKinds && item.parameterKinds.length > 0 || item.categoryParameterKindIds && item.categoryParameterKindIds.length > 0">от </span>{{ item.price }} ₽
                   </p>
                 </div>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center justify-end gap-3">
                 <button class="text-sm text-primary hover:underline" @click="openEditModal(item)">Редактировать</button>
                 <button class="text-sm text-red-600 hover:underline" @click="deleteItem(item)">Удалить</button>
               </div>
-            </li>
-          </ul>
+            </article>
+          </div>
         </div>
       </div>
     </div>
@@ -220,6 +221,42 @@
             <label for="isActive" class="text-sm text-gray-700">Позиция активна (глобально)</label>
           </div>
 
+          <div class="space-y-2 rounded-lg border border-gray-200 p-3">
+            <p class="text-sm font-medium text-gray-900">Ограничение на доставку</p>
+            <select v-model="form.deliveryRestrictedOverride" class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
+              <option :value="null">Наследовать от категории</option>
+              <option :value="true">Только в ресторане/самовывоз/QR</option>
+              <option :value="false">Разрешить доставку (снять ограничение категории)</option>
+            </select>
+          </div>
+
+          <div class="border-t border-gray-200 pt-4">
+            <div class="mb-2 flex items-center justify-between">
+              <h3 class="text-sm font-medium text-gray-900">Окна доступности товара</h3>
+              <button type="button" class="text-sm text-primary hover:underline" @click="addWindow">Добавить окно</button>
+            </div>
+            <div v-if="!form.availabilityWindows.length" class="text-xs text-gray-500">Если не задано, будет использоваться расписание категории.</div>
+            <div v-for="(w, idx) in form.availabilityWindows" :key="idx" class="mb-2 rounded-lg border border-gray-200 p-2">
+              <div class="mb-2 grid grid-cols-2 gap-2">
+                <input v-model="w.start" type="time" class="rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+                <input v-model="w.end" type="time" class="rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+              </div>
+              <div class="flex flex-wrap gap-1">
+                <button
+                  v-for="d in dayOptions"
+                  :key="d.value"
+                  type="button"
+                  class="rounded border px-2 py-1 text-xs"
+                  :class="w.days.includes(d.value) ? 'border-primary bg-primary text-white' : 'border-gray-300 text-gray-700'"
+                  @click="toggleWindowDay(idx, d.value)"
+                >
+                  {{ d.label }}
+                </button>
+              </div>
+              <button type="button" class="mt-2 text-xs text-red-600 hover:underline" @click="removeWindow(idx)">Удалить окно</button>
+            </div>
+          </div>
+
           <div>
             <label class="block text-sm font-medium text-gray-700">Внешний ID (iiko)</label>
             <input v-model="form.externalId" type="text" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" />
@@ -277,6 +314,10 @@ type Item = {
   isActive: boolean
   sortOrder: number
   externalId: string | null
+  deliveryRestrictedOverride: boolean | null
+  categoryDeliveryRestricted?: boolean
+  availabilityWindows?: Array<{ days: number[]; start: string; end: string }>
+  categoryAvailabilityWindows?: Array<{ days: number[]; start: string; end: string }>
   modifierGroupIds?: string[]
   categoryModifierGroupIds?: string[]
   modifierOverrides?: Record<string, { isDisabled: boolean; disabledOptionIds: string[] }>
@@ -288,6 +329,8 @@ type Item = {
 type Category = {
   id: string
   name: string
+  deliveryRestricted?: boolean
+  availabilityWindows?: Array<{ days: number[]; start: string; end: string }>
   modifierGroupIds?: string[]
   parameterKindIds?: string[]
 }
@@ -322,12 +365,23 @@ const form = ref({
   isActive: true,
   sortOrder: 0,
   externalId: '',
+  deliveryRestrictedOverride: null as boolean | null,
+  availabilityWindows: [] as Array<{ days: number[]; start: string; end: string }>,
   modifierGroupIds: [] as string[],
   categoryModifierGroupIds: [] as string[],
   modifierOverrides: {} as Record<string, { isDisabled: boolean; disabledOptionIds: string[] }>,
   parameterKinds: [] as ProductParameterKind[],
   parameterOptionOverrides: {} as Record<string, ProductParameterOptionOverride>
 })
+const dayOptions = [
+  { value: 1, label: 'Пн' },
+  { value: 2, label: 'Вт' },
+  { value: 3, label: 'Ср' },
+  { value: 4, label: 'Чт' },
+  { value: 5, label: 'Пт' },
+  { value: 6, label: 'Сб' },
+  { value: 0, label: 'Вс' }
+]
 
 const groupedItems = computed(() => {
   const groups = new Map<string, { categoryId: string | null; categoryName: string; items: Item[] }>()
@@ -595,6 +649,8 @@ function openCreateModal() {
     name: '', price: 0, image: '', description: '', 
     categoryId: categories.value[0]?.id || '', 
     isActive: true, sortOrder: 0, externalId: '',
+    deliveryRestrictedOverride: null,
+    availabilityWindows: [],
     modifierGroupIds: [],
     categoryModifierGroupIds: [],
     modifierOverrides: {},
@@ -616,6 +672,8 @@ function openEditModal(item: Item) {
     isActive: item.isActive, 
     sortOrder: item.sortOrder, 
     externalId: item.externalId || '',
+    deliveryRestrictedOverride: item.deliveryRestrictedOverride ?? null,
+    availabilityWindows: JSON.parse(JSON.stringify(item.availabilityWindows || [])),
     modifierGroupIds: item.modifierGroupIds || [],
     categoryModifierGroupIds: item.categoryModifierGroupIds || [],
     modifierOverrides: item.modifierOverrides || {},
@@ -623,6 +681,21 @@ function openEditModal(item: Item) {
     parameterOptionOverrides: JSON.parse(JSON.stringify(item.parameterOptionOverrides || {}))
   }
   isModalOpen.value = true
+}
+
+function addWindow() {
+  form.value.availabilityWindows.push({ days: [1, 2, 3, 4, 5], start: '08:00', end: '12:00' })
+}
+
+function removeWindow(idx: number) {
+  form.value.availabilityWindows.splice(idx, 1)
+}
+
+function toggleWindowDay(windowIdx: number, day: number) {
+  const row = form.value.availabilityWindows[windowIdx]
+  if (!row) return
+  if (row.days.includes(day)) row.days = row.days.filter((x: number) => x !== day)
+  else row.days = [...row.days, day].sort((a, b) => a - b)
 }
 
 function closeModal() {
@@ -640,9 +713,12 @@ async function saveItem() {
     // Convert parameterOptionOverrides object to array for API
     const payload = {
       ...form.value,
-      parameterOptionOverrides: Object.entries(form.value.parameterOptionOverrides).map(([optionId, override]) => ({
+      parameterOptionOverrides: (Object.entries(form.value.parameterOptionOverrides) as Array<[string, ProductParameterOptionOverride]>).map(([optionId, override]) => ({
         optionId,
-        ...override
+        price: override.price,
+        isDisabled: !!override.isDisabled,
+        isDefault: !!override.isDefault,
+        isActive: override.isActive !== false
       }))
     }
 
