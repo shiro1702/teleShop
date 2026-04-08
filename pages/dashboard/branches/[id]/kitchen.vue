@@ -56,39 +56,102 @@
       <div v-else-if="!kitchenOrders.length" class="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-600">
         Нет активных заказов для выбранного способа получения.
       </div>
-      <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <article
-          v-for="o in kitchenOrders"
-          :key="o.id"
-          class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-        >
-          <div class="flex items-start justify-between gap-2">
-            <div>
-              <p class="font-mono text-xs text-gray-500">{{ shortId(o.id) }}</p>
-              <p class="mt-1 text-xs text-gray-500">{{ formatTime(o.createdAt) }}</p>
-            </div>
-            <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">{{ statusKitchen(o.status) }}</span>
-          </div>
-          <ul class="mt-3 space-y-2 text-sm">
-            <li
-              v-for="(line, idx) in o.items"
-              :key="idx"
-              class="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2 py-2"
-              :class="line.isDuplicate ? 'border-amber-300 bg-amber-50' : 'border-gray-100 bg-gray-50'"
+      <div v-else class="space-y-3">
+        <div v-if="allDuplicateGroups.length" class="rounded-xl border border-gray-200 bg-white p-3">
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Дубли по всем заказам</p>
+            <button
+              v-if="crossedDuplicateKeys.length"
+              type="button"
+              class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+              @click="crossedDuplicateKeys = []"
             >
-              <span class="font-medium text-gray-900">{{ line.name }} × {{ line.quantity }}</span>
-              <span v-if="line.isDuplicate" class="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-900">
-                x{{ line.dupQtySum }}
-              </span>
-            </li>
-          </ul>
-          <p v-if="o.comment" class="mt-2 text-xs text-gray-600">Комментарий: {{ o.comment }}</p>
-          <div class="mt-3 flex gap-2 opacity-50">
-            <button type="button" disabled class="flex-1 rounded border border-gray-200 px-2 py-1 text-xs text-gray-500">
-              Действия (MVP)
+              Сбросить вычеркивания
             </button>
           </div>
-        </article>
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              v-for="group in allDuplicateGroups"
+              :key="`all:${group.key}`"
+              type="button"
+              class="rounded-full border px-2 py-0.5 text-xs font-semibold transition"
+              :class="[group.colorClass, isDuplicateCrossed(group.key) ? 'line-through opacity-45' : '']"
+              :title="isDuplicateCrossed(group.key) ? 'Вернуть дубль' : 'Вычеркнуть дубль во всех заказах'"
+              @click="toggleDuplicateCross(group.key)"
+            >
+              {{ group.name }} x{{ group.totalQty }}
+            </button>
+          </div>
+        </div>
+      <div class="overflow-x-auto pb-1">
+        <div class="flex min-w-[980px] gap-3">
+          <div
+            v-for="col in kitchenColumns"
+            :key="col"
+            class="w-80 shrink-0 rounded-xl border border-gray-200 bg-gray-50 p-3"
+          >
+            <p class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              {{ statusKitchen(col) }}
+              <span class="font-normal text-gray-400">({{ ordersInColumn(col).length }})</span>
+            </p>
+            <div v-if="duplicateGroupsForColumn(col).length" class="mb-3 flex flex-wrap gap-1.5">
+              <button
+                v-for="group in duplicateGroupsForColumn(col)"
+                :key="`${col}:${group.key}`"
+                type="button"
+                class="rounded-full border px-2 py-0.5 text-xs font-semibold transition"
+                :class="[group.colorClass, isDuplicateCrossedInColumn(col, group.key) ? 'line-through opacity-45' : '']"
+                :title="isDuplicateCrossedInColumn(col, group.key) ? 'Вернуть дубль в колонке' : 'Вычеркнуть дубль только в этой колонке'"
+                @click="toggleDuplicateCrossInColumn(col, group.key)"
+              >
+                {{ group.name }} x{{ group.totalQty }}
+              </button>
+            </div>
+            <div class="space-y-2">
+              <article
+                v-for="o in ordersInColumn(col)"
+                :key="o.id"
+                class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <div>
+                    <p class="font-mono text-xs text-gray-500">{{ shortId(o.id) }}</p>
+                    <p class="mt-1 text-xs text-gray-500">{{ formatTime(o.createdAt) }}</p>
+                  </div>
+                  <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">{{ statusKitchen(o.status) }}</span>
+                </div>
+                <ul class="mt-3 space-y-2 text-sm">
+                  <li
+                    v-for="(line, idx) in o.items"
+                    :key="idx"
+                    class="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2 py-2"
+                    :class="[lineBadgeClass(line, o.status), lineTextClass(line, o.status)]"
+                  >
+                    <span class="font-medium text-gray-900">{{ line.name }} × {{ line.quantity }}</span>
+                  </li>
+                </ul>
+                <p v-if="o.comment" class="mt-2 text-xs text-gray-600">Комментарий: {{ o.comment }}</p>
+                <div class="mt-3 flex flex-wrap gap-1.5">
+                  <button
+                    v-for="nextStatus in moveTargets(o)"
+                    :key="`${o.id}:${nextStatus}`"
+                    type="button"
+                    class="rounded border px-2.5 py-1 text-xs disabled:opacity-50"
+                    :class="moveButtonClass(nextStatus)"
+                    :disabled="isSaving(o.id)"
+                    @click="applyStatus(o.id, nextStatus)"
+                  >
+                    {{ statusKitchen(nextStatus) }}
+                  </button>
+                </div>
+              </article>
+              <p v-if="!ordersInColumn(col).length" class="rounded-lg border border-dashed border-gray-300 bg-white py-6 text-center text-xs text-gray-400">
+                Пусто
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
       </div>
     </div>
 
@@ -100,6 +163,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { getAllowedOrderStatusTransitions, normalizeDashboardStatus, type DashboardOrderStatus } from '~/utils/dashboardOrderStatus'
 
 definePageMeta({ layout: 'dashboard' })
 
@@ -143,6 +207,25 @@ const branchSupports = ref<BranchRow | null>(null)
 const kitchenOrders = ref<KitchenOrder[]>([])
 const pending = ref(true)
 const errorMessage = ref<string | null>(null)
+const savingByOrder = ref<Record<string, boolean>>({})
+const crossedDuplicateKeys = ref<string[]>([])
+const crossedByColumn = ref<Record<string, string[]>>({})
+
+type DuplicateGroup = {
+  key: string
+  name: string
+  totalQty: number
+  colorClass: string
+}
+
+const duplicatePalette = [
+  'border-amber-300 bg-amber-50 text-amber-900',
+  'border-sky-300 bg-sky-50 text-sky-900',
+  'border-emerald-300 bg-emerald-50 text-emerald-900',
+  'border-violet-300 bg-violet-50 text-violet-900',
+  'border-rose-300 bg-rose-50 text-rose-900',
+  'border-orange-300 bg-orange-50 text-orange-900',
+]
 
 const fulfillmentModes = computed(() => {
   const b = branchSupports.value
@@ -161,6 +244,31 @@ const fulfillmentModes = computed(() => {
   return opts.length ? opts : [{ value: 'delivery', label: 'Доставка' }]
 })
 
+const kitchenColumns = computed<string[]>(() => {
+  // Показываем полный канбан-флоу всегда, даже если колонка сейчас пустая.
+  return ['new', 'in_progress', 'ready_for_pickup', 'out_for_delivery', 'cancelled']
+})
+
+const duplicateColorByKey = computed<Record<string, string>>(() => {
+  const mapping: Record<string, string> = {}
+  let idx = 0
+  for (const o of kitchenOrders.value) {
+    for (const line of o.items || []) {
+      if (!line.isDuplicate) continue
+      const key = duplicateKey(line)
+      if (!mapping[key]) {
+        mapping[key] = duplicatePalette[idx % duplicatePalette.length]
+        idx += 1
+      }
+    }
+  }
+  return mapping
+})
+
+const allDuplicateGroups = computed<DuplicateGroup[]>(() =>
+  duplicateGroups(kitchenOrders.value.filter((o: KitchenOrder) => isDuplicateStatus(o.status))),
+)
+
 async function loadBranch() {
   try {
     const res = await fetch('/api/dashboard/restaurants')
@@ -171,7 +279,7 @@ async function loadBranch() {
         branchSupports.value = b
         branchName.value = b.name
         const modes = fulfillmentModes.value
-        if (modes.length && !modes.some((m) => m.value === fulfillmentType.value)) {
+        if (modes.length && !modes.some((m: { value: string; label: string }) => m.value === fulfillmentType.value)) {
           fulfillmentType.value = modes[0].value
         }
       }
@@ -197,6 +305,33 @@ async function loadKitchen() {
     kitchenOrders.value = []
   } finally {
     pending.value = false
+  }
+}
+
+async function applyStatus(orderId: string, nextStatus: DashboardOrderStatus) {
+  const needsComment = nextStatus === 'cancelled'
+  let comment: string | undefined
+  if (needsComment) {
+    const raw = window.prompt('Комментарий к отмене (обязательно):', '')
+    if (!raw || !raw.trim()) return
+    comment = raw.trim()
+  }
+  savingByOrder.value = { ...savingByOrder.value, [orderId]: true }
+  try {
+    const res = await fetch(`/api/dashboard/orders/${orderId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nextStatus, comment }),
+    })
+    const json = (await res.json().catch(() => null)) as { statusMessage?: string } | null
+    if (!res.ok) throw new Error(json?.statusMessage || 'Не удалось обновить статус')
+    await loadKitchen()
+  } catch (e: any) {
+    window.alert(e?.message || 'Ошибка изменения статуса')
+  } finally {
+    const copy = { ...savingByOrder.value }
+    delete copy[orderId]
+    savingByOrder.value = copy
   }
 }
 
@@ -227,7 +362,112 @@ function statusKitchen(s: string) {
   const m: Record<string, string> = {
     new: 'Новый',
     in_progress: 'В работе',
+    ready_for_pickup: 'Готов к выдаче',
+    out_for_delivery: 'В доставке',
+    handed_to_customer: 'Выдан',
+    cancelled: 'Отменен',
   }
   return m[s] || s
+}
+
+function ordersInColumn(status: string) {
+  return kitchenOrders.value.filter((o: KitchenOrder) => o.status === status)
+}
+
+function duplicateKey(line: KitchenLine) {
+  return (line.productId || line.name).trim().toLowerCase()
+}
+
+function duplicateBadgeClass(key: string) {
+  return duplicateColorByKey.value[key] || 'border-amber-300 bg-amber-50 text-amber-900'
+}
+
+function lineBadgeClass(line: KitchenLine, status: string) {
+  if (!line.isDuplicate || !isDuplicateStatus(status)) return 'border-gray-100 bg-gray-50'
+  return duplicateBadgeClass(duplicateKey(line))
+}
+
+function lineTextClass(line: KitchenLine, status: string) {
+  if (!line.isDuplicate || !isDuplicateStatus(status)) return ''
+  const key = duplicateKey(line)
+  if (isDuplicateCrossed(key)) return 'line-through opacity-45'
+  if (isDuplicateCrossedInColumn(status, key)) return 'line-through opacity-45'
+  return ''
+}
+
+function duplicateGroups(list: KitchenOrder[]): DuplicateGroup[] {
+  const groups = new Map<string, DuplicateGroup>()
+  for (const order of list) {
+    for (const line of order.items || []) {
+      if (!line.isDuplicate) continue
+      const key = duplicateKey(line)
+      const current = groups.get(key)
+      if (current) {
+        current.totalQty += line.quantity
+      } else {
+        groups.set(key, {
+          key,
+          name: line.name,
+          totalQty: line.quantity,
+          colorClass: duplicateBadgeClass(key),
+        })
+      }
+    }
+  }
+  return Array.from(groups.values()).sort((a, b) => b.totalQty - a.totalQty)
+}
+
+function isDuplicateCrossed(key: string) {
+  return crossedDuplicateKeys.value.includes(key)
+}
+
+function toggleDuplicateCross(key: string) {
+  if (isDuplicateCrossed(key)) {
+    crossedDuplicateKeys.value = crossedDuplicateKeys.value.filter((x: string) => x !== key)
+  } else {
+    crossedDuplicateKeys.value = [...crossedDuplicateKeys.value, key]
+  }
+}
+
+function duplicateGroupsForColumn(status: string): DuplicateGroup[] {
+  if (!isDuplicateStatus(status)) return []
+  return duplicateGroups(ordersInColumn(status))
+}
+
+function isDuplicateStatus(status: string) {
+  return status === 'new' || status === 'in_progress'
+}
+
+function isDuplicateCrossedInColumn(status: string, key: string) {
+  const list = crossedByColumn.value[status] || []
+  return list.includes(key)
+}
+
+function toggleDuplicateCrossInColumn(status: string, key: string) {
+  const current = crossedByColumn.value[status] || []
+  if (current.includes(key)) {
+    crossedByColumn.value = {
+      ...crossedByColumn.value,
+      [status]: current.filter((x: string) => x !== key),
+    }
+    return
+  }
+  crossedByColumn.value = {
+    ...crossedByColumn.value,
+    [status]: [...current, key],
+  }
+}
+
+function isSaving(orderId: string) {
+  return !!savingByOrder.value[orderId]
+}
+
+function moveTargets(order: KitchenOrder): DashboardOrderStatus[] {
+  return getAllowedOrderStatusTransitions(normalizeDashboardStatus(order.status), order.fulfillmentType)
+}
+
+function moveButtonClass(nextStatus: DashboardOrderStatus) {
+  if (nextStatus === 'cancelled') return 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+  return 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
 }
 </script>
