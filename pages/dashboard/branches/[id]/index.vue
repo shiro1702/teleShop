@@ -119,6 +119,56 @@
         </div>
       </div>
       <div class="md:col-span-2">
+        <div class="mb-3 rounded border border-gray-200 bg-gray-50 p-3">
+          <p class="text-sm font-medium text-gray-700">График работы филиала</p>
+          <p class="mt-1 text-xs text-gray-500">
+            Можно использовать общий график ресторана или задать свой для этого филиала.
+          </p>
+          <label class="mt-2 inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              v-model="form.useOrganizationWorkingHours"
+              type="checkbox"
+              class="rounded border-gray-300"
+              :disabled="!canEditCritical"
+            >
+            Использовать общий график ресторана
+          </label>
+          <div v-if="!form.useOrganizationWorkingHours" class="mt-3 space-y-2">
+            <div
+              v-for="day in workingDayRows"
+              :key="day.key"
+              class="grid items-center gap-2 rounded border border-gray-200 bg-white px-2 py-2 md:grid-cols-[120px,120px,1fr,1fr]"
+            >
+              <span class="text-sm text-gray-700">{{ day.label }}</span>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  v-model="form.workingHours[day.key].isOpen"
+                  type="checkbox"
+                  :disabled="!canEditCritical"
+                >
+                Открыто
+              </label>
+              <label class="text-sm">
+                <span class="mb-1 block text-xs text-gray-500">Открытие</span>
+                <input
+                  v-model="form.workingHours[day.key].openAt"
+                  type="time"
+                  class="w-full rounded border border-gray-300 px-2 py-1.5"
+                  :disabled="!canEditCritical || !form.workingHours[day.key].isOpen"
+                >
+              </label>
+              <label class="text-sm">
+                <span class="mb-1 block text-xs text-gray-500">Закрытие</span>
+                <input
+                  v-model="form.workingHours[day.key].closeAt"
+                  type="time"
+                  class="w-full rounded border border-gray-300 px-2 py-1.5"
+                  :disabled="!canEditCritical || !form.workingHours[day.key].isOpen"
+                >
+              </label>
+            </div>
+          </div>
+        </div>
         <p class="mb-2 text-xs text-gray-500">
           В филиале доступны только те способы работы, которые включены в общих настройках ресторана.
         </p>
@@ -169,6 +219,8 @@ type Branch = {
   supportsDineIn: boolean
   supportsQrMenu: boolean
   supportsShowcaseOrder: boolean
+  useOrganizationWorkingHours: boolean
+  workingHours: Record<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun', { isOpen: boolean; openAt: string; closeAt: string }>
   isActive: boolean
 }
 
@@ -181,11 +233,30 @@ const form = ref({
   supportsDineIn: false,
   supportsQrMenu: false,
   supportsShowcaseOrder: false,
+  useOrganizationWorkingHours: true,
+  workingHours: {
+    mon: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    tue: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    wed: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    thu: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    fri: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    sat: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    sun: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+  },
 })
 const logs = ref<Array<{ action: string; at: string }>>([])
 const allowedModes = ref<Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>>(['delivery', 'pickup'])
 const allowedModesSet = computed(() => new Set(allowedModes.value))
 const showcaseOrderFulfillment = ref<'to-table' | 'pickup-point'>('to-table')
+const workingDayRows: Array<{ key: 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'; label: string }> = [
+  { key: 'mon', label: 'Понедельник' },
+  { key: 'tue', label: 'Вторник' },
+  { key: 'wed', label: 'Среда' },
+  { key: 'thu', label: 'Четверг' },
+  { key: 'fri', label: 'Пятница' },
+  { key: 'sat', label: 'Суббота' },
+  { key: 'sun', label: 'Воскресенье' },
+]
 
 const storefrontPath = ref('')
 const qrDataUrl = ref<string | null>(null)
@@ -282,6 +353,8 @@ onMounted(async () => {
       supportsDineIn: found.supportsDineIn && allowedModesSet.value.has('dine-in'),
       supportsQrMenu: found.supportsQrMenu && allowedModesSet.value.has('qr-menu'),
       supportsShowcaseOrder: found.supportsShowcaseOrder && allowedModesSet.value.has('showcase-order'),
+      useOrganizationWorkingHours: found.useOrganizationWorkingHours !== false,
+      workingHours: found.workingHours,
     }
   }
 })
@@ -304,6 +377,8 @@ async function save() {
       supportsDineIn: allowedModesSet.value.has('dine-in') && form.value.supportsDineIn,
       supportsQrMenu: allowedModesSet.value.has('qr-menu') && form.value.supportsQrMenu,
       supportsShowcaseOrder: allowedModesSet.value.has('showcase-order') && form.value.supportsShowcaseOrder,
+      useOrganizationWorkingHours: form.value.useOrganizationWorkingHours,
+      workingHours: form.value.workingHours,
     }),
   })
   if (!res.ok) {
@@ -321,6 +396,8 @@ async function save() {
     supportsDineIn: payload.item.supportsDineIn,
     supportsQrMenu: payload.item.supportsQrMenu,
     supportsShowcaseOrder: payload.item.supportsShowcaseOrder,
+    useOrganizationWorkingHours: payload.item.useOrganizationWorkingHours !== false,
+    workingHours: payload.item.workingHours,
   }
   logs.value.unshift({ action: 'Обновлены данные филиала', at: now() })
 }

@@ -11,6 +11,7 @@ import {
   type TenantRestaurant,
   type TenantRestaurantZone,
 } from '~/server/utils/tenant'
+import { getOrganizationSettings } from '~/server/utils/organizationStyle'
 import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
 import type { CartItemPayload } from '~/server/utils/orderLinePricing'
 import { loadTenantProductsForOrder, sumCartLines } from '~/server/utils/orderLinePricing'
@@ -20,6 +21,7 @@ import {
   fetchShopLoyaltySettings,
   getCustomerBalance,
 } from '~/server/utils/pricingPromoBonus'
+import { isOpenNowBySchedule, normalizeWeeklyWorkingHours, resolveEffectiveWorkingHours } from '~/utils/workingHours'
 
 interface TelegramUser {
   id: number
@@ -368,6 +370,19 @@ export default defineEventHandler(async (event) => {
 
   const restaurantId = typeof body.restaurantId === 'string' ? body.restaurantId.trim() : ''
   const restaurant: TenantRestaurant = await requireRestaurantForShop(event, tenantShopId, restaurantId)
+  const orgSettings = await getOrganizationSettings(event, tenantShopId)
+  const branchWorkingHours = normalizeWeeklyWorkingHours(restaurant.working_hours, orgSettings.ops.workingHours)
+  const effectiveWorkingHours = resolveEffectiveWorkingHours(orgSettings.ops.workingHours, {
+    useOrganizationHours: restaurant.use_organization_working_hours !== false,
+    workingHours: branchWorkingHours,
+  })
+  const openStatus = isOpenNowBySchedule(effectiveWorkingHours, orgSettings.locale.timezone)
+  if (!openStatus.isOpen) {
+    throw createError({
+      statusCode: 409,
+      message: `Restaurant is closed now (${openStatus.nowHHMM}, ${orgSettings.locale.timezone})`,
+    })
+  }
 
   const serviceClient = await serverSupabaseServiceRole(event)
 

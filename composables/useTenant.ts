@@ -16,6 +16,9 @@ type TenantState = {
   legalName: string | null
   inn: string | null
   ogrn: string | null
+  organizationTimezone: string | null
+  organizationWorkingHours: Record<string, any> | null
+  effectiveWorkingHours: Record<string, any> | null
 }
 
 function normalizeTheme(input: unknown): TenantTheme {
@@ -33,6 +36,17 @@ function getStringSetting(input: Record<string, unknown> | null | undefined, ...
     const value = input[key]
     if (typeof value === 'string' && value.trim()) {
       return value.trim()
+    }
+  }
+  return null
+}
+
+function getObjectSetting(input: Record<string, unknown> | null | undefined, ...keys: string[]): Record<string, any> | null {
+  if (!input) return null
+  for (const key of keys) {
+    const value = input[key]
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, any>
     }
   }
   return null
@@ -135,6 +149,9 @@ export function useTenant() {
     legalName: null,
     inn: null,
     ogrn: null,
+    organizationTimezone: null,
+    organizationWorkingHours: null,
+    effectiveWorkingHours: null,
   }))
 
   function applyTenant(payload: {
@@ -156,6 +173,9 @@ export function useTenant() {
     state.value.legalName = typeof payload.shop?.legalName === 'string' ? payload.shop.legalName : null
     state.value.inn = typeof payload.shop?.inn === 'string' ? payload.shop.inn : null
     state.value.ogrn = typeof payload.shop?.ogrn === 'string' ? payload.shop.ogrn : null
+    state.value.organizationTimezone = getStringSetting(payload.uiSettings ?? null, 'organization_timezone')
+    state.value.organizationWorkingHours = getObjectSetting(payload.uiSettings ?? null, 'organization_working_hours')
+    state.value.effectiveWorkingHours = getObjectSetting(payload.uiSettings ?? null, 'effective_working_hours')
     state.value.loaded = true
     state.value.loading = false
   }
@@ -295,6 +315,9 @@ export function useTenant() {
       state.value.legalName = null
       state.value.inn = null
       state.value.ogrn = null
+      state.value.organizationTimezone = null
+      state.value.organizationWorkingHours = null
+      state.value.effectiveWorkingHours = null
       state.value.theme = {}
       try {
         await loadTenantSettings()
@@ -304,6 +327,14 @@ export function useTenant() {
       }
     },
     { immediate: false },
+  )
+  watch(
+    () => [route.query.branch_id, route.query.restaurant_id] as const,
+    async () => {
+      if (isDashboardRoute.value || isNonTenantRoute.value) return
+      state.value.loaded = false
+      await loadTenantSettings()
+    },
   )
 
   return {

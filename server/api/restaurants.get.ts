@@ -2,6 +2,7 @@ import { createError, defineEventHandler } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireTenantShop } from '~/server/utils/tenant'
 import { getOrganizationSettings } from '~/server/utils/organizationStyle'
+import { normalizeWeeklyWorkingHours, resolveEffectiveWorkingHours } from '~/utils/workingHours'
 
 export default defineEventHandler(async (event) => {
   const { shopId } = await requireTenantShop(event)
@@ -9,14 +10,34 @@ export default defineEventHandler(async (event) => {
   // "qr-menu only" скрывал delivery/pickup на публичной витрине.
   const org = await getOrganizationSettings(event, shopId)
   const allowedSet = new Set(org.ops.fulfillmentTypes)
+  const organizationWorkingHours = org.ops.workingHours
+  const organizationTimezone = org.locale.timezone
 
   const client = await serverSupabaseServiceRole(event)
-  const { data, error } = await client
+  let data: any[] | null = null
+  let error: any = null
+  const primary = await client
     .from('restaurants')
-    .select('id,name,address,supports_delivery,supports_pickup,supports_qr_menu,is_active')
+    .select('id,name,address,supports_delivery,supports_pickup,supports_qr_menu,use_organization_working_hours,working_hours,is_active')
     .eq('shop_id', shopId)
     .eq('is_active', true)
     .order('name', { ascending: true })
+  data = primary.data as any[] | null
+  error = primary.error
+  if (error && error.code === '42703') {
+    const fallback = await client
+      .from('restaurants')
+      .select('id,name,address,supports_delivery,supports_pickup,supports_qr_menu,is_active')
+      .eq('shop_id', shopId)
+      .eq('is_active', true)
+      .order('name', { ascending: true })
+    data = (fallback.data as any[] | null)?.map((item) => ({
+      ...item,
+      use_organization_working_hours: true,
+      working_hours: null,
+    })) ?? []
+    error = fallback.error
+  }
 
   if (error) {
     console.error('Failed to load restaurants by shop:', error)
@@ -26,8 +47,22 @@ export default defineEventHandler(async (event) => {
   return {
     ok: true,
     shopId,
+    organizationTimezone,
+    organizationWorkingHours,
     items: (data ?? []).map((item: any) => ({
       ...item,
+      ...(() => {
+        const branchWorkingHours = normalizeWeeklyWorkingHours(item.working_hours, organizationWorkingHours)
+        const useOrganizationHours = item.use_organization_working_hours !== false
+        return {
+          use_organization_working_hours: useOrganizationHours,
+          working_hours: branchWorkingHours,
+          effective_working_hours: resolveEffectiveWorkingHours(organizationWorkingHours, {
+            useOrganizationHours,
+            workingHours: branchWorkingHours,
+          }),
+        }
+      })(),
       supports_delivery: Boolean(item.supports_delivery) && allowedSet.has('delivery'),
       supports_pickup: Boolean(item.supports_pickup) && allowedSet.has('pickup'),
       // Для QR-меню считаем доступность управляемой настройками ops.fulfillmentTypes.

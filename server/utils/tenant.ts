@@ -28,6 +28,8 @@ export type TenantRestaurant = {
   supports_delivery: boolean
   supports_pickup: boolean
   supports_qr_menu: boolean
+  use_organization_working_hours: boolean
+  working_hours: Record<string, unknown> | null
   is_active: boolean
 }
 
@@ -264,13 +266,35 @@ export async function requireRestaurantForShop(
   }
 
   const client = await serverSupabaseServiceRole(event)
-  const { data, error } = await client
+  let data: any = null
+  let error: any = null
+  const primary = await client
     .from('restaurants')
-    .select('id,shop_id,name,address,supports_delivery,supports_pickup,supports_qr_menu,is_active')
+    .select('id,shop_id,name,address,supports_delivery,supports_pickup,supports_qr_menu,use_organization_working_hours,working_hours,is_active')
     .eq('shop_id', shopId)
     .eq('id', normalizedRestaurantId)
     .eq('is_active', true)
     .maybeSingle()
+  data = primary.data
+  error = primary.error
+  if (error && error.code === '42703') {
+    const fallback = await client
+      .from('restaurants')
+      .select('id,shop_id,name,address,supports_delivery,supports_pickup,supports_qr_menu,is_active')
+      .eq('shop_id', shopId)
+      .eq('id', normalizedRestaurantId)
+      .eq('is_active', true)
+      .maybeSingle()
+    data = fallback.data
+    error = fallback.error
+    if (data) {
+      data = {
+        ...data,
+        use_organization_working_hours: true,
+        working_hours: null,
+      }
+    }
+  }
 
   if (error) {
     console.error('Error querying restaurant for shop:', error)

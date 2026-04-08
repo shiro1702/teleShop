@@ -27,6 +27,19 @@
               <p>ИНН: 032384437278</p>
               <p>ОГРНИП: 325030000033105</p>
             </template>
+            <div v-if="workingHoursRows.length" class="mt-3">
+              <p class="font-medium text-gray-700">
+                Режим работы
+              </p>
+              <p class="text-xs" :class="isOpenNow ? 'text-emerald-700' : 'text-red-600'">
+                {{ isOpenNow ? 'Сейчас открыто' : 'Сейчас закрыто' }}
+              </p>
+              <ul class="mt-1 space-y-0.5 text-xs text-gray-600">
+                <li v-for="row in workingHoursRows" :key="row.label">
+                  {{ row.label }}: {{ row.value }}
+                </li>
+              </ul>
+            </div>
           </div>
           <div>
             <p class="font-medium text-gray-700">Юридические документы</p>
@@ -60,6 +73,8 @@ import { computed, onMounted, onServerPrefetch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTelegram } from './composables/useTelegram'
 import { useTenant } from './composables/useTenant'
+import type { WeeklyWorkingHours } from './types/organization-style'
+import { isOpenNowBySchedule } from './utils/workingHours'
 
 const { isTelegram } = useTelegram()
 const { cssVars, loadTenantSettings, tenant } = useTenant()
@@ -83,6 +98,35 @@ const isStorefrontRoute = computed(() => {
 const tenantLegalName = computed(() => tenant.value.legalName || null)
 const tenantInn = computed(() => tenant.value.inn || null)
 const tenantOgrn = computed(() => tenant.value.ogrn || null)
+const tenantTimezone = computed(() => tenant.value.organizationTimezone || 'Asia/Irkutsk')
+const effectiveWorkingHours = computed(() => {
+  const source = tenant.value.effectiveWorkingHours
+  if (!source || typeof source !== 'object') return null
+  return source as unknown as WeeklyWorkingHours
+})
+const isOpenNow = computed(() => {
+  if (!effectiveWorkingHours.value) return false
+  return isOpenNowBySchedule(effectiveWorkingHours.value, tenantTimezone.value).isOpen
+})
+const workingHoursRows = computed<Array<{ label: string; value: string }>>(() => {
+  if (!effectiveWorkingHours.value) return []
+  const labels: Array<{ key: keyof WeeklyWorkingHours; label: string }> = [
+    { key: 'mon', label: 'Пн' },
+    { key: 'tue', label: 'Вт' },
+    { key: 'wed', label: 'Ср' },
+    { key: 'thu', label: 'Чт' },
+    { key: 'fri', label: 'Пт' },
+    { key: 'sat', label: 'Сб' },
+    { key: 'sun', label: 'Вс' },
+  ]
+  return labels.map((item) => {
+    const row = effectiveWorkingHours.value![item.key]
+    return {
+      label: item.label,
+      value: row?.isOpen ? `${row.openAt}-${row.closeAt}` : 'Выходной',
+    }
+  })
+})
 const cityBasePath = computed(() => {
   const citySlug = route.params?.city_slug
   const city = Array.isArray(citySlug) ? citySlug[0] : citySlug

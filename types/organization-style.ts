@@ -56,7 +56,18 @@ export type OrganizationOpsSettings = {
   orderAcceptanceMode: 'auto' | 'manual'
   ordersPaused: boolean
   ordersPausedReason: string
+  workingHours: WeeklyWorkingHours
 }
+
+export type WorkingDayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
+
+export type WorkingHoursDay = {
+  isOpen: boolean
+  openAt: string
+  closeAt: string
+}
+
+export type WeeklyWorkingHours = Record<WorkingDayKey, WorkingHoursDay>
 
 export type OrganizationLocaleSettings = {
   currency: string

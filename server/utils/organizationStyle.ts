@@ -6,6 +6,8 @@ import type {
   OrganizationStyleConfig,
   OrganizationSettings,
   OrganizationStylePreset,
+  WeeklyWorkingHours,
+  WorkingDayKey,
 } from '~/types/organization-style'
 
 type PersistedStyleRecord = {
@@ -32,6 +34,7 @@ const TABLE_NAME = 'organization_style_settings'
 const PRESETS_TABLE_NAME = 'organization_style_presets'
 const MAX_AUDIT_ITEMS = 25
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/
+const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
 const memoryStoreKey = '__organization_style_memory_store__'
 const presetsMemoryStoreKey = '__organization_style_presets_memory_store__'
 
@@ -193,6 +196,15 @@ async function getIdentityFromExistingData(event: any, shopId: string): Promise<
 }
 
 export function getDefaultOrganizationSettings(): OrganizationSettings {
+  const defaultWorkingHours: WeeklyWorkingHours = {
+    mon: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    tue: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    wed: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    thu: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    fri: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    sat: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    sun: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+  }
   return {
     slug: '',
     displayName: '',
@@ -215,6 +227,7 @@ export function getDefaultOrganizationSettings(): OrganizationSettings {
       orderAcceptanceMode: 'manual',
       ordersPaused: false,
       ordersPausedReason: '',
+      workingHours: defaultWorkingHours,
     },
     locale: {
       currency: 'RUB',
@@ -341,6 +354,20 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
   const fulfillmentTypes = fulfillmentRaw.filter(
     (item: unknown) => ['delivery', 'pickup', 'dine-in', 'qr-menu', 'showcase-order'].includes(String(item)),
   ) as Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>
+  const dayKeys: WorkingDayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+  const sourceWorkingHours = ops.workingHours && typeof ops.workingHours === 'object' ? ops.workingHours : {}
+  const workingHours = dayKeys.reduce((acc, day) => {
+    const rawDay = sourceWorkingHours[day] && typeof sourceWorkingHours[day] === 'object'
+      ? sourceWorkingHours[day]
+      : {}
+    const fallback = defaults.ops.workingHours[day]
+    acc[day] = {
+      isOpen: typeof rawDay.isOpen === 'boolean' ? rawDay.isOpen : fallback.isOpen,
+      openAt: typeof rawDay.openAt === 'string' ? rawDay.openAt : fallback.openAt,
+      closeAt: typeof rawDay.closeAt === 'string' ? rawDay.closeAt : fallback.closeAt,
+    }
+    return acc
+  }, {} as WeeklyWorkingHours)
   return {
     slug: asString(source.slug, defaults.slug),
     displayName: asString(source.displayName, defaults.displayName),
@@ -363,6 +390,7 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
       orderAcceptanceMode,
       ordersPaused: Boolean(ops.ordersPaused),
       ordersPausedReason: asString(ops.ordersPausedReason, defaults.ops.ordersPausedReason),
+      workingHours,
     },
     locale: {
       currency: asString(locale.currency, defaults.locale.currency).toUpperCase().slice(0, 3) || defaults.locale.currency,
@@ -665,6 +693,21 @@ export function validateOrganizationSettings(settings: OrganizationSettings): st
   ]
   for (const [key, value] of numericChecks) {
     if (value !== null && value < 0) errors.push(`Поле ${key} не может быть отрицательным.`)
+  }
+  const dayKeys: WorkingDayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+  for (const day of dayKeys) {
+    const row = settings.ops.workingHours?.[day]
+    if (!row) {
+      errors.push(`Не заполнен график для дня ${day}.`)
+      continue
+    }
+    if (!HHMM_RE.test(row.openAt) || !HHMM_RE.test(row.closeAt)) {
+      errors.push(`Время для дня ${day} должно быть в формате HH:MM.`)
+      continue
+    }
+    if (row.isOpen && row.openAt >= row.closeAt) {
+      errors.push(`Для дня ${day} время открытия должно быть раньше закрытия.`)
+    }
   }
   if (settings.locale.languages.length === 0) {
     errors.push('Нужен минимум один язык витрины.')

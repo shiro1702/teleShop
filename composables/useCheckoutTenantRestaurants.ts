@@ -16,6 +16,7 @@ export type RestaurantItem = {
   supports_delivery: boolean
   supports_pickup: boolean
   supports_qr_menu: boolean
+  effective_working_hours?: Record<string, any>
 }
 
 type RestaurantZoneApiItem = {
@@ -46,9 +47,13 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
   const restaurants = ref<RestaurantItem[]>([])
   const restaurantsLoaded = ref(false)
   const restaurantZones = ref<DeliveryZoneFeature[]>([])
+  const organizationTimezone = ref<string>('Asia/Irkutsk')
 
   const selectedRestaurant = computed(() =>
     restaurants.value.find((r) => r.id === selectedRestaurantId.value) ?? null,
+  )
+  const selectedRestaurantWorkingHours = computed(() =>
+    selectedRestaurant.value?.effective_working_hours ?? null,
   )
 
   const pickupPoints = computed<PickupPoint[]>(() => {
@@ -253,12 +258,15 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
     try {
       const headers = params.shopIdFromRoute.value ? { 'x-shop-id': params.shopIdFromRoute.value } : undefined
       const query = params.shopIdFromRoute.value ? { shop_id: params.shopIdFromRoute.value } : undefined
-      const res = await $fetch<{ ok: boolean; items: RestaurantItem[] }>('/api/restaurants', {
+      const res = await $fetch<{ ok: boolean; items: RestaurantItem[]; organizationTimezone?: string }>('/api/restaurants', {
         headers,
         query,
       })
       if (res?.ok && Array.isArray(res.items)) {
         restaurants.value = res.items
+        if (typeof res.organizationTimezone === 'string' && res.organizationTimezone.trim()) {
+          organizationTimezone.value = res.organizationTimezone
+        }
       }
     } catch {
       // keep fallback behavior for local/dev
@@ -275,6 +283,8 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
     restaurants,
     restaurantZones,
     pickupPoints,
+    organizationTimezone,
+    selectedRestaurantWorkingHours,
     availableFulfillmentTypes,
     hasDeliveryOption,
     hasPickupOption,

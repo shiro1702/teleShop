@@ -239,6 +239,47 @@
             </div>
           </div>
         </div>
+        <div class="md:col-span-2 rounded-lg border border-gray-200 p-3">
+          <p class="text-sm font-medium text-gray-700">График работы ресторана</p>
+          <p class="mt-1 text-xs text-gray-500">
+            Используется как базовый график для всех филиалов. В карточке филиала его можно переопределить.
+          </p>
+          <div class="mt-3 space-y-2">
+            <div
+              v-for="day in workingDayRows"
+              :key="day.key"
+              class="grid items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-2 md:grid-cols-[120px,120px,1fr,1fr]"
+            >
+              <span class="text-sm text-gray-700">{{ day.label }}</span>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  v-model="settings.ops.workingHours[day.key].isOpen"
+                  type="checkbox"
+                  :disabled="isReadonly"
+                >
+                Открыто
+              </label>
+              <label class="text-sm">
+                <span class="mb-1 block text-xs text-gray-500">Открытие</span>
+                <input
+                  v-model="settings.ops.workingHours[day.key].openAt"
+                  type="time"
+                  class="w-full rounded border border-gray-300 px-2 py-1.5"
+                  :disabled="isReadonly || !settings.ops.workingHours[day.key].isOpen"
+                >
+              </label>
+              <label class="text-sm">
+                <span class="mb-1 block text-xs text-gray-500">Закрытие</span>
+                <input
+                  v-model="settings.ops.workingHours[day.key].closeAt"
+                  type="time"
+                  class="w-full rounded border border-gray-300 px-2 py-1.5"
+                  :disabled="isReadonly || !settings.ops.workingHours[day.key].isOpen"
+                >
+              </label>
+            </div>
+          </div>
+        </div>
         <label class="text-sm"><span class="mb-1 block text-gray-600">Принятие заказов</span>
           <select v-model="settings.ops.orderAcceptanceMode" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly">
             <option value="manual">Ручное</option><option value="auto">Автоматическое</option>
@@ -506,6 +547,15 @@ const settings = reactive<OrganizationSettings>({
     orderAcceptanceMode: 'manual',
     ordersPaused: false,
     ordersPausedReason: '',
+    workingHours: {
+      mon: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      tue: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      wed: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      thu: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      fri: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      sat: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      sun: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    },
   },
   locale: {
     currency: 'RUB',
@@ -548,6 +598,15 @@ const fulfillmentOptions: Array<{
   { value: 'dine-in', label: 'В зале', description: 'Заказ для гостей внутри ресторана.' },
   { value: 'qr-menu', label: 'QR-меню', description: 'Гость сканирует QR, открывает меню и делает заказ с телефона.' },
   { value: 'showcase-order', label: 'Витрина + к столу', description: 'Гость выбирает и оплачивает в витрине; ниже выбирается сценарий выдачи.' },
+]
+const workingDayRows: Array<{ key: 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'; label: string }> = [
+  { key: 'mon', label: 'Понедельник' },
+  { key: 'tue', label: 'Вторник' },
+  { key: 'wed', label: 'Среда' },
+  { key: 'thu', label: 'Четверг' },
+  { key: 'fri', label: 'Пятница' },
+  { key: 'sat', label: 'Суббота' },
+  { key: 'sun', label: 'Воскресенье' },
 ]
 
 const colorFields = [
