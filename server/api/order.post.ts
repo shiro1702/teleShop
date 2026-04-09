@@ -23,6 +23,7 @@ import {
 } from '~/server/utils/pricingPromoBonus'
 import { evaluateMenuAvailability, normalizeTimeWindows } from '~/server/utils/menuAvailability'
 import { isOpenNowBySchedule, normalizeWeeklyWorkingHours, resolveEffectiveWorkingHours } from '~/utils/workingHours'
+import { dispatchNotificationEvent } from '~/server/utils/notifications'
 
 interface TelegramUser {
   id: number
@@ -307,13 +308,6 @@ export default defineEventHandler(async (event) => {
   const tenantIntegrationKeys = tenantShop.integration_keys ?? {}
   const tenant = event.context.tenant
   const botToken = tenant?.telegramBotToken || (config.botToken as string)
-  const managerChatId = (
-    typeof tenantShop.manager_chat_id === 'string' && tenantShop.manager_chat_id.trim()
-      ? tenantShop.manager_chat_id
-      : typeof tenantIntegrationKeys.manager_chat_id === 'string'
-        ? tenantIntegrationKeys.manager_chat_id
-        : config.managerChatId
-  ) as string
   const tenantFulfillmentRaw = typeof tenantIntegrationKeys.fulfillment_types === 'string'
     ? tenantIntegrationKeys.fulfillment_types
     : (config.public?.fulfillmentTypes as string | undefined)
@@ -328,8 +322,8 @@ export default defineEventHandler(async (event) => {
   const availableFulfillmentTypes = parseAvailableFulfillmentTypes(tenantFulfillment)
   const globallyAllowed = await applyGlobalFulfillmentPolicy(event, tenantShopId, availableFulfillmentTypes)
 
-  if (!botToken || !managerChatId) {
-    throw createError({ statusCode: 500, message: 'Server config: bot token or manager chat ID missing' })
+  if (!botToken) {
+    throw createError({ statusCode: 500, message: 'Server config: bot token missing' })
   }
 
   const body = await readBody<{
@@ -619,48 +613,6 @@ export default defineEventHandler(async (event) => {
       ? generatedOrderNumber.trim()
       : orderId.slice(0, 8)
 
-  const text = buildOrderMessage(
-    orderNumber,
-    itemsWithServerPrice,
-    payableGoods,
-    deliveryCost,
-    fulfillmentType === 'delivery' ? deliveryZoneValidated : null,
-    user,
-    {
-      fulfillmentType,
-      pickupPoint,
-      addressLine,
-      flat,
-      comment,
-      paymentMethod,
-      changeFrom,
-      promo: promoBreakdown,
-    },
-  )
-
-  const callbackData = `work_${user.id}_${orderId}`
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-ignore — Buffer может быть не типизирован без @types/node
-  if (Buffer.byteLength(callbackData, 'utf8') > 64) {
-    throw createError({ statusCode: 500, message: 'callback_data too long' })
-  }
-
-  const payload: any = {
-    chat_id: managerChatId,
-    text,
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '✅ Принять в работу', callback_data: callbackData },
-          { text: '⏱ Задержка (кухня)', callback_data: `delayWork_${user.id}_${orderId}` },
-        ],
-        [
-          { text: '✉️ Написать клиенту', url: `tg://user?id=${user.id}` },
-        ],
-      ],
-    },
-  }
-
   // Persist order for dashboard & kitchen.
   // Note: WEB/TMA modes are normalized to `user.id` (Telegram id) above.
   const initialMetadata = {
@@ -681,6 +633,7 @@ export default defineEventHandler(async (event) => {
     id: orderId,
     shop_id: tenantShopId,
     restaurant_id: restaurant.id,
+    city_id: restaurant.city_id,
     customer_telegram_id: user.id,
     customer_profile_id: customerProfileId,
     order_number: orderNumber,
@@ -756,62 +709,25 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const url = `https://api.telegram.org/bot${botToken}/sendMessage`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-
-  if (!res.ok) {
-    const err = await res.text()
-    console.error('Telegram sendMessage error:', res.status, err)
-    throw createError({ statusCode: 502, message: 'Failed to send message to manager' })
-  }
-
-  // Дополнительное уведомление клиента о создании заказа (ошибки не критичны)
-  try {
-    const clientText = buildClientOrderMessage(
+  await dispatchNotificationEvent(event, {
+    eventId: crypto.randomUUID(),
+    eventType: 'ORDER_CREATED',
+    occurredAt: orderCreatedAtIso,
+    tenantContext: {
+      shopId: tenantShopId,
+      restaurantId: restaurant.id,
+      cityId: restaurant.city_id,
+    },
+    orderContext: {
+      orderId,
       orderNumber,
-      itemsWithServerPrice,
-      payableGoods,
-      deliveryCost,
-      fulfillmentType === 'delivery' ? deliveryZoneValidated : null,
-      {
-        fulfillmentType,
-        pickupPoint,
-        addressLine,
-        flat,
-        comment,
-        paymentMethod,
-        changeFrom,
-        promo: promoBreakdown,
-      },
-    )
-    const clientPayload: any = {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: user.id,
-        text: clientText,
-      }),
-    }
-
-    // Кнопка "написать менеджеру" ведёт в чат с ботом
-    const config = useRuntimeConfig()
-    const telegramBotName = (config.public?.telegramBotName as string | undefined) || ''
-    if (telegramBotName) {
-      const payloadBody = JSON.parse(clientPayload.body as string)
-      payloadBody.reply_markup = {
-        inline_keyboard: [[{ text: '✉️ Написать менеджеру', url: `https://t.me/${telegramBotName}` }]],
-      }
-      clientPayload.body = JSON.stringify(payloadBody)
-    }
-
-    await fetch(url, clientPayload)
-  } catch (notifyErr) {
-    console.error('Telegram notify client error:', notifyErr)
-  }
+      totalAmount: grandTotal,
+      status: 'new',
+    },
+    actorContext: {
+      customerTelegramId: user.id,
+    },
+  })
 
   return { ok: true, orderId, orderNumber }
 })

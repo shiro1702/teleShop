@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
@@ -9,6 +10,7 @@ import {
   type TimelineEntry,
 } from '~/server/utils/dashboardOrders'
 import { dashboardOrderStatusLabels } from '~/utils/dashboardOrderStatus'
+import { dispatchNotificationEvent } from '~/server/utils/notifications'
 
 type Body = {
   nextStatus?: string
@@ -55,7 +57,7 @@ export default defineEventHandler(async (event) => {
 
   const { data: existing, error: loadError } = await client
     .from('orders')
-    .select('id,status,metadata,fulfillment_type')
+    .select('id,order_number,status,metadata,fulfillment_type,total,restaurant_id,city_id,customer_telegram_id')
     .eq('id', id)
     .eq('shop_id', access.shopId)
     .maybeSingle()
@@ -102,6 +104,26 @@ export default defineEventHandler(async (event) => {
     console.error('dashboard order status update:', updateError)
     throw createError({ statusCode: 500, statusMessage: 'Failed to update order' })
   }
+
+  await dispatchNotificationEvent(event, {
+    eventId: crypto.randomUUID(),
+    eventType: 'ORDER_STATUS_CHANGED',
+    occurredAt: now,
+    tenantContext: {
+      shopId: access.shopId,
+      restaurantId: String((existing as any).restaurant_id || ''),
+      cityId: (existing as any).city_id ? String((existing as any).city_id) : null,
+    },
+    orderContext: {
+      orderId: String((existing as any).id),
+      orderNumber: String((existing as any).order_number || (existing as any).id).slice(0, 32),
+      totalAmount: Number((existing as any).total || 0),
+      status: nextStatus,
+    },
+    actorContext: {
+      customerTelegramId: (existing as any).customer_telegram_id ?? null,
+    },
+  })
 
   return { ok: true, status: nextStatus }
 })
