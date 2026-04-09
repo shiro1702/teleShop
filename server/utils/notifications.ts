@@ -217,12 +217,12 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
 
   const { data: shopRow } = await client
     .from('shops')
-    .select('name,telegram_bot_token,channel_policy')
+    .select('name,telegram_bot_token,manager_chat_id,channel_policy')
     .eq('id', input.tenantContext.shopId)
     .maybeSingle()
   const { data: branchRow } = await client
     .from('restaurants')
-    .select('name')
+    .select('name,manager_group_chat_id')
     .eq('id', input.tenantContext.restaurantId)
     .maybeSingle()
   const { data: cityRow } = input.tenantContext.cityId
@@ -254,6 +254,12 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
   const maxBackoffMs = [30_000, 120_000, 600_000]
   const maxEnabledByRuntime = Boolean(maxBaseUrl && maxToken)
   const maxEnabledByPolicy = Boolean((shopRow as any)?.channel_policy?.maxEnabled)
+  const defaultManagerTelegramChatId =
+    typeof (branchRow as any)?.manager_group_chat_id === 'string' && (branchRow as any).manager_group_chat_id.trim()
+      ? String((branchRow as any).manager_group_chat_id).trim()
+      : typeof (shopRow as any)?.manager_chat_id === 'string'
+        ? String((shopRow as any).manager_chat_id).trim()
+        : ''
 
   for (const recipient of recipients) {
     const key = buildNotificationKey(input.eventType, input.orderContext.orderId, recipient.channel, recipient.targetType, recipient.targetId)
@@ -299,9 +305,66 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
           }
         }
         if (!sent) {
-          // Auto-fallback to Telegram after MAX retry exhaustion.
+          const maxFailureReason = lastError || 'max_retry_exhausted'
+          await upsertNotificationEvent(event, {
+            key,
+            input,
+            channel: recipient.channel,
+            conversationId: recipient.conversationId,
+            status: 'failed',
+            lastError: maxFailureReason,
+          })
+
+          let fallbackTelegramTarget: string | null = null
+          if (recipient.targetType === 'customer') {
+            fallbackTelegramTarget = input.actorContext?.customerTelegramId
+              ? String(input.actorContext.customerTelegramId)
+              : null
+          } else if (recipient.targetType === 'manager_group') {
+            fallbackTelegramTarget = defaultManagerTelegramChatId || null
+          }
+
+          if (!fallbackTelegramTarget) {
+            throw new Error(`max_fallback_target_missing:${recipient.targetType}`)
+          }
+
+          const fallbackKey = buildNotificationKey(
+            input.eventType,
+            input.orderContext.orderId,
+            'telegram',
+            recipient.targetType,
+            fallbackTelegramTarget,
+          )
           const botToken = String((shopRow as any)?.telegram_bot_token || (config.botToken as string))
-          await sendTelegramMessage(botToken, recipient.targetId, `${text}\n\n[Fallback: MAX недоступен]`)
+          await upsertNotificationEvent(event, {
+            key: fallbackKey,
+            input,
+            channel: 'telegram',
+            conversationId: fallbackTelegramTarget,
+            status: 'pending',
+          })
+          try {
+            await sendTelegramMessage(botToken, fallbackTelegramTarget, `${text}\n\n[Fallback: MAX недоступен]`)
+            await upsertNotificationEvent(event, {
+              key: fallbackKey,
+              input,
+              channel: 'telegram',
+              conversationId: fallbackTelegramTarget,
+              status: 'sent',
+              lastError: `fallback_from_max:${maxFailureReason}`,
+            })
+          } catch (fallbackErr: any) {
+            await upsertNotificationEvent(event, {
+              key: fallbackKey,
+              input,
+              channel: 'telegram',
+              conversationId: fallbackTelegramTarget,
+              status: 'failed',
+              lastError: fallbackErr?.message || 'telegram_fallback_failed',
+            })
+            throw fallbackErr
+          }
+          continue
         }
       }
 

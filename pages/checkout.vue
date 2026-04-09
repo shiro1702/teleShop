@@ -739,16 +739,16 @@
                   <button
                     type="button"
                     class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 sm:w-auto"
-                    @click="authAndReturn"
+                    @click="openAuthModal('auth')"
                   >
                     Авторизоваться и оформить
                   </button>
                   <button
                     type="button"
                     class="w-full rounded-lg border border-primary px-4 py-3 text-base font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100 sm:w-auto"
-                    @click="continueInTelegramFromCheckout"
+                    @click="openAuthModal('continue')"
                   >
-                    Продолжить в Telegram‑боте
+                    Продолжить в боте
                   </button>
                 </template>
               </div>
@@ -789,25 +789,48 @@
           <span v-if="isPlacing">Оформляем заказ...</span>
           <span v-else>Оформить заказ</span>
         </button>
+        <p v-if="!isRestaurantOpenNow" class="text-xs text-red-600">
+          Ресторан сейчас закрыт. Оформление заказа недоступно.
+        </p>
         <template v-else>
           <button
             type="button"
             class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700"
-            @click="authAndReturn"
+            @click="openAuthModal('auth')"
           >
             Авторизоваться и оформить
           </button>
           <button
             type="button"
             class="w-full rounded-lg border border-primary px-4 py-3 text-base font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100"
-            @click="continueInTelegramFromCheckout"
+            @click="openAuthModal('continue')"
           >
-            Продолжить в Telegram‑боте
+            Продолжить в боте
           </button>
         </template>
       </div>
       </div>
     </Transition>
+
+    <Teleport to="body">
+      <div v-if="showAuthModal" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40" @click="closeAuthModal" />
+        <div class="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
+          <h3 class="text-base font-semibold text-gray-900">Выберите способ входа</h3>
+          <p class="mt-1 text-sm text-gray-600">
+            {{ authModalMode === 'auth' ? 'Авторизация для оформления заказа.' : 'Продолжение в выбранном боте.' }}
+          </p>
+          <div class="mt-4 space-y-2">
+            <button v-if="telegramBotUrl" type="button" class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white" @click="runAuthAction('telegram')">
+              {{ authModalMode === 'auth' ? 'Войти через Telegram' : 'Продолжить в Telegram' }}
+            </button>
+            <button v-if="maxBotUrl" type="button" class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary" @click="runAuthAction('max')">
+              {{ authModalMode === 'auth' ? 'Войти через MAX' : 'Продолжить в MAX' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -833,6 +856,11 @@ const telegramBotName = (config.public.telegramBotName as string | undefined) ||
 const telegramBotUrl = computed(() =>
   telegramBotName ? `https://t.me/${telegramBotName}` : null,
 )
+const maxBotUrl = computed(() => {
+  const raw = (config.public.maxBotUrl as string | undefined) || ''
+  const trimmed = raw.trim()
+  return trimmed || null
+})
 const theme = computed(() => tenant.value.theme || {})
 const pageBgColor = computed(() => theme.value.surface_background || 'var(--color-surface-bg)')
 const cardBgColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
@@ -927,6 +955,8 @@ const step2ActionsRef = ref<HTMLElement | null>(null)
 const isStep1InlineNavVisible = ref(false)
 const isStep2ActionsVisible = ref(false)
 const stepDirection = ref<'forward' | 'backward'>('forward')
+const showAuthModal = ref(false)
+const authModalMode = ref<'auth' | 'continue'>('auth')
 
 const stepTransitionName = computed(() =>
   stepDirection.value === 'forward' ? 'step-forward' : 'step-backward',
@@ -1727,6 +1757,40 @@ function authAndReturn() {
   if (!isClient()) return
   const url = `${telegramBotUrl.value}?start=auth_link${shopIdFromRoute.value ? `_${encodeURIComponent(shopIdFromRoute.value)}` : ''}`
   window.open(url, '_blank', 'noopener')
+}
+
+function openAuthModal(mode: 'auth' | 'continue') {
+  authModalMode.value = mode
+  showAuthModal.value = true
+}
+
+function closeAuthModal() {
+  showAuthModal.value = false
+}
+
+function openMaxAuth() {
+  if (!maxBotUrl.value || !isClient()) return
+  const startParam = `auth_link${shopIdFromRoute.value ? `_${encodeURIComponent(shopIdFromRoute.value)}` : ''}`
+  const hasQuery = maxBotUrl.value.includes('?')
+  const url = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(startParam)}`
+  window.open(url, '_blank', 'noopener')
+}
+
+async function runAuthAction(channel: 'telegram' | 'max') {
+  showAuthModal.value = false
+  if (authModalMode.value === 'continue') {
+    if (channel === 'telegram') {
+      await continueInTelegramFromCheckout()
+      return
+    }
+    openMaxAuth()
+    return
+  }
+  if (channel === 'telegram') {
+    authAndReturn()
+    return
+  }
+  openMaxAuth()
 }
 
 async function continueInTelegramFromCheckout() {

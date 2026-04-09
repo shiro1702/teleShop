@@ -23,6 +23,7 @@ export default defineNuxtConfig({
       defaultCitySlug: process.env.NUXT_DEFAULT_CITY_SLUG ?? 'ulan-ude',
       yandexMapsApiKey: process.env.YANDEX_MAPS_API_KEY ?? '',
       telegramBotName: process.env.NUXT_TELEGRAM_BOT_NAME ?? '',
+      maxBotUrl: process.env.NUXT_MAX_BOT_URL ?? '',
       pickupPointsJson: process.env.NUXT_PICKUP_POINTS_JSON ?? '',
       fulfillmentTypes: process.env.NUXT_FULFILLMENT_TYPES ?? 'delivery,pickup,qr-menu',
       dadataToken: process.env.DADATA_TOKEN ?? '',

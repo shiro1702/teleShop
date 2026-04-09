@@ -5,8 +5,13 @@
     <div v-if="!user" class="card">
       <p>Вы ещё не вошли на сайт.</p>
       <p class="hint">
-        Используйте кнопку «Войти через Telegram» в шапке, чтобы авторизоваться.
+        Выберите способ входа: Telegram или MAX.
       </p>
+      <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+        <button type="button" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white" @click="showAuthModal = true">
+          Войти
+        </button>
+      </div>
     </div>
 
     <template v-else>
@@ -119,11 +124,29 @@
       </div>
     </template>
   </div>
+  <Teleport to="body">
+    <div v-if="showAuthModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/40" @click="showAuthModal = false" />
+      <div class="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900">Выберите способ входа</h3>
+        <div class="mt-4 space-y-2">
+          <button v-if="telegramBotUrl" type="button" class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white" @click="openTelegramAuth">
+            Войти через Telegram
+          </button>
+          <button v-if="maxBotUrl" type="button" class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary" @click="openMaxAuth">
+            Войти через MAX
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useSupabaseUser } from '#imports'
+import { useRoute } from 'vue-router'
+declare const useRuntimeConfig: any
 
 type BalanceRow = {
   shopId: string
@@ -134,6 +157,16 @@ type BalanceRow = {
 }
 
 const user = useSupabaseUser()
+const route = useRoute()
+const config = useRuntimeConfig()
+const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
+const telegramBotUrl = computed(() => (telegramBotName ? `https://t.me/${telegramBotName}` : null))
+const maxBotUrl = computed(() => {
+  const raw = (config.public.maxBotUrl as string | undefined) || ''
+  const trimmed = raw.trim()
+  return trimmed || null
+})
+const showAuthModal = ref(false)
 
 const userId = computed<string | null>(() => {
   const raw = (user.value as any)?.sub
@@ -222,6 +255,24 @@ async function loadList() {
 watch([user, page, debouncedSearch], () => {
   void loadList()
 }, { immediate: true })
+
+function openTelegramAuth() {
+  showAuthModal.value = false
+  if (!telegramBotUrl.value || typeof window === 'undefined') return
+  const shopRef = typeof route.query.shop_id === 'string' ? route.query.shop_id.trim() : ''
+  const url = `${telegramBotUrl.value}?start=auth_link${shopRef ? `_${encodeURIComponent(shopRef)}` : ''}`
+  window.open(url, '_blank', 'noopener')
+}
+
+function openMaxAuth() {
+  showAuthModal.value = false
+  if (!maxBotUrl.value || typeof window === 'undefined') return
+  const shopRef = typeof route.query.shop_id === 'string' ? route.query.shop_id.trim() : ''
+  const startParam = `auth_link${shopRef ? `_${encodeURIComponent(shopRef)}` : ''}`
+  const hasQuery = maxBotUrl.value.includes('?')
+  const url = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(startParam)}`
+  window.open(url, '_blank', 'noopener')
+}
 </script>
 
 <style scoped>

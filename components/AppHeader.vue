@@ -119,16 +119,44 @@
 
         <!-- Не авторизован: на мобилке — компактно, на десктопе — текст -->
         <button
-          v-else-if="telegramBotUrl"
+          v-else-if="telegramBotUrl || maxBotUrl"
           type="button"
           class="rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100 sm:rounded-lg"
-          @click="openTelegramAuth"
+          @click="openAuthModal"
         >
           <span class="sm:hidden">Войти</span>
-          <span class="hidden sm:inline">Войти через Telegram</span>
+          <span class="hidden sm:inline">Войти</span>
         </button>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div v-if="showAuthModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40" @click="closeAuthModal" />
+        <div class="relative w-full max-w-sm rounded-2xl p-5 shadow-xl" :style="menuStyle">
+          <h3 class="text-base font-semibold" :style="{ color: mainTextColor }">Выберите способ входа</h3>
+          <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">Доступна авторизация через Telegram или MAX.</p>
+          <div class="mt-4 space-y-2">
+            <button
+              v-if="telegramBotUrl"
+              type="button"
+              class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-600"
+              @click="openTelegramAuth"
+            >
+              Войти через Telegram
+            </button>
+            <button
+              v-if="maxBotUrl"
+              type="button"
+              class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50"
+              @click="openMaxAuth"
+            >
+              Войти через MAX
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </header>
 </template>
 
@@ -156,6 +184,11 @@ const telegramBotName = (config.public.telegramBotName as string | undefined) ||
 const telegramBotUrl = computed(() =>
   telegramBotName ? `https://t.me/${telegramBotName}` : null,
 )
+const maxBotUrl = computed(() => {
+  const raw = (config.public.maxBotUrl as string | undefined) || ''
+  const trimmed = raw.trim()
+  return trimmed || null
+})
 const homeLink = computed(() => tenantPath('/'))
 const ordersLink = computed(() => {
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
@@ -203,6 +236,7 @@ const isNonTenantRoute = computed(() => {
     '/partners',
     '/platform',
     '/link-telegram',
+    '/link-max',
   ]
   return nonTenantPrefixes.some((prefix) => routePath.startsWith(prefix))
 })
@@ -245,6 +279,7 @@ const menuStyle = computed(() => ({
 }))
 
 const showUserMenu = ref(false)
+const showAuthModal = ref(false)
 const userMenuRootRef = ref<HTMLElement | null>(null)
 
 function onDocumentClickCapture(e: MouseEvent) {
@@ -258,11 +293,29 @@ function onDocumentClickCapture(e: MouseEvent) {
 }
 
 function openTelegramAuth() {
+  showAuthModal.value = false
   if (!telegramBotUrl.value) return
   if (typeof window !== 'undefined') {
     const url = `${telegramBotUrl.value}?start=auth_link${tenantKey.value ? `_${encodeURIComponent(tenantKey.value)}` : ''}`
     window.open(url, '_blank', 'noopener')
   }
+}
+
+function openMaxAuth() {
+  showAuthModal.value = false
+  if (!maxBotUrl.value || typeof window === 'undefined') return
+  const startParam = `auth_link${tenantKey.value ? `_${encodeURIComponent(tenantKey.value)}` : ''}`
+  const hasQuery = maxBotUrl.value.includes('?')
+  const url = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(startParam)}`
+  window.open(url, '_blank', 'noopener')
+}
+
+function openAuthModal() {
+  showAuthModal.value = true
+}
+
+function closeAuthModal() {
+  showAuthModal.value = false
 }
 
 function toggleUserMenu() {
