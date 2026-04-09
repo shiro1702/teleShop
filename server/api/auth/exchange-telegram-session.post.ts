@@ -7,6 +7,27 @@ interface ExchangeSessionBody {
   token?: string
 }
 
+async function findAuthUserIdByEmail(
+  serviceClient: Awaited<ReturnType<typeof serverSupabaseServiceRole>>,
+  email: string,
+): Promise<string | null> {
+  let page = 1
+  const perPage = 200
+  while (page <= 10) {
+    const { data, error } = await serviceClient.auth.admin.listUsers({ page, perPage })
+    if (error) {
+      console.error('Error listing auth users in exchange-session:', error)
+      return null
+    }
+    const users = data?.users ?? []
+    const hit = users.find((user) => (user.email || '').toLowerCase() === email.toLowerCase())
+    if (hit?.id) return hit.id
+    if (users.length < perPage) break
+    page += 1
+  }
+  return null
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody<ExchangeSessionBody>(event)
 
@@ -198,11 +219,58 @@ export default defineEventHandler(async (event) => {
       })
 
       if (updateError) {
-        console.error('Error updating existing auth user in exchange-session:', updateError)
-        throw createError({
-          statusCode: 500,
-          statusMessage: 'Failed to prepare existing Telegram user',
+        const message = String(updateError.message || '').toLowerCase()
+        const isEmailConflict =
+          message.includes('email') &&
+          (message.includes('already') || message.includes('exists') || message.includes('duplicate'))
+
+        if (!isEmailConflict) {
+          console.error('Error updating existing auth user in exchange-session:', updateError)
+          throw createError({
+            statusCode: 500,
+            statusMessage: 'Failed to prepare existing Telegram user',
+          })
+        }
+
+        // Repair path: synthetic email already belongs to another auth user.
+        // Rebind profile to that synthetic user and normalize password.
+        const syntheticUserId = await findAuthUserIdByEmail(serviceClient, syntheticEmail)
+        if (!syntheticUserId) {
+          console.error('Synthetic user not found during repair for email:', syntheticEmail)
+          throw createError({
+            statusCode: 500,
+            statusMessage: 'Failed to repair Telegram user mapping',
+          })
+        }
+
+        const { error: normalizeSyntheticError } = await serviceClient.auth.admin.updateUserById(syntheticUserId, {
+          password: syntheticPassword,
+          email_confirm: true,
+          user_metadata: {
+            telegram_id: telegramId,
+          },
         })
+        if (normalizeSyntheticError) {
+          console.error('Error normalizing synthetic auth user in exchange-session:', normalizeSyntheticError)
+          throw createError({
+            statusCode: 500,
+            statusMessage: 'Failed to normalize synthetic Telegram user',
+          })
+        }
+
+        const { error: rebindError } = await serviceClient
+          .from('profiles')
+          .update({ id: syntheticUserId, telegram_id: telegramId })
+          .eq('id', userId)
+          .eq('telegram_id', telegramId)
+        if (rebindError) {
+          console.error('Error rebinding profile to synthetic user in exchange-session:', rebindError)
+          throw createError({
+            statusCode: 500,
+            statusMessage: 'Failed to rebind Telegram profile',
+          })
+        }
+        userId = syntheticUserId
       }
     }
   }
