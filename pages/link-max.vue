@@ -67,6 +67,21 @@ function resolveTenantCartTarget() {
   return serialized ? `${safePath}?${serialized}` : safePath
 }
 
+async function resolveCanonicalCartTarget() {
+  if (!shopId.value) return resolveTenantCartTarget()
+  try {
+    const canonical = await $fetch<{ ok: boolean; cartPath?: string }>('/api/tenant/resolve-canonical', {
+      query: { shop_id: shopId.value },
+    })
+    if (canonical?.ok && typeof canonical.cartPath === 'string' && canonical.cartPath.startsWith('/')) {
+      return canonical.cartPath
+    }
+  } catch {
+    // fall back to local target resolution
+  }
+  return resolveTenantCartTarget()
+}
+
 onMounted(async () => {
   if (!token.value) {
     errorMessage.value = 'Некорректная или устаревшая ссылка.'
@@ -111,7 +126,7 @@ const linkMax = async () => {
     }
 
     isSuccess.value = true
-    await router.replace(resolveTenantCartTarget())
+    await router.replace(await resolveCanonicalCartTarget())
   } catch (err: any) {
     errorMessage.value =
       err?.data?.statusMessage ||

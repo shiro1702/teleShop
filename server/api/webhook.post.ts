@@ -105,6 +105,11 @@ export default defineEventHandler(async (event) => {
       : config.managerChatId
   ) as string
   const appUrlBase = ((config.appUrl as string) || '').replace(/\/$/, '')
+  const defaultCitySlug = (
+    typeof config.public?.defaultCitySlug === 'string' && config.public.defaultCitySlug.trim()
+      ? config.public.defaultCitySlug.trim()
+      : 'ulan-ude'
+  )
   const appUrl = tenant?.shop?.custom_domain
     ? `https://${tenant.shop.custom_domain}`
     : tenant?.shop?.slug
@@ -192,7 +197,7 @@ export default defineEventHandler(async (event) => {
         const effectiveShopId = tenant?.shop?.slug || startShopId || ''
         const redirectPath = tenant?.shop?.custom_domain
           ? '/cart'
-          : `${tenant?.shop?.slug ? `/${tenant.shop.slug}` : (effectiveShopId ? `/${effectiveShopId}` : '')}/cart`
+          : `${effectiveShopId ? `/${defaultCitySlug}/${effectiveShopId}` : ''}/cart`
         const link = `${baseUrl}/link-telegram?token=${token}&redirect=${encodeURIComponent(redirectPath)}${effectiveShopId ? `&shop_id=${encodeURIComponent(effectiveShopId)}` : ''}`
 
         await telegram(botToken, 'sendMessage', {
@@ -252,7 +257,7 @@ export default defineEventHandler(async (event) => {
       const baseUrl = appUrl.replace(/\/$/, '')
       const fallbackRedirect = tenant?.shop?.custom_domain
         ? '/cart'
-        : `${tenant?.shop?.slug ? `/${tenant.shop.slug}` : ''}/cart`
+        : `${tenant?.shop?.slug ? `/${defaultCitySlug}/${tenant.shop.slug}` : ''}/cart`
       const link = `${baseUrl}/link-telegram?token=${token}&redirect=${encodeURIComponent(fallbackRedirect)}${tenant?.shop?.slug ? `&shop_id=${encodeURIComponent(tenant.shop.slug)}` : ''}`
 
       await telegram(botToken, 'sendMessage', {

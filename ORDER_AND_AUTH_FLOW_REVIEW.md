@@ -71,7 +71,7 @@
 
 - `/start auth_link` (переход с сайта `https://t.me/<bot>?start=auth_link`):
   - аналогично создаёт токен;
-  - строит ссылку `appUrl/link-telegram?token=...&redirect=/`;
+  - строит ссылку `appUrl/link-telegram?token=...&redirect=/<city_slug>/<tenant_slug>/cart`;
   - отправляет кнопку «Привязать Telegram и вернуться на сайт».
 
 #### 2.3. Страница `link-telegram.vue`
@@ -82,7 +82,12 @@
   - вызывает `POST /api/auth/link-telegram` с `{ token }`;
   - при успехе:
     - помечает `isSuccess = true`;
-    - если есть `redirect`, делает `router.replace(redirect)`.
+    - редиректит в каноничную tenant корзину (`/:city_slug/:tenant_slug/cart`).
+
+#### 2.3.1. Legacy маршрут checkout удален
+
+- Маршрут вида `/checkout?shop_id=...` больше не является рабочим storefront-путем.
+- Для таких запросов используется серверный редирект в каноничную tenant корзину или 404 при невозможности резолва.
 
 #### 2.4. `/api/auth/link-telegram` — Telegram как основной логин
 

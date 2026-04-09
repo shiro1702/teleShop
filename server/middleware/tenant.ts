@@ -4,6 +4,7 @@ import {
   getShopByBotId,
   getShopByCustomDomain,
   getShopById,
+  resolveCanonicalTenantCartPath,
   resolveShopIdFromEvent,
 } from '~/server/utils/tenant'
 import { getStyleRecord } from '~/server/utils/organizationStyle'
@@ -82,6 +83,8 @@ function extractCityAndTenantFromPath(path: string): { citySlug: string; tenantS
 
 export default defineEventHandler(async (event) => {
   const path = event.path || ''
+  const normalizedPath = (path.split('?')[0] || '/').replace(/\/+$/, '') || '/'
+  const isLegacyFlatCheckout = normalizedPath === '/checkout'
   const isCartBridgeGet = path.startsWith('/api/cart-bridge') && event.method === 'GET'
   const config = useRuntimeConfig()
   const defaultCitySlug = typeof config.public?.defaultCitySlug === 'string' ? config.public.defaultCitySlug : null
@@ -133,6 +136,11 @@ export default defineEventHandler(async (event) => {
   }
   if (!shop.is_active) {
     throw createError({ statusCode: 403, message: 'Shop is inactive' })
+  }
+
+  if (!path.startsWith('/api/') && isLegacyFlatCheckout) {
+    const canonical = await resolveCanonicalTenantCartPath(event, shop)
+    return sendRedirect(event, canonical.cartPath, 302)
   }
 
   let uiSettings = shop.ui_settings ?? {}

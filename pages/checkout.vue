@@ -989,6 +989,14 @@ const shopIdFromRoute = computed(() => {
   const fromQuery = typeof route.query.shop_id === 'string' ? route.query.shop_id.trim() : ''
   return fromTenantState || fromRouteSlug || fromQuery || null
 })
+const hasTenantRouteContext = computed(() => {
+  const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  return !!tenantSlug
+})
+
+if (!hasTenantRouteContext.value && !shopIdFromRoute.value) {
+  throw createError({ statusCode: 404, statusMessage: 'Checkout route not found' })
+}
 
 function applyCartScope() {
   const scope = resolveCartScopeKey(route, shopIdFromRoute.value)
@@ -1614,6 +1622,20 @@ watch(
 )
 
 onMounted(async () => {
+  if (!hasTenantRouteContext.value && shopIdFromRoute.value) {
+    try {
+      const canonical = await $fetch<{ ok: boolean; cartPath: string }>('/api/tenant/resolve-canonical', {
+        query: { shop_id: shopIdFromRoute.value },
+      })
+      if (canonical?.ok && typeof canonical.cartPath === 'string') {
+        await navigateTo(canonical.cartPath, { replace: true })
+        return
+      }
+    } catch {
+      throw createError({ statusCode: 404, statusMessage: 'Checkout route not found' })
+    }
+  }
+
   const saved = await loadCheckoutStateCloud()
   if (saved) restoreFromPlainObject(saved)
 

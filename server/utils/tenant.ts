@@ -237,6 +237,42 @@ export async function requireTenantShop(event: H3Event): Promise<{ shopId: strin
   return { shopId: shop.id, shop }
 }
 
+export async function resolveCanonicalTenantCartPath(
+  event: H3Event,
+  shop: Pick<TenantShop, 'id' | 'slug'>,
+): Promise<{ citySlug: string; tenantSlug: string; cartPath: string; checkoutPath: string }> {
+  const config = useRuntimeConfig()
+  const defaultCitySlugRaw = typeof config.public?.defaultCitySlug === 'string' ? config.public.defaultCitySlug : ''
+  const defaultCitySlug = defaultCitySlugRaw.trim() || 'ulan-ude'
+
+  const client = await serverSupabaseServiceRole(event)
+  const { data: restaurants } = await client
+    .from('restaurants')
+    .select('city_id,is_active')
+    .eq('shop_id', shop.id)
+    .eq('is_active', true)
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  let citySlug = defaultCitySlug
+  const cityId = Array.isArray(restaurants) && restaurants[0]?.city_id ? String(restaurants[0].city_id) : ''
+  if (cityId) {
+    const { data: cityRow } = await client
+      .from('cities')
+      .select('slug')
+      .eq('id', cityId)
+      .maybeSingle<{ slug: string }>()
+    if (cityRow?.slug?.trim()) {
+      citySlug = cityRow.slug.trim()
+    }
+  }
+
+  const tenantSlug = shop.slug.trim()
+  const cartPath = `/${citySlug}/${tenantSlug}/cart`
+  const checkoutPath = `/${citySlug}/${tenantSlug}/checkout`
+  return { citySlug, tenantSlug, cartPath, checkoutPath }
+}
+
 /**
  * Проверяет, что shop_id из тела запроса относится к тому же магазину, что и tenant-контекст.
  * В теле можно передать UUID магазина или его slug — оба сопоставляются с `shops.id`.
