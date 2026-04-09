@@ -221,28 +221,29 @@ export default defineEventHandler(async (event) => {
       })
 
       if (updateError) {
-        const message = String(updateError.message || '').toLowerCase()
-        const isEmailConflict =
-          message.includes('email') &&
-          (message.includes('already') || message.includes('exists') || message.includes('duplicate'))
+        console.warn('Primary updateUserById failed, trying repair path in exchange-session:', updateError)
 
-        if (!isEmailConflict) {
-          console.error('Error updating existing auth user in exchange-session:', updateError)
-          throw createError({
-            statusCode: 500,
-            statusMessage: 'Failed to prepare existing Telegram user',
-          })
-        }
-
-        // Repair path: synthetic email already belongs to another auth user.
-        // Rebind profile to that synthetic user and normalize password.
-        const syntheticUserId = await findAuthUserIdByEmail(serviceClient, syntheticEmail)
+        // Repair path: synthetic email may belong to another auth user OR current user cannot be normalized directly.
+        // Rebind profile to synthetic user and normalize password/metadata.
+        let syntheticUserId = await findAuthUserIdByEmail(serviceClient, syntheticEmail)
         if (!syntheticUserId) {
-          console.error('Synthetic user not found during repair for email:', syntheticEmail)
-          throw createError({
-            statusCode: 500,
-            statusMessage: 'Failed to repair Telegram user mapping',
-          })
+          const { data: createdSyntheticUser, error: createSyntheticError } =
+            await serviceClient.auth.admin.createUser({
+              email: syntheticEmail,
+              password: syntheticPassword,
+              email_confirm: true,
+              user_metadata: {
+                telegram_id: telegramId,
+              },
+            })
+          if (createSyntheticError || !createdSyntheticUser?.user?.id) {
+            console.error('Error creating synthetic auth user during repair in exchange-session:', createSyntheticError)
+            throw createError({
+              statusCode: 500,
+              statusMessage: 'Failed to prepare existing Telegram user',
+            })
+          }
+          syntheticUserId = createdSyntheticUser.user.id
         }
 
         const { error: normalizeSyntheticError } = await serviceClient.auth.admin.updateUserById(syntheticUserId, {
