@@ -145,6 +145,7 @@ type ClientOrder = {
   total: number
   deliveryCost: number
   itemsCount: number
+  itemsPreview?: Array<{ name: string; quantity: number }>
   createdAt: string
 }
 
@@ -181,6 +182,13 @@ type ClientOrderStatusDetail = {
 const detailErrorMessage = ref('')
 const detailOrder = ref<ClientOrderStatusDetail | null>(null)
 let detailPollHandle: number | null = null
+type NormalizedOrder = ClientOrder & {
+  statusText: string
+  paymentText: string
+  fulfillmentText: string
+  createdAtText: string
+  totalText: string
+}
 
 function requestHeaders() {
   const headers: Record<string, string> = {}
@@ -268,7 +276,7 @@ onBeforeUnmount(() => {
   }
 })
 
-watch(selectedOrderId, async (nextId) => {
+watch(selectedOrderId, async (nextId: string) => {
   if (detailPollHandle != null) {
     window.clearInterval(detailPollHandle)
     detailPollHandle = null
@@ -298,7 +306,9 @@ function paymentLabel(method: string) {
 }
 
 function fulfillmentLabel(type: string) {
-  return type === 'pickup' ? 'Самовывоз' : 'Доставка'
+  if (type === 'pickup') return 'Самовывоз'
+  if (type === 'qr-menu') return 'QR-меню'
+  return 'Доставка'
 }
 
 function formatDate(value: string) {
@@ -322,7 +332,7 @@ function formatPrice(value: number) {
   }).format(value)
 }
 
-const normalizedOrders = computed(() => (data.value?.items || []).map((order) => ({
+const normalizedOrders = computed<NormalizedOrder[]>(() => (data.value?.items || []).map((order: ClientOrder) => ({
   ...order,
   statusText: statusLabel(order.status),
   paymentText: paymentLabel(order.paymentMethod),
@@ -333,12 +343,12 @@ const normalizedOrders = computed(() => (data.value?.items || []).map((order) =>
 
 const filteredOrders = computed(() => {
   const q = query.value.toLowerCase()
-  let list = normalizedOrders.value.filter((order) => order.restaurantName.toLowerCase().includes(q))
+  let list = normalizedOrders.value.filter((order: NormalizedOrder) => order.restaurantName.toLowerCase().includes(q))
 
   if (statusFilter.value === 'active') {
-    list = list.filter((order) => order.isActive)
+    list = list.filter((order: NormalizedOrder) => order.isActive)
   } else if (statusFilter.value === 'history') {
-    list = list.filter((order) => !order.isActive)
+    list = list.filter((order: NormalizedOrder) => !order.isActive)
   }
 
   if (sortBy.value === 'oldest') {
@@ -352,7 +362,7 @@ const filteredOrders = computed(() => {
   return list
 })
 
-const activeOrders = computed(() => normalizedOrders.value.filter((order) => order.isActive))
+const activeOrders = computed(() => normalizedOrders.value.filter((order: NormalizedOrder) => order.isActive))
 
 const OrderCard = defineComponent({
   props: {
@@ -361,7 +371,7 @@ const OrderCard = defineComponent({
       required: true,
     },
   },
-  setup(props) {
+  setup(props: { order: NormalizedOrder }) {
     return () => h('div', { class: 'space-y-2 text-sm text-gray-700' }, [
       h('div', { class: 'flex flex-wrap items-center justify-between gap-2' }, [
         h('p', { class: 'font-semibold text-gray-900' }, props.order.restaurantName),
@@ -382,6 +392,20 @@ const OrderCard = defineComponent({
         h('span', { class: 'text-xs text-gray-600' }, `Позиций: ${props.order.itemsCount}`),
         h('span', { class: 'font-semibold text-primary' }, props.order.totalText),
       ]),
+      ...(Array.isArray(props.order.itemsPreview) && props.order.itemsPreview.length
+        ? [
+            h('div', { class: 'pt-1' }, [
+              h('p', { class: 'text-xs font-medium text-gray-700' }, 'Состав:'),
+              h(
+                'p',
+                { class: 'text-xs text-gray-600' },
+                props.order.itemsPreview
+                  .map((item: { name: string; quantity: number }) => `${item.name} × ${item.quantity}`)
+                  .join(', '),
+              ),
+            ]),
+          ]
+        : []),
     ])
   },
 })
