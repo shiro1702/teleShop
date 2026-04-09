@@ -38,10 +38,30 @@ const redirectPath = computed(() => {
   const r = route.query.redirect
   return typeof r === 'string' ? r : undefined
 })
+const shopId = computed(() => {
+  const s = route.query.shop_id
+  return typeof s === 'string' && s.trim() ? s.trim() : undefined
+})
 
 const isLoading = ref(false)
 const isSuccess = ref(false)
 const errorMessage = ref<string | null>(null)
+
+function buildRedirectTarget() {
+  const fallbackPath = '/'
+  const raw = redirectPath.value || fallbackPath
+  if (!shopId.value) return raw
+  if (!raw.startsWith('/')) return fallbackPath
+
+  // Preserve tenant context after auth for routes like /checkout.
+  const [pathPart, queryPart = ''] = raw.split('?')
+  const query = new URLSearchParams(queryPart)
+  if (!query.get('shop_id')) {
+    query.set('shop_id', shopId.value)
+  }
+  const serialized = query.toString()
+  return serialized ? `${pathPart}?${serialized}` : pathPart
+}
 
 onMounted(async () => {
   if (!token.value) {
@@ -78,11 +98,7 @@ const linkMax = async () => {
     if (setError) throw new Error('Не удалось установить сессию Supabase на клиенте.')
 
     isSuccess.value = true
-    if (redirectPath.value) {
-      await router.replace(redirectPath.value)
-    } else {
-      await router.replace('/')
-    }
+    await router.replace(buildRedirectTarget())
   } catch (err: any) {
     errorMessage.value =
       err?.data?.statusMessage ||
