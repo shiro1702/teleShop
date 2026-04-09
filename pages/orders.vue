@@ -26,11 +26,7 @@
         </span>
       </div>
 
-      <div v-if="detailPending" class="mt-4 text-sm text-gray-600">
-        Загружаем статус…
-      </div>
-
-      <div v-else-if="detailErrorMessage" class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      <div v-if="detailErrorMessage" class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
         {{ detailErrorMessage }}
       </div>
 
@@ -182,7 +178,6 @@ type ClientOrderStatusDetail = {
   timeline: Array<{ at: string; label: string }>
 }
 
-const detailPending = ref(false)
 const detailErrorMessage = ref('')
 const detailOrder = ref<ClientOrderStatusDetail | null>(null)
 let detailPollHandle: number | null = null
@@ -210,7 +205,6 @@ function detailStatusClass(status: string) {
 
 async function loadDetailOrderStatus() {
   if (!selectedOrderId.value) return
-  detailPending.value = true
   detailErrorMessage.value = ''
   try {
     const res = await fetch(
@@ -238,8 +232,6 @@ async function loadDetailOrderStatus() {
     }
   } catch (e: any) {
     detailErrorMessage.value = e?.message || 'Не удалось загрузить статус заказа'
-  } finally {
-    detailPending.value = false
   }
 }
 

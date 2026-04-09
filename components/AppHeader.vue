@@ -324,6 +324,13 @@ function toggleUserMenu() {
 
 async function logout() {
   showUserMenu.value = false
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const routeTenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  const currentTenantSlug = routeTenantSlug || (typeof tenant.value.tenantSlug === 'string' ? tenant.value.tenantSlug.trim() : '')
+  const fallbackCitySlug = selectedCitySlug.value || defaultCitySlug.value
+  const aggregatorPath = citySlug ? `/${citySlug}` : `/${fallbackCitySlug}`
+  const redirectPath = currentTenantSlug && citySlug ? `/${citySlug}/${currentTenantSlug}` : aggregatorPath
+
   try {
     const { error } = await supabase.auth.signOut()
     if (error) {
@@ -331,6 +338,8 @@ async function logout() {
     }
   } catch (e) {
     console.error('Logout error:', e)
+  } finally {
+    await router.push(redirectPath)
   }
 }
 
