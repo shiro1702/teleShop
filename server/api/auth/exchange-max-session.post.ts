@@ -159,6 +159,7 @@ export default defineEventHandler(async (event) => {
     success: true,
     userId,
     maxUserId,
+    bridge_payload: tokenRow.bridge_payload ?? null,
     access_token: signInData.session.access_token,
     refresh_token: signInData.session.refresh_token,
     expires_in: signInData.session.expires_in,

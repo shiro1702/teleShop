@@ -46,21 +46,25 @@ const shopId = computed(() => {
 const isLoading = ref(false)
 const isSuccess = ref(false)
 const errorMessage = ref<string | null>(null)
+const cartStore = useCartStore()
 
-function buildRedirectTarget() {
-  const fallbackPath = '/'
+function resolveTenantCartTarget() {
+  const fallbackPath = shopId.value ? `/${shopId.value}/cart` : '/cart'
   const raw = redirectPath.value || fallbackPath
-  if (!shopId.value) return raw
   if (!raw.startsWith('/')) return fallbackPath
 
-  // Preserve tenant context after auth for routes like /checkout.
   const [pathPart, queryPart = ''] = raw.split('?')
   const query = new URLSearchParams(queryPart)
-  if (!query.get('shop_id')) {
+  const safePath = pathPart.endsWith('/cart')
+    ? pathPart
+    : pathPart.endsWith('/checkout')
+      ? pathPart.replace(/\/checkout$/, '/cart')
+      : fallbackPath
+  if (!query.get('shop_id') && shopId.value) {
     query.set('shop_id', shopId.value)
   }
   const serialized = query.toString()
-  return serialized ? `${pathPart}?${serialized}` : pathPart
+  return serialized ? `${safePath}?${serialized}` : safePath
 }
 
 onMounted(async () => {
@@ -85,6 +89,10 @@ const linkMax = async () => {
       success: boolean
       access_token: string
       refresh_token: string
+      bridge_payload?: {
+        scopeKey?: string
+        items?: unknown[]
+      } | null
     }>('/api/auth/exchange-max-session', {
       method: 'POST',
       body: { token: token.value },
@@ -97,8 +105,13 @@ const linkMax = async () => {
     })
     if (setError) throw new Error('Не удалось установить сессию Supabase на клиенте.')
 
+    if (res.bridge_payload) {
+      const fallbackScopeKey = shopId.value || null
+      cartStore.mergeBridgePayload(res.bridge_payload as any, fallbackScopeKey)
+    }
+
     isSuccess.value = true
-    await router.replace(buildRedirectTarget())
+    await router.replace(resolveTenantCartTarget())
   } catch (err: any) {
     errorMessage.value =
       err?.data?.statusMessage ||

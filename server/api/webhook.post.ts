@@ -21,6 +21,31 @@ async function telegram(
 }
 
 type CallbackKind = 'status' | 'delay'
+type ParsedAuthStart = {
+  shopRef: string
+  bridgeKey: string
+}
+
+function parseAuthStartParts(parts: string[]): ParsedAuthStart {
+  const out: ParsedAuthStart = { shopRef: '', bridgeKey: '' }
+  for (const part of parts) {
+    const chunk = (part || '').trim()
+    if (!chunk) continue
+    if (chunk.startsWith('s-') && chunk.length > 2) {
+      out.shopRef = chunk.slice(2)
+      continue
+    }
+    if (chunk.startsWith('b-') && chunk.length > 2) {
+      out.bridgeKey = chunk.slice(2)
+      continue
+    }
+  }
+  // Backward compatibility: auth_link_<shopRef>
+  if (!out.shopRef && parts.length > 0) {
+    out.shopRef = (parts[0] || '').trim()
+  }
+  return out
+}
 
 function parseCallbackData(
   data: string,
@@ -118,18 +143,39 @@ export default defineEventHandler(async (event) => {
       const startParam = paramRaw || ''
       const startParts = startParam.split('_')
       const startKey = startParts.slice(0, 2).join('_')
-      const startShopId = startParts.length > 2 ? startParts.slice(2).join('_') : ''
 
       // Специальный сценарий: старт с параметром для авторизации с возвратом на сайт
       if (startKey === 'auth_link' && appUrl) {
         const supabase = await serverSupabaseServiceRole(event)
         const token = randomUUID()
+        const parsedAuthStart = parseAuthStartParts(startParts.slice(2))
+        const startShopId = parsedAuthStart.shopRef
+        const bridgeKey = parsedAuthStart.bridgeKey
+        let bridgePayload: Record<string, unknown> | null = null
+
+        if (bridgeKey) {
+          const { data: bridgeRow } = await supabase
+            .from('auth_bridge_sessions')
+            .select('payload, shop_id, expires_at')
+            .eq('bridge_key', bridgeKey)
+            .maybeSingle()
+
+          const isExpired = bridgeRow?.expires_at
+            ? new Date(String(bridgeRow.expires_at)).getTime() < Date.now()
+            : true
+          if (bridgeRow && !isExpired) {
+            bridgePayload = (bridgeRow.payload as Record<string, unknown>) || null
+            await supabase.from('auth_bridge_sessions').delete().eq('bridge_key', bridgeKey)
+          }
+        }
 
         const { error } = await supabase
           .from('auth_tokens')
           .insert({
             token,
             telegram_id: chatId,
+            channel: 'telegram',
+            bridge_payload: bridgePayload,
           })
 
         if (error) {
@@ -142,9 +188,11 @@ export default defineEventHandler(async (event) => {
         }
 
         const baseUrl = appUrl.replace(/\/$/, '')
-        // После привязки возвращаем пользователя на оформление заказа
-        const redirectPath = tenant?.shop?.custom_domain ? '/checkout' : `${tenant?.shop?.slug ? `/${tenant.shop.slug}` : ''}/checkout`
+        // После привязки возвращаем пользователя на корзину текущего ресторана.
         const effectiveShopId = tenant?.shop?.slug || startShopId || ''
+        const redirectPath = tenant?.shop?.custom_domain
+          ? '/cart'
+          : `${tenant?.shop?.slug ? `/${tenant.shop.slug}` : (effectiveShopId ? `/${effectiveShopId}` : '')}/cart`
         const link = `${baseUrl}/link-telegram?token=${token}&redirect=${encodeURIComponent(redirectPath)}${effectiveShopId ? `&shop_id=${encodeURIComponent(effectiveShopId)}` : ''}`
 
         await telegram(botToken, 'sendMessage', {
@@ -202,7 +250,10 @@ export default defineEventHandler(async (event) => {
       }
 
       const baseUrl = appUrl.replace(/\/$/, '')
-      const link = `${baseUrl}/link-telegram?token=${token}${tenant?.shop?.slug ? `&shop_id=${encodeURIComponent(tenant.shop.slug)}` : ''}`
+      const fallbackRedirect = tenant?.shop?.custom_domain
+        ? '/cart'
+        : `${tenant?.shop?.slug ? `/${tenant.shop.slug}` : ''}/cart`
+      const link = `${baseUrl}/link-telegram?token=${token}&redirect=${encodeURIComponent(fallbackRedirect)}${tenant?.shop?.slug ? `&shop_id=${encodeURIComponent(tenant.shop.slug)}` : ''}`
 
       await telegram(botToken, 'sendMessage', {
         chat_id: chatId,

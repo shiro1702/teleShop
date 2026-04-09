@@ -39,6 +39,11 @@ export interface CartItem extends Product {
   unitPrice: number // Base price (or parameter price) + modifiers
 }
 
+export interface BridgeCartPayload {
+  scopeKey?: string | null
+  items?: CartItem[]
+}
+
 function getStoredCartItems(scopeKey: string | null): CartItem[] {
   if (typeof localStorage === 'undefined') return []
   try {
@@ -70,6 +75,44 @@ function persistCart(scopeKey: string | null, items: CartItem[]) {
   } catch {
     // ignore quota / private mode
   }
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function normalizeBridgeItem(input: unknown): CartItem | null {
+  if (!input || typeof input !== 'object') return null
+  const row = input as Record<string, unknown>
+  const id = typeof row.id === 'string' ? row.id.trim() : ''
+  const name = typeof row.name === 'string' ? row.name : ''
+  const image = typeof row.image === 'string' ? row.image : ''
+  const category = typeof row.category === 'string' ? row.category : ''
+  const price = isFiniteNumber(row.price) ? row.price : null
+  const quantity = isFiniteNumber(row.quantity) ? Math.floor(row.quantity) : null
+  const unitPrice = isFiniteNumber(row.unitPrice) ? row.unitPrice : null
+  const cartItemId = typeof row.cartItemId === 'string' ? row.cartItemId : ''
+
+  if (!id || !name || !image || !category || price === null || !quantity || quantity <= 0 || unitPrice === null || !cartItemId) {
+    return null
+  }
+
+  const selectedModifiers = Array.isArray(row.selectedModifiers) ? row.selectedModifiers as SelectedModifier[] : []
+  const selectedParameters = Array.isArray(row.selectedParameters) ? row.selectedParameters as SelectedParameter[] : []
+
+  return {
+    id,
+    name,
+    image,
+    category,
+    price,
+    quantity,
+    unitPrice,
+    cartItemId,
+    selectedModifiers,
+    selectedParameters,
+    description: typeof row.description === 'string' ? row.description : undefined,
+  } as CartItem
 }
 
 function generateCartItemId(productId: string, modifiers: SelectedModifier[], parameters?: SelectedParameter[]): string {
@@ -282,6 +325,43 @@ export const useCartStore = defineStore('cart', {
     },
     setDeliveryError(message: string | null) {
       this.deliveryError = message
+    },
+    mergeBridgePayload(payload: BridgeCartPayload | null | undefined, fallbackScopeKey: string | null = null) {
+      const scopedFromPayload = typeof payload?.scopeKey === 'string' && payload.scopeKey.trim()
+        ? payload.scopeKey.trim()
+        : null
+      const targetScope = scopedFromPayload || (typeof fallbackScopeKey === 'string' && fallbackScopeKey.trim() ? fallbackScopeKey.trim() : null)
+      if (!targetScope) return
+
+      const bridgeItemsRaw = Array.isArray(payload?.items) ? payload?.items : []
+      const bridgeItems = bridgeItemsRaw
+        .map((row) => normalizeBridgeItem(row))
+        .filter((row): row is CartItem => row !== null)
+      if (!bridgeItems.length) return
+
+      const currentItems = getStoredCartItems(targetScope)
+      const merged = [...currentItems]
+      const byCartItemId = new Map<string, CartItem>()
+      for (const item of merged) byCartItemId.set(item.cartItemId, item)
+
+      for (const item of bridgeItems) {
+        const existing = byCartItemId.get(item.cartItemId)
+        if (existing) {
+          existing.quantity += item.quantity
+        } else {
+          const next = { ...item }
+          merged.push(next)
+          byCartItemId.set(next.cartItemId, next)
+        }
+      }
+
+      persistCart(targetScope, merged)
+      if (this.scopeKey === targetScope) {
+        this.items = merged
+        if (this.deliveryZone) {
+          this.setDeliveryZone(this.deliveryZone)
+        }
+      }
     },
   },
 })

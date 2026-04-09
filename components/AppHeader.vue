@@ -296,7 +296,9 @@ function openTelegramAuth() {
   showAuthModal.value = false
   if (!telegramBotUrl.value) return
   if (typeof window !== 'undefined') {
-    const url = `${telegramBotUrl.value}?start=auth_link${tenantKey.value ? `_${encodeURIComponent(tenantKey.value)}` : ''}`
+    const startParts = ['auth_link']
+    if (tenantKey.value) startParts.push(`s-${encodeURIComponent(tenantKey.value)}`)
+    const url = `${telegramBotUrl.value}?start=${startParts.join('_')}`
     window.open(url, '_blank', 'noopener')
   }
 }
@@ -304,7 +306,9 @@ function openTelegramAuth() {
 function openMaxAuth() {
   showAuthModal.value = false
   if (!maxBotUrl.value || typeof window === 'undefined') return
-  const startParam = `auth_link${tenantKey.value ? `_${encodeURIComponent(tenantKey.value)}` : ''}`
+  const startParts = ['auth_link']
+  if (tenantKey.value) startParts.push(`s-${encodeURIComponent(tenantKey.value)}`)
+  const startParam = startParts.join('_')
   const hasQuery = maxBotUrl.value.includes('?')
   const url = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(startParam)}`
   window.open(url, '_blank', 'noopener')

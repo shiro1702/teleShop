@@ -315,6 +315,7 @@ export default defineEventHandler(async (event) => {
     success: true,
     userId,
     telegramId,
+    bridge_payload: tokenRow.bridge_payload ?? null,
     access_token: session.access_token,
     refresh_token: session.refresh_token,
     expires_in: session.expires_in,

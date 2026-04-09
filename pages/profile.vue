@@ -260,7 +260,9 @@ function openTelegramAuth() {
   showAuthModal.value = false
   if (!telegramBotUrl.value || typeof window === 'undefined') return
   const shopRef = typeof route.query.shop_id === 'string' ? route.query.shop_id.trim() : ''
-  const url = `${telegramBotUrl.value}?start=auth_link${shopRef ? `_${encodeURIComponent(shopRef)}` : ''}`
+  const startParts = ['auth_link']
+  if (shopRef) startParts.push(`s-${encodeURIComponent(shopRef)}`)
+  const url = `${telegramBotUrl.value}?start=${startParts.join('_')}`
   window.open(url, '_blank', 'noopener')
 }
 
@@ -268,7 +270,9 @@ function openMaxAuth() {
   showAuthModal.value = false
   if (!maxBotUrl.value || typeof window === 'undefined') return
   const shopRef = typeof route.query.shop_id === 'string' ? route.query.shop_id.trim() : ''
-  const startParam = `auth_link${shopRef ? `_${encodeURIComponent(shopRef)}` : ''}`
+  const startParts = ['auth_link']
+  if (shopRef) startParts.push(`s-${encodeURIComponent(shopRef)}`)
+  const startParam = startParts.join('_')
   const hasQuery = maxBotUrl.value.includes('?')
   const url = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(startParam)}`
   window.open(url, '_blank', 'noopener')

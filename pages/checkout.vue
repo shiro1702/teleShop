@@ -1753,10 +1753,7 @@ async function placeOrder() {
 }
 
 function authAndReturn() {
-  if (!telegramBotUrl.value) return
-  if (!isClient()) return
-  const url = `${telegramBotUrl.value}?start=auth_link${shopIdFromRoute.value ? `_${encodeURIComponent(shopIdFromRoute.value)}` : ''}`
-  window.open(url, '_blank', 'noopener')
+  void openTelegramAuth()
 }
 
 function openAuthModal(mode: 'auth' | 'continue') {
@@ -1769,8 +1766,47 @@ function closeAuthModal() {
 }
 
 function openMaxAuth() {
+  void openMaxAuthFlow()
+}
+
+async function buildAuthStartParam() {
+  const shopRef = shopIdFromRoute.value || ''
+  let bridgeKey = ''
+  try {
+    if (shopRef && cartStore.items.length) {
+      const bridgeRes = await $fetch<{ ok: boolean; bridgeKey?: string }>('/api/auth/bridge-session', {
+        method: 'POST',
+        body: {
+          shopId: shopRef,
+          scopeKey: resolveCartScopeKey(route, shopRef),
+          redirectPath: tenantPath('/cart'),
+          items: cartStore.items,
+        },
+      })
+      if (bridgeRes?.ok && typeof bridgeRes.bridgeKey === 'string') {
+        bridgeKey = bridgeRes.bridgeKey
+      }
+    }
+  } catch {
+    // Best effort: auth should continue even if bridge session failed.
+  }
+
+  const parts = ['auth_link']
+  if (shopRef) parts.push(`s-${encodeURIComponent(shopRef)}`)
+  if (bridgeKey) parts.push(`b-${encodeURIComponent(bridgeKey)}`)
+  return parts.join('_')
+}
+
+async function openTelegramAuth() {
+  if (!telegramBotUrl.value || !isClient()) return
+  const startParam = await buildAuthStartParam()
+  const url = `${telegramBotUrl.value}?start=${startParam}`
+  window.open(url, '_blank', 'noopener')
+}
+
+async function openMaxAuthFlow() {
   if (!maxBotUrl.value || !isClient()) return
-  const startParam = `auth_link${shopIdFromRoute.value ? `_${encodeURIComponent(shopIdFromRoute.value)}` : ''}`
+  const startParam = await buildAuthStartParam()
   const hasQuery = maxBotUrl.value.includes('?')
   const url = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(startParam)}`
   window.open(url, '_blank', 'noopener')
@@ -1787,10 +1823,10 @@ async function runAuthAction(channel: 'telegram' | 'max') {
     return
   }
   if (channel === 'telegram') {
-    authAndReturn()
+    await openTelegramAuth()
     return
   }
-  openMaxAuth()
+  await openMaxAuthFlow()
 }
 
 async function continueInTelegramFromCheckout() {
