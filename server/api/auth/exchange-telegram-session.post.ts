@@ -8,7 +8,7 @@ interface ExchangeSessionBody {
 }
 
 async function findAuthUserIdByEmail(
-  serviceClient: Awaited<ReturnType<typeof serverSupabaseServiceRole>>,
+  serviceClient: any,
   email: string,
 ): Promise<string | null> {
   let page = 1
@@ -20,7 +20,7 @@ async function findAuthUserIdByEmail(
       return null
     }
     const users = data?.users ?? []
-    const hit = users.find((user) => (user.email || '').toLowerCase() === email.toLowerCase())
+    const hit = users.find((user: any) => (user.email || '').toLowerCase() === email.toLowerCase())
     if (hit?.id) return hit.id
     if (users.length < perPage) break
     page += 1
@@ -154,7 +154,7 @@ export default defineEventHandler(async (event) => {
     // Профиль уже есть: убеждаемся, что auth-пользователь существует и имеет синтетические учётные данные
     userId = existingProfile.id as string
 
-    const { data: existingUser, error: getUserError } =
+    const { data: existingUserData, error: getUserError } =
       await serviceClient.auth.admin.getUserById(userId)
 
     if (getUserError) {
@@ -165,7 +165,9 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    if (!existingUser) {
+    const existingAuthUser = existingUserData?.user ?? null
+
+    if (!existingAuthUser) {
       // На всякий случай: профиль есть, а пользователя нет — создаём нового пользователя и переназначаем профиль
       const { data: createdUser, error: createUserError } =
         await serviceClient.auth.admin.createUser({
