@@ -25,6 +25,13 @@ type ParsedAuthStart = {
   shopRef: string
   bridgeKey: string
 }
+type ChatLinkTokenRow = {
+  token: string
+  shop_id: string
+  restaurant_id: string
+  expires_at: string
+  used_at: string | null
+}
 
 function parseAuthStartParts(parts: string[]): ParsedAuthStart {
   const out: ParsedAuthStart = { shopRef: '', bridgeKey: '' }
@@ -73,6 +80,20 @@ function parseCallbackData(
   return null
 }
 
+function parseBindToken(text: string): string | null {
+  const trimmed = text.trim()
+  const [first = '', second = ''] = trimmed.split(/\s+/, 2)
+  const command = first.toLowerCase()
+  if (command === '/bind' || command.startsWith('/bind@')) {
+    return second ? second.trim() : null
+  }
+  if (command.startsWith('/bind_')) {
+    const token = first.slice('/bind_'.length)
+    return token ? token.trim() : null
+  }
+  return null
+}
+
 const CLIENT_MESSAGES: Record<'work' | 'courier' | 'done', (orderId: string) => string> = {
   work: (orderId) =>
     `👨‍🍳 Ваш заказ #${orderId} принят в работу и сейчас готовится. Мы сообщим, когда он будет передан курьеру.`,
@@ -99,11 +120,6 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const tenant = event.context.tenant
   const botToken = tenant?.telegramBotToken || (config.botToken as string)
-  const managerChatId = (
-    typeof tenant?.shop?.manager_chat_id === 'string' && tenant.shop.manager_chat_id.trim()
-      ? tenant.shop.manager_chat_id
-      : config.managerChatId
-  ) as string
   const appUrlBase = ((config.appUrl as string) || '').replace(/\/$/, '')
   const defaultCitySlug = (
     typeof config.public?.defaultCitySlug === 'string' && config.public.defaultCitySlug.trim()
@@ -116,12 +132,16 @@ export default defineEventHandler(async (event) => {
       ? `${appUrlBase}/${encodeURIComponent(tenant.shop.slug)}`
       : appUrlBase
 
-  if (!botToken || !managerChatId) {
-    throw createError({ statusCode: 500, message: 'Server config: bot token or manager chat ID missing' })
+  if (!botToken) {
+    throw createError({ statusCode: 500, message: 'Server config: bot token missing' })
   }
 
   const body = await readBody<{
-    message?: { text?: string; chat?: { id: number } }
+    message?: {
+      text?: string
+      chat?: { id: number; type?: string }
+      from?: { id?: number }
+    }
     callback_query?: {
       id: string
       from: { id: number }
@@ -148,6 +168,28 @@ export default defineEventHandler(async (event) => {
       const startParam = paramRaw || ''
       const startParts = startParam.split('_')
       const startKey = startParts.slice(0, 2).join('_')
+
+      if (startKey === 'linkchat') {
+        const token = startParts.slice(1).join('_').trim()
+        if (!token) {
+          await telegram(botToken, 'sendMessage', {
+            chat_id: chatId,
+            text: 'Не удалось прочитать токен привязки. Сгенерируйте ссылку заново в кабинете.',
+          })
+          return { ok: true }
+        }
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: [
+            'Токен привязки получен.',
+            'Теперь добавьте меня в нужную группу менеджеров и отправьте там команду:',
+            `/bind ${token}`,
+            '',
+            'Привязку может завершить только администратор этой группы.',
+          ].join('\n'),
+        })
+        return { ok: true }
+      }
 
       // Специальный сценарий: старт с параметром для авторизации с возвратом на сайт
       if (startKey === 'auth_link' && appUrl) {
@@ -268,6 +310,113 @@ export default defineEventHandler(async (event) => {
         },
       })
 
+      return { ok: true }
+    }
+    const bindToken = parseBindToken(text)
+    if (bindToken) {
+      const fromId = body.message.from?.id
+      const chatType = (body.message.chat?.type || '').toLowerCase()
+      const isGroupChat = chatType === 'group' || chatType === 'supergroup'
+
+      if (!isGroupChat) {
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Команда /bind работает только в группе. Отправьте её в чате менеджеров.',
+        })
+        return { ok: true }
+      }
+      if (!fromId) {
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Не удалось определить пользователя. Повторите команду позже.',
+        })
+        return { ok: true }
+      }
+
+      const supabase = await serverSupabaseServiceRole(event)
+      const { data: tokenRow } = await supabase
+        .from('telegram_chat_link_tokens')
+        .select('token,shop_id,restaurant_id,expires_at,used_at')
+        .eq('token', bindToken)
+        .maybeSingle<ChatLinkTokenRow>()
+
+      if (!tokenRow) {
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Токен привязки не найден. Сгенерируйте новую ссылку в кабинете.',
+        })
+        return { ok: true }
+      }
+      if (tokenRow.used_at) {
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Этот токен уже использован. Сгенерируйте новый в кабинете.',
+        })
+        return { ok: true }
+      }
+      if (new Date(tokenRow.expires_at).getTime() < Date.now()) {
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Токен истек. Сгенерируйте новый в кабинете.',
+        })
+        return { ok: true }
+      }
+
+      const memberResult = await telegram(botToken, 'getChatMember', {
+        chat_id: chatId,
+        user_id: fromId,
+      }).catch(() => null) as { result?: { status?: string } } | null
+      const memberStatus = String(memberResult?.result?.status || '').toLowerCase()
+      if (!(memberStatus === 'administrator' || memberStatus === 'creator')) {
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Только администратор группы может выполнить привязку.',
+        })
+        return { ok: true }
+      }
+
+      const chatIdValue = String(chatId)
+      const { data: existingRestaurant } = await supabase
+        .from('restaurants')
+        .select('id')
+        .eq('manager_group_chat_id', chatIdValue)
+        .neq('id', tokenRow.restaurant_id)
+        .maybeSingle<{ id: string }>()
+      if (existingRestaurant?.id) {
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Этот чат уже привязан к другому ресторану.',
+        })
+        return { ok: true }
+      }
+
+      const { data: updatedRestaurant, error: updateError } = await supabase
+        .from('restaurants')
+        .update({ manager_group_chat_id: chatIdValue })
+        .eq('id', tokenRow.restaurant_id)
+        .eq('shop_id', tokenRow.shop_id)
+        .select('name')
+        .maybeSingle<{ name: string }>()
+
+      if (updateError || !updatedRestaurant) {
+        console.error('Bind chat update restaurant failed:', updateError)
+        await telegram(botToken, 'sendMessage', {
+          chat_id: chatId,
+          text: 'Не удалось сохранить привязку чата. Попробуйте еще раз.',
+        })
+        return { ok: true }
+      }
+
+      await supabase
+        .from('telegram_chat_link_tokens')
+        .update({ used_at: new Date().toISOString() })
+        .eq('token', bindToken)
+        .is('used_at', null)
+
+      await telegram(botToken, 'sendMessage', {
+        chat_id: chatId,
+        text: `Чат успешно привязан к ресторану "${updatedRestaurant.name}".`,
+      })
       return { ok: true }
     }
     if (text === '/help') {

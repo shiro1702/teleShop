@@ -132,6 +132,28 @@
           <input v-model="managerGroupChatId" type="text" placeholder="Telegram group chat id" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
           <input v-model="managerMaxChatId" type="text" placeholder="MAX group chat id" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
         </div>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <button
+            class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+            :disabled="role !== 'owner' || !notificationRestaurantId"
+            @click="createTelegramChatBindLink"
+          >
+            Привязать через бота
+          </button>
+          <button
+            class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!notificationRestaurantId"
+            @click="refreshNotificationRestaurantStatus"
+          >
+            Проверить статус
+          </button>
+        </div>
+        <div v-if="telegramChatBindDeepLink" class="mt-2 rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+          <p class="font-medium">Ссылка для привязки активна до {{ telegramChatBindExpiresAt }}</p>
+          <p class="mt-1 break-all">1) Откройте: <a :href="telegramChatBindDeepLink" target="_blank" rel="noopener" class="underline">{{ telegramChatBindDeepLink }}</a></p>
+          <p class="mt-1">2) Добавьте бота в нужную группу менеджеров</p>
+          <p class="mt-1">3) В группе отправьте: <span class="font-mono">{{ telegramChatBindCommand }}</span></p>
+        </div>
         <textarea v-model="managerRecipientsRaw" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs" rows="3" placeholder='[{"channel":"telegram","targetId":"123456"},{"channel":"max","targetId":"conv_1"}]' />
 
         <div class="mt-3 flex flex-wrap gap-2">
@@ -200,6 +222,9 @@ const managerRecipientsRaw = ref('[]')
 const notificationMessage = ref('')
 const notificationMessageType = ref<'ok' | 'error'>('ok')
 const notificationEvents = ref<Array<{ id: string; created_at: string; channel: string; delivery_status: string; event_type: string; attempt_count: number }>>([])
+const telegramChatBindDeepLink = ref('')
+const telegramChatBindCommand = ref('')
+const telegramChatBindExpiresAt = ref('')
 
 const apiKey = ref('live_12ab34cd56ef78gh')
 
@@ -307,6 +332,34 @@ async function saveNotificationSettings() {
   notificationMessage.value = response.ok ? 'Настройки уведомлений сохранены.' : 'Не удалось сохранить настройки.'
 }
 
+async function createTelegramChatBindLink() {
+  if (!notificationRestaurantId.value) return
+  const response = await fetch('/api/dashboard/integrations/telegram-chat-link-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ restaurantId: notificationRestaurantId.value }),
+  })
+  const payload = await response.json().catch(() => ({} as any))
+  if (!response.ok) {
+    notificationMessageType.value = 'error'
+    notificationMessage.value = payload?.statusMessage || 'Не удалось создать ссылку привязки.'
+    return
+  }
+  telegramChatBindDeepLink.value = typeof payload.deepLink === 'string' ? payload.deepLink : ''
+  telegramChatBindCommand.value = typeof payload.bindCommand === 'string' ? payload.bindCommand : ''
+  telegramChatBindExpiresAt.value = typeof payload.tokenExpiresAt === 'string'
+    ? new Date(payload.tokenExpiresAt).toLocaleString('ru-RU')
+    : ''
+  notificationMessageType.value = 'ok'
+  notificationMessage.value = 'Ссылка привязки создана. Выполните шаги в Telegram.'
+}
+
+async function refreshNotificationRestaurantStatus() {
+  if (!notificationRestaurantId.value) return
+  await loadNotificationSettings()
+  syncSelectedNotificationRestaurant()
+}
+
 async function sendTestNotification() {
   if (!notificationRestaurantId.value) return
   const response = await fetch('/api/dashboard/integrations/notifications/test', {
@@ -340,6 +393,9 @@ onMounted(async () => {
 })
 
 watch(notificationRestaurantId, () => {
+  telegramChatBindDeepLink.value = ''
+  telegramChatBindCommand.value = ''
+  telegramChatBindExpiresAt.value = ''
   syncSelectedNotificationRestaurant()
 })
 </script>
