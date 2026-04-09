@@ -147,6 +147,13 @@
           >
             Проверить статус
           </button>
+          <button
+            class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+            :disabled="role !== 'owner' || !notificationRestaurantId || !managerGroupChatId"
+            @click="unlinkTelegramChat"
+          >
+            Отвязать чат
+          </button>
         </div>
         <div v-if="telegramChatBindDeepLink" class="mt-2 rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
           <p class="font-medium">Ссылка для привязки активна до {{ telegramChatBindExpiresAt }}</p>
@@ -358,6 +365,24 @@ async function refreshNotificationRestaurantStatus() {
   if (!notificationRestaurantId.value) return
   await loadNotificationSettings()
   syncSelectedNotificationRestaurant()
+}
+
+async function unlinkTelegramChat() {
+  if (!notificationRestaurantId.value) return
+  const response = await fetch('/api/dashboard/integrations/telegram-chat-unlink', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ restaurantId: notificationRestaurantId.value }),
+  })
+  if (!response.ok) {
+    notificationMessageType.value = 'error'
+    notificationMessage.value = 'Не удалось отвязать чат.'
+    return
+  }
+  managerGroupChatId.value = ''
+  notificationMessageType.value = 'ok'
+  notificationMessage.value = 'Telegram-чат отвязан.'
+  await refreshNotificationRestaurantStatus()
 }
 
 async function sendTestNotification() {

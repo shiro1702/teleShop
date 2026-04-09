@@ -96,9 +96,9 @@ function parseBindToken(text: string): string | null {
 
 const CLIENT_MESSAGES: Record<'work' | 'courier' | 'done', (orderId: string) => string> = {
   work: (orderId) =>
-    `👨‍🍳 Ваш заказ #${orderId} принят в работу и сейчас готовится. Мы сообщим, когда он будет передан курьеру.`,
+    `👨‍🍳 Ваш заказ #${orderId} принят в работу. Кухня уже готовит ваш заказ.`,
   courier: (orderId) =>
-    `🚚 Ваш заказ #${orderId} передан курьеру и уже в пути к вам. Ожидайте, пожалуйста.`,
+    `🚚 Ваш заказ #${orderId} передан курьеру и уже в пути.`,
   done: (orderId) =>
     `✅ Ваш заказ #${orderId} доставлен. Спасибо, что выбрали нас! Приятного аппетита 🥘🍣🍜`,
 }
@@ -114,6 +114,23 @@ function withStatusLine(baseText: string, statusLabel: string): string {
   const lines = baseText.split('\n')
   const filtered = lines.filter((line) => !line.trim().startsWith('Статус заказа:'))
   return `${filtered.join('\n')}\n\n${statusLabel}`
+}
+
+function appendOrderDetails(baseText: string, details: {
+  branchName: string
+  branchAddress: string
+  orderTotal: number
+  deliveryCost: number
+}): string {
+  const rub = (value: number) => `${new Intl.NumberFormat('ru-RU').format(value)} ₽`
+  return [
+    baseText,
+    '',
+    `🏪 Филиал: ${details.branchName}`,
+    `📍 Адрес филиала: ${details.branchAddress}`,
+    `💰 Доставка: ${rub(details.deliveryCost)}`,
+    `💳 Итого: ${rub(details.orderTotal)}`,
+  ].join('\n')
 }
 
 export default defineEventHandler(async (event) => {
@@ -436,6 +453,87 @@ export default defineEventHandler(async (event) => {
   }
 
   const parsed = parseCallbackData(query.data)
+  if (query.data.startsWith('clientDelay_')) {
+    const orderId = query.data.slice('clientDelay_'.length).trim()
+    if (!orderId) {
+      await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id, text: 'Некорректный сигнал', show_alert: false })
+      return { ok: true }
+    }
+    const supabase = await serverSupabaseServiceRole(event)
+    const signalKey = `client_delay_signal:${orderId}:${query.from.id}`
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    const { data: existingSignal } = await supabase
+      .from('notification_events')
+      .select('id,updated_at')
+      .eq('notification_key', signalKey)
+      .gte('updated_at', fiveMinutesAgo)
+      .maybeSingle()
+    if (existingSignal?.id) {
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: 'Сигнал уже отправлен недавно, повторите чуть позже',
+        show_alert: false,
+      })
+      return { ok: true }
+    }
+
+    const { data: order } = await supabase
+      .from('orders')
+      .select('id,order_number,shop_id,restaurant_id,customer_telegram_id')
+      .eq('id', orderId)
+      .maybeSingle()
+    if (!order) {
+      await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id, text: 'Заказ не найден', show_alert: false })
+      return { ok: true }
+    }
+    const { data: branch } = await supabase
+      .from('restaurants')
+      .select('name,manager_group_chat_id')
+      .eq('id', (order as any).restaurant_id)
+      .maybeSingle()
+    const managerChatId = typeof (branch as any)?.manager_group_chat_id === 'string' ? String((branch as any).manager_group_chat_id).trim() : ''
+    if (!managerChatId) {
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: 'Чат менеджеров не настроен',
+        show_alert: true,
+      })
+      return { ok: true }
+    }
+
+    await telegram(botToken, 'sendMessage', {
+      chat_id: managerChatId,
+      text: [
+        '⚠️ Клиент сообщил о задержке',
+        `📦 Заказ #${String((order as any).order_number || orderId)}`,
+        `🏪 Филиал: ${String((branch as any)?.name || '—')}`,
+        `👤 Клиент: id:${query.from.id}`,
+      ].join('\n'),
+      reply_markup: {
+        inline_keyboard: [[{ text: '✉️ Написать клиенту', url: `tg://user?id=${query.from.id}` }]],
+      },
+    })
+
+    await supabase.from('notification_events').upsert({
+      notification_key: signalKey,
+      event_type: 'ORDER_STATUS_CHANGED',
+      channel: 'telegram',
+      shop_id: (order as any).shop_id,
+      restaurant_id: (order as any).restaurant_id,
+      conversation_id: managerChatId,
+      delivery_status: 'sent',
+      attempt_count: 1,
+      payload: { orderId, fromTelegramId: query.from.id, source: 'client_delay_signal' },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'notification_key' })
+
+    await telegram(botToken, 'answerCallbackQuery', {
+      callback_query_id: query.id,
+      text: 'Сигнал отправлен менеджеру ресторана',
+      show_alert: false,
+    })
+    return { ok: true }
+  }
   if (!parsed) {
     await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id })
     return { ok: true }
@@ -446,13 +544,29 @@ export default defineEventHandler(async (event) => {
   const messageId = query.message.message_id
   const currentText = query.message.text || ''
 
+  const supabase = await serverSupabaseServiceRole(event)
+  const { data: orderDetails } = await supabase
+    .from('orders')
+    .select('total,delivery_cost,restaurant_id')
+    .eq('id', orderId)
+    .maybeSingle()
+  const { data: branch } = (orderDetails as any)?.restaurant_id
+    ? await supabase.from('restaurants').select('name,address').eq('id', (orderDetails as any).restaurant_id).maybeSingle()
+    : { data: null as any }
+  const enrichedText = (base: string) => appendOrderDetails(base, {
+    branchName: String((branch as any)?.name || '—'),
+    branchAddress: String((branch as any)?.address || '—'),
+    orderTotal: Number((orderDetails as any)?.total || 0),
+    deliveryCost: Number((orderDetails as any)?.delivery_cost || 0),
+  })
+
   if (kind === 'delay') {
     const baseStatus: 'work' | 'courier' = status === 'courier' ? 'courier' : 'work'
     const clientDelayText = CLIENT_DELAY_MESSAGES[baseStatus]?.(orderId)
     if (clientDelayText) {
       await telegram(botToken, 'sendMessage', {
         chat_id: Number(userId),
-        text: clientDelayText,
+        text: enrichedText(clientDelayText),
       }).catch((err) => console.error('Notify client delay error:', err))
     }
 
@@ -469,7 +583,10 @@ export default defineEventHandler(async (event) => {
   if (clientText) {
     await telegram(botToken, 'sendMessage', {
       chat_id: Number(userId),
-      text: clientText,
+      text: enrichedText(clientText),
+      reply_markup: status === 'done'
+        ? undefined
+        : { inline_keyboard: [[{ text: '⏱ Сообщить о задержке', callback_data: `clientDelay_${orderId}` }]] },
     }).catch((err) => console.error('Notify client error:', err))
   }
 
