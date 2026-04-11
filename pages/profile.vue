@@ -40,7 +40,7 @@
       <div class="card">
         <h2>Бонусы по ресторанам</h2>
         <p class="hint mb-4">
-          Показаны рестораны, где у вас есть начисленные бонусы (1 бонус = 1 ₽). Откройте ресторан, чтобы посмотреть детали на его странице.
+          Показаны рестораны, где у вас есть начисленные бонусы (1 бонус = 1 б). Откройте ресторан, чтобы посмотреть детали на его странице.
         </p>
 
         <label class="block text-sm font-medium text-gray-700">
@@ -83,7 +83,7 @@
             </div>
             <div class="flex shrink-0 items-center gap-3">
               <span class="text-lg font-semibold tabular-nums text-gray-900">
-                {{ row.balance }} ₽
+                {{ row.balance }} б
               </span>
               <NuxtLink
                 :to="`/${row.citySlug}/${row.tenantSlug}/bonuses`"

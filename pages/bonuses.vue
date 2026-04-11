@@ -29,9 +29,9 @@
     </header>
 
     <main class="mx-auto max-w-2xl px-4 py-8 sm:px-6">
-      <div v-if="!user" class="rounded-2xl border p-6" :style="cardStyle">
+      <div v-if="!canViewBonuses" class="rounded-2xl border p-6" :style="cardStyle">
         <p class="text-sm" :style="{ color: mutedTextColor }">
-          Войдите через Telegram, чтобы видеть баланс бонусов в этом ресторане.
+          Откройте мини-приложение из бота или войдите на сайте, чтобы видеть баланс бонусов в этом ресторане.
         </p>
       </div>
 
@@ -45,10 +45,10 @@
               {{ shopDisplayName }}
             </p>
             <p class="mt-3 text-3xl font-bold tabular-nums" :style="{ color: mainTextColor }">
-              {{ balanceDisplay }} ₽
+              {{ balanceDisplay }} б
             </p>
             <p class="mt-2 text-sm" :style="{ color: mutedTextColor }">
-              1 бонус = 1 ₽. Начисляются после успешной онлайн-оплаты заказа. Списать бонусы можно при оформлении заказа.
+              1 бонус = 1 б. Начисляются после успешной доставки или выдачи заказа. Списать бонусы можно при оформлении заказа.
             </p>
           </template>
           <p v-else class="text-sm" :style="{ color: mutedTextColor }">
@@ -56,7 +56,7 @@
           </p>
         </div>
 
-        <p class="mt-6 text-center text-sm">
+        <p v-if="!isTelegram" class="mt-6 text-center text-sm">
           <NuxtLink
             to="/profile"
             class="font-medium underline decoration-dotted underline-offset-2"
@@ -74,9 +74,16 @@
 import { computed, ref, watch } from 'vue'
 import { useSupabaseUser } from '#imports'
 import { useTenant } from '~/composables/useTenant'
+import { useTelegram } from '~/composables/useTelegram'
 
 const user = useSupabaseUser()
 const { tenant, tenantPath } = useTenant()
+const { isTelegram, webApp } = useTelegram()
+
+/** Сайт: Supabase. Mini App: сессия через initData (без отдельного «ЛК») */
+const canViewBonuses = computed(
+  () => !!user.value || (!!isTelegram.value && !!webApp.value?.initData),
+)
 
 const theme = computed(() => tenant.value.theme || {})
 const pageBgColor = computed(() => theme.value.surface_background || 'var(--color-surface-bg)')
@@ -114,15 +121,26 @@ const balanceDisplay = computed(() => {
   return String(balance.value)
 })
 
+function balanceRequestHeaders() {
+  const headers: Record<string, string> = {}
+  if (shopId.value) {
+    headers['x-shop-id'] = shopId.value
+  }
+  if (isTelegram.value && webApp.value?.initData) {
+    headers['x-telegram-init-data'] = webApp.value.initData
+  }
+  return headers
+}
+
 async function loadBalance() {
-  if (!user.value || !shopId.value) {
+  if (!shopId.value || !canViewBonuses.value) {
     balance.value = null
     return
   }
   balanceLoading.value = true
   try {
     const res = await $fetch<{ ok: boolean; balance: number }>('/api/loyalty/balance', {
-      headers: { 'x-shop-id': shopId.value },
+      headers: balanceRequestHeaders(),
     })
     balance.value = res.balance
   } catch {
@@ -132,7 +150,11 @@ async function loadBalance() {
   }
 }
 
-watch([user, shopId], () => {
-  void loadBalance()
-}, { immediate: true })
+watch(
+  [user, shopId, canViewBonuses, isTelegram, () => (isTelegram.value ? webApp.value?.initData : '')],
+  () => {
+    void loadBalance()
+  },
+  { immediate: true },
+)
 </script>

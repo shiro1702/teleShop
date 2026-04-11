@@ -32,6 +32,28 @@
         </select>
       </div>
 
+      <!-- Miniapp: без «ЛК», но заказы и бонусы по ресторану доступны -->
+      <div
+        v-if="isTelegram && showMiniappCustomerLinks"
+        class="flex shrink-0 items-center gap-1.5 sm:gap-2"
+      >
+        <NuxtLink
+          :to="ordersLink"
+          class="rounded-lg px-2.5 py-1.5 text-xs font-medium transition sm:px-3 sm:text-sm"
+          :style="ghostButtonStyle"
+        >
+          Заказы
+        </NuxtLink>
+        <NuxtLink
+          v-if="bonusesMenuVisible"
+          :to="bonusesLink"
+          class="rounded-lg px-2.5 py-1.5 text-xs font-medium transition sm:px-3 sm:text-sm"
+          :style="ghostButtonStyle"
+        >
+          Бонусы
+        </NuxtLink>
+      </div>
+
       <div
         v-if="!isTelegram"
         class="flex items-center gap-2 sm:gap-3" 
@@ -207,6 +229,13 @@ const bonusesMenuVisible = computed(() => {
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
   const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
   return !!(citySlug && tenantSlug) || !!tenant.value.tenantSlug
+})
+
+/** Витрина ресторана (не глобальные страницы вроде /profile, /partners) — для ссылок «Заказы» / «Бонусы» в Telegram Mini App */
+const showMiniappCustomerLinks = computed(() => {
+  if (isNonTenantRoute.value || isDashboardRoute.value) return false
+  const routeTenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  return !!(routeTenantSlug || tenant.value.tenantSlug)
 })
 const tenantName = computed(() => tenant.value.shopName || 'PocketMenu')
 const tenantLogoUrl = computed(() => tenant.value.logoUrl || tenant.value.logoLargeUrl || '/logo.webp')

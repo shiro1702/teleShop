@@ -980,6 +980,7 @@ const {
   onAddressInput,
   selectSuggestion,
   applySavedAddress,
+  saveCurrentAddress,
   deleteSavedAddress,
 } = useCheckoutAddress()
 
@@ -1668,6 +1669,10 @@ async function placeOrder() {
 
   isPlacing.value = true
   try {
+    if (state.fulfillmentType === 'delivery') {
+      await saveCurrentAddress()
+    }
+
     const body: any = {
       shopId: shopIdFromRoute.value,
       restaurantId: selectedRestaurantId.value || null,

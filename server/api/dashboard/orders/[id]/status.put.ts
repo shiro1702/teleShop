@@ -11,6 +11,7 @@ import {
 } from '~/server/utils/dashboardOrders'
 import { dashboardOrderStatusLabels } from '~/utils/dashboardOrderStatus'
 import { dispatchNotificationEvent } from '~/server/utils/notifications'
+import { accrueLoyaltyEarnForPaidOrder } from '~/server/utils/pricingPromoBonus'
 
 type Body = {
   nextStatus?: string
@@ -103,6 +104,10 @@ export default defineEventHandler(async (event) => {
   if (updateError) {
     console.error('dashboard order status update:', updateError)
     throw createError({ statusCode: 500, statusMessage: 'Failed to update order' })
+  }
+
+  if (nextStatus === 'handed_to_customer') {
+    await accrueLoyaltyEarnForPaidOrder(client, String((existing as any).id), access.shopId)
   }
 
   await dispatchNotificationEvent(event, {

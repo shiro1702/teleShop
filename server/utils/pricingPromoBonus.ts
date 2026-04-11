@@ -393,7 +393,7 @@ export function capBonusSpend(
   return Math.min(Math.max(0, Math.floor(requested)), Math.max(0, maxApply))
 }
 
-/** Начисление бонусов после оплаты онлайн (идемпотентно по unique на earn_order). */
+/** Начисление бонусов после успешной выдачи/доставки (идемпотентно по unique на earn_order). */
 export async function accrueLoyaltyEarnForPaidOrder(
   client: SupabaseClient,
   orderId: string,
@@ -401,7 +401,7 @@ export async function accrueLoyaltyEarnForPaidOrder(
 ): Promise<void> {
   const { data: order, error: oErr } = await client
     .from('orders')
-    .select('id, shop_id, subtotal, customer_profile_id, payment_method')
+    .select('id, shop_id, subtotal, customer_profile_id, status')
     .eq('id', orderId)
     .eq('shop_id', shopId)
     .maybeSingle<{
@@ -409,10 +409,13 @@ export async function accrueLoyaltyEarnForPaidOrder(
       shop_id: string
       subtotal: number
       customer_profile_id: string | null
-      payment_method: string
+      status: string
     }>()
 
   if (oErr || !order?.customer_profile_id) {
+    return
+  }
+  if (String(order.status || '').toLowerCase() !== 'handed_to_customer') {
     return
   }
 
