@@ -361,15 +361,45 @@ async function openTelegramAuth() {
   }
 }
 
-function openMaxAuth() {
+async function openMaxAuth() {
   showAuthModal.value = false
   if (!maxBotUrl.value || typeof window === 'undefined') return
-  const startParts = ['auth_link']
-  if (tenantKey.value) startParts.push(`s-${encodeURIComponent(tenantKey.value)}`)
-  const startParam = startParts.join('_')
-  const hasQuery = maxBotUrl.value.includes('?')
-  const url = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(startParam)}`
-  window.open(url, '_blank', 'noopener')
+  const shopRef = tenantKey.value?.trim() || ''
+  if (!shopRef) {
+    window.alert('Откройте вход из страницы ресторана.')
+    return
+  }
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  try {
+    const res = await $fetch<{ ok: boolean; token: string; botStartParam: string }>(
+      '/api/auth/request-max-link',
+      {
+        method: 'POST',
+        headers: { 'x-shop-id': shopRef },
+        body: {
+          shopId: shopRef,
+          citySlug: citySlug || undefined,
+          redirectPath: tenantPath('/cart'),
+        },
+      },
+    )
+    if (!res?.ok || !res.token || !res.botStartParam) {
+      throw new Error('bad_response')
+    }
+    const hasQuery = maxBotUrl.value.includes('?')
+    const maxUrl = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(res.botStartParam)}`
+    window.open(maxUrl, '_blank', 'noopener')
+    await router.push({
+      path: '/link-max',
+      query: {
+        token: res.token,
+        redirect: tenantPath('/cart'),
+        shop_id: shopRef,
+      },
+    })
+  } catch {
+    window.alert('Не удалось начать вход через MAX. Попробуйте ещё раз.')
+  }
 }
 
 function openAuthModal() {

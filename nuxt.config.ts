@@ -16,6 +16,7 @@ export default defineNuxtConfig({
     yandexGeocoderApiKey: process.env.YANDEX_GEOCODER_API_KEY ?? '',
     maxApiBaseUrl: process.env.NUXT_MAX_API_BASE_URL ?? '',
     maxApiToken: process.env.NUXT_MAX_API_TOKEN ?? '',
+    maxWebhookSecret: process.env.NUXT_MAX_WEBHOOK_SECRET ?? '',
     supabaseUrl: process.env.SUPABASE_URL ?? '',
     supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
     public: {

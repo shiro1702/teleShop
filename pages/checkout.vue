@@ -1789,16 +1789,16 @@ function closeAuthModal() {
   showAuthModal.value = false
 }
 
-function openMaxAuth() {
-  void openMaxAuthFlow()
-}
-
-/** Параметр start для MAX (пока без серверной выдачи токена на сайте). */
-async function buildMaxAuthStartParam() {
+async function openMaxAuthFlow() {
+  if (!maxBotUrl.value || !isClient()) return
   const shopRef = shopIdFromRoute.value || ''
+  if (!shopRef) {
+    window.alert('Не удалось определить ресторан. Обновите страницу.')
+    return
+  }
   let bridgeKey = ''
   try {
-    if (shopRef && cartStore.items.length) {
+    if (cartStore.items.length) {
       const bridgeRes = await $fetch<{ ok: boolean; bridgeKey?: string }>('/api/auth/bridge-session', {
         method: 'POST',
         body: {
@@ -1813,13 +1813,44 @@ async function buildMaxAuthStartParam() {
       }
     }
   } catch {
-    // Best effort: auth should continue even if bridge session failed.
+    // bridge optional
   }
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  try {
+    const res = await $fetch<{ ok: boolean; token: string; botStartParam: string }>(
+      '/api/auth/request-max-link',
+      {
+        method: 'POST',
+        headers: { 'x-shop-id': shopRef },
+        body: {
+          shopId: shopRef,
+          citySlug: citySlug || undefined,
+          redirectPath: tenantPath('/checkout'),
+          bridgeKey: bridgeKey || undefined,
+        },
+      },
+    )
+    if (!res?.ok || !res.token || !res.botStartParam) {
+      throw new Error('bad_response')
+    }
+    const hasQuery = maxBotUrl.value.includes('?')
+    const maxUrl = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(res.botStartParam)}`
+    window.open(maxUrl, '_blank', 'noopener')
+    await navigateTo({
+      path: '/link-max',
+      query: {
+        token: res.token,
+        redirect: tenantPath('/checkout'),
+        shop_id: shopRef,
+      },
+    })
+  } catch {
+    window.alert('Не удалось начать вход через MAX. Попробуйте ещё раз.')
+  }
+}
 
-  const parts = ['auth_link']
-  if (shopRef) parts.push(`s-${encodeURIComponent(shopRef)}`)
-  if (bridgeKey) parts.push(`b-${encodeURIComponent(bridgeKey)}`)
-  return parts.join('_')
+function openMaxAuth() {
+  void openMaxAuthFlow()
 }
 
 async function openTelegramAuth() {
@@ -1881,14 +1912,6 @@ async function openTelegramAuth() {
   }
 }
 
-async function openMaxAuthFlow() {
-  if (!maxBotUrl.value || !isClient()) return
-  const startParam = await buildMaxAuthStartParam()
-  const hasQuery = maxBotUrl.value.includes('?')
-  const url = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(startParam)}`
-  window.open(url, '_blank', 'noopener')
-}
-
 async function runAuthAction(channel: 'telegram' | 'max') {
   showAuthModal.value = false
   if (authModalMode.value === 'continue') {
@@ -1896,7 +1919,7 @@ async function runAuthAction(channel: 'telegram' | 'max') {
       await continueInTelegramFromCheckout()
       return
     }
-    openMaxAuth()
+    await openMaxAuthFlow()
     return
   }
   if (channel === 'telegram') {

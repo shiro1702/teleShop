@@ -57,10 +57,13 @@ export default defineEventHandler(async (event) => {
   }
 
   const maxUserId = String(tokenRow.max_user_id || '').trim()
-  const maxConversationId = String(tokenRow.max_conversation_id || '').trim() || null
   if (!maxUserId) {
-    throw createError({ statusCode: 400, statusMessage: 'MAX user id is missing in token' })
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'MAX confirmation pending',
+    })
   }
+  const maxConversationId = String(tokenRow.max_conversation_id || '').trim() || null
 
   const { data: existingProfile, error: profileError } = await serviceClient
     .from('profiles')

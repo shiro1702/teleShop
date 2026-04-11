@@ -1,4 +1,5 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
+import { buildAuthSiteLinkUrl } from '~/server/utils/authSiteLink'
 
 const TELEGRAM_API = (token: string) => `https://api.telegram.org/bot${token}`
 
@@ -105,53 +106,6 @@ function appendOrderDetails(baseText: string, details: {
     `💰 Доставка: ${rub(details.deliveryCost)}`,
     `💳 Итого: ${rub(details.orderTotal)}`,
   ].join('\n')
-}
-
-type LinkContextPayload = {
-  shop_slug?: string
-  city_slug?: string
-  redirect_path?: string
-  custom_domain_hostname?: string | null
-}
-
-function buildLinkTelegramUrlFromTokenRow(options: {
-  appUrlBase: string
-  defaultCitySlug: string
-  token: string
-  bridgePayload: Record<string, unknown> | null | undefined
-  tenantShop?: { slug?: string; custom_domain?: string | null }
-}): string {
-  const raw = (options.bridgePayload?.link_context || {}) as LinkContextPayload
-  const baseApp = options.appUrlBase.replace(/\/$/, '')
-  let baseUrl = baseApp
-  const host = raw.custom_domain_hostname && String(raw.custom_domain_hostname).trim()
-  if (host) {
-    const clean = host.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
-    baseUrl = `https://${clean}`
-  } else {
-    const city =
-      (raw.city_slug && String(raw.city_slug).trim()) || options.defaultCitySlug
-    const shopSlug =
-      (raw.shop_slug && String(raw.shop_slug).trim()) ||
-      (options.tenantShop?.slug && String(options.tenantShop.slug).trim()) ||
-      ''
-    if (shopSlug) {
-      baseUrl = `${baseApp}/${encodeURIComponent(city)}/${encodeURIComponent(shopSlug)}`
-    }
-  }
-  const redirectPath =
-    typeof raw.redirect_path === 'string' && raw.redirect_path.startsWith('/') && !raw.redirect_path.startsWith('//')
-      ? raw.redirect_path
-      : '/cart'
-  const shopId =
-    (raw.shop_slug && String(raw.shop_slug).trim()) ||
-    (options.tenantShop?.slug && String(options.tenantShop.slug).trim()) ||
-    ''
-  const q = new URLSearchParams()
-  q.set('token', options.token)
-  q.set('redirect', redirectPath)
-  if (shopId) q.set('shop_id', shopId)
-  return `${baseUrl}/link-telegram?${q.toString()}`
 }
 
 export default defineEventHandler(async (event) => {
@@ -290,7 +244,8 @@ export default defineEventHandler(async (event) => {
         }
 
         const bridgePayload = (row as { bridge_payload?: Record<string, unknown> }).bridge_payload
-        const link = buildLinkTelegramUrlFromTokenRow({
+        const link = buildAuthSiteLinkUrl({
+          linkPath: 'link-telegram',
           appUrlBase,
           defaultCitySlug,
           token: tokenUuid,
