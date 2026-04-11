@@ -57,12 +57,11 @@
               : 'text-gray-600 hover:bg-gray-100'"
             @click="setFulfillmentType('qr-menu')"
           >
-            QR-меню
+            В ресторане
           </button>
         </div>
 
         <button
-          v-if="!orderingDisabled"
           type="button"
           class="hidden shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 sm:flex"
           @click="goToCheckout"
@@ -264,12 +263,11 @@
             : 'text-gray-600 hover:bg-gray-100'"
           @click="setFulfillmentType('qr-menu')"
         >
-          QR-меню
+          В ресторане
         </button>
       </div>
 
       <button
-        v-if="!orderingDisabled"
         type="button"
         class="flex w-full items-center justify-between gap-3 rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary shadow-md"
         @click="goToCheckout"
@@ -431,10 +429,15 @@
             </div>
 
             <div
-              v-if="!orderingDisabled"
               class="shrink-0 border-t p-4 sm:p-5 bg-white"
               :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }"
             >
+              <p
+                v-if="orderingDisabled"
+                class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-900"
+              >
+                Способ получения не настроен для филиала. Добавление в корзину доступно; оформление проверьте на шаге заказа.
+              </p>
               <button
                 type="button"
                 class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
@@ -444,13 +447,6 @@
                 <span>{{ isModifiersValid ? 'Добавить в корзину' : 'Выберите опции' }}</span>
                 <span v-if="isModifiersValid" class="font-bold">{{ formatPrice(selectedProductPrice) }}</span>
               </button>
-            </div>
-            <div
-              v-else
-              class="shrink-0 border-t p-4 sm:p-5 text-center text-sm text-gray-600"
-              :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }"
-            >
-              Оформление заказа недоступно в этом режиме.
             </div>
           </div>
         </div>
@@ -569,10 +565,6 @@ function onStoryAction(payload: { slide: StorySlideDto; actionType: string }) {
       if (typeof window !== 'undefined') window.alert('Товар не найден в меню')
       return
     }
-    if (orderingDisabled.value) {
-      if (typeof window !== 'undefined') window.alert('Оформление заказа недоступно в этом режиме')
-      return
-    }
     const { modifiers, parameters } = buildDefaultCartSelections(product)
     cartStore.addItem(product, qty, modifiers, parameters)
     viewerOpen.value = false
@@ -652,6 +644,8 @@ type RestaurantOps = {
   supports_delivery: boolean
   supports_pickup: boolean
   supports_qr_menu?: boolean
+  /** Витрина: org dine-in + филиал «в зале» (в т.ч. режим только просмотра меню). */
+  supports_in_restaurant?: boolean
 }
 
 const CHECKOUT_STORAGE_KEY = 'teleshop_checkout_state'
@@ -678,9 +672,13 @@ const fulfillmentTypeLabel = computed(() =>
   selectedFulfillmentType.value === 'pickup'
     ? 'Самовывоз'
     : selectedFulfillmentType.value === 'qr-menu'
-      ? 'QR-меню'
+      ? 'В ресторане'
       : 'Доставка',
 )
+
+function restaurantHasInHallMode(r: RestaurantOps) {
+  return r.supports_qr_menu === true || r.supports_in_restaurant === true
+}
 
 const derivedAllowedFulfillmentTypes = computed<FulfillmentType[]>(() => {
   const ops = restaurantOps.value
@@ -690,20 +688,27 @@ const derivedAllowedFulfillmentTypes = computed<FulfillmentType[]>(() => {
     const out: FulfillmentType[] = []
     if (ops[0].supports_delivery) out.push('delivery')
     if (ops[0].supports_pickup) out.push('pickup')
-    if (ops[0].supports_qr_menu === true) out.push('qr-menu')
+    if (restaurantHasInHallMode(ops[0])) out.push('qr-menu')
     return out
   }
 
   const out: FulfillmentType[] = []
   if (ops.some((r) => r.supports_delivery)) out.push('delivery')
   if (ops.some((r) => r.supports_pickup)) out.push('pickup')
-  if (ops.some((r) => r.supports_qr_menu === true)) out.push('qr-menu')
+  if (ops.some((r) => restaurantHasInHallMode(r))) out.push('qr-menu')
   return out
 })
 
-/** Нет ни одного способа оформить заказ (например только просмотр меню в зале). */
+/**
+ * Скрываем корзину только если филиалы уже загружены, список не пустой,
+ * и ни один канал (доставка / самовывоз / в зале) недоступен.
+ * При пустом ответе API не блокируем UI (избегаем «пропавшей» корзины).
+ */
 const orderingDisabled = computed(
-  () => isRestaurantModesLoaded.value && derivedAllowedFulfillmentTypes.value.length === 0,
+  () =>
+    isRestaurantModesLoaded.value
+    && restaurantOps.value.length > 0
+    && derivedAllowedFulfillmentTypes.value.length === 0,
 )
 
 const catalogFulfillmentType = computed<FulfillmentType>(() =>
@@ -1041,7 +1046,6 @@ const selectedProductPrice = computed(() => {
 })
 
 function addSelectedToCart() {
-  if (orderingDisabled.value) return
   if (!selectedProduct.value || !isModifiersValid.value) return
   
   const modifiers: SelectedModifier[] = []
@@ -1094,7 +1098,6 @@ function addSelectedToCart() {
 }
 
 function goToCheckout() {
-  if (orderingDisabled.value) return
   persistFulfillmentTypeToCheckout(selectedFulfillmentType.value)
 
   const readFirstQueryString = (key: string): string | null => {

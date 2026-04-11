@@ -393,7 +393,7 @@
                       : 'text-gray-600 hover:bg-gray-100'"
                     @click="state.fulfillmentType = 'qr-menu'"
                   >
-                    QR-меню
+                    В ресторане
                   </button>
                 </div>
               </section>
@@ -562,7 +562,7 @@
                 class="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 sm:p-4"
               >
                 <p class="font-medium">
-                  Оформление через QR-меню
+                  Оформление в зале
                 </p>
                 <p class="text-amber-900/80">
                   Адрес доставки не требуется. Мы передадим заказ в работу и отправим подтверждение после оформления.
@@ -1083,7 +1083,7 @@ const summaryDeliveryLabel = computed(() =>
   state.fulfillmentType === 'pickup'
     ? 'Самовывоз'
     : state.fulfillmentType === 'qr-menu'
-      ? 'QR-меню'
+      ? 'В ресторане'
       : 'Доставка',
 )
 

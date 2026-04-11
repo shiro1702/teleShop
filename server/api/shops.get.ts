@@ -17,6 +17,7 @@ type ShopRestaurantRow = {
   address: string
   supports_delivery: boolean
   supports_pickup: boolean
+  supports_dine_in: boolean
   city_id: string
   is_active: boolean
 }
@@ -24,7 +25,12 @@ type ShopRestaurantRow = {
 function normalizeRestaurants(raw: ShopRow['restaurants']): ShopRestaurantRow[] {
   if (!raw) return []
   const list = Array.isArray(raw) ? raw : [raw]
-  return list.filter((r): r is ShopRestaurantRow => !!r && typeof r === 'object' && typeof (r as ShopRestaurantRow).id === 'string')
+  return list
+    .filter((r): r is ShopRestaurantRow => !!r && typeof r === 'object' && typeof (r as ShopRestaurantRow).id === 'string')
+    .map((r) => ({
+      ...r,
+      supports_dine_in: Boolean((r as ShopRestaurantRow).supports_dine_in),
+    }))
 }
 
 export default defineEventHandler(async (event) => {
@@ -57,13 +63,34 @@ export default defineEventHandler(async (event) => {
 
   const cityId = cityData.id as string
 
-  const { data, error } = await client
+  let data: ShopRow[] | null = null
+  let error: { code?: string, message?: string } | null = null
+
+  const primary = await client
     .from('shops')
-    .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(id,name,address,city_id,is_active,supports_delivery,supports_pickup)')
+    .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(id,name,address,city_id,is_active,supports_delivery,supports_pickup,supports_dine_in)')
     .eq('is_active', true)
     .eq('restaurants.city_id', cityId)
     .eq('restaurants.is_active', true)
     .order('name', { ascending: true })
+
+  data = primary.data as ShopRow[] | null
+  error = primary.error
+
+  if (error && error.code === '42703') {
+    const fallback = await client
+      .from('shops')
+      .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(id,name,address,city_id,is_active,supports_delivery,supports_pickup)')
+      .eq('is_active', true)
+      .eq('restaurants.city_id', cityId)
+      .eq('restaurants.is_active', true)
+      .order('name', { ascending: true })
+    data = (fallback.data as ShopRow[] | null)?.map((row) => ({
+      ...row,
+      restaurants: normalizeRestaurants(row.restaurants).map((r) => ({ ...r, supports_dine_in: false })),
+    })) ?? null
+    error = fallback.error
+  }
 
   if (error) {
     console.error('Failed to load shops:', error)
@@ -76,8 +103,11 @@ export default defineEventHandler(async (event) => {
   const fulfillmentAgg = new Map<string, {
     hasDelivery: boolean
     hasPickup: boolean
+    hasDineIn: boolean
     pickupRestaurantIds: Set<string>
-    pickupPoints: Array<{ name: string, address: string }>
+    dineInRestaurantIds: Set<string>
+    pickupPoints: Array<{ restaurantId: string, name: string, address: string }>
+    dineInPoints: Array<{ restaurantId: string, name: string, address: string }>
   }>()
 
   for (const row of rows) {
@@ -88,8 +118,11 @@ export default defineEventHandler(async (event) => {
       agg = {
         hasDelivery: false,
         hasPickup: false,
+        hasDineIn: false,
         pickupRestaurantIds: new Set<string>(),
+        dineInRestaurantIds: new Set<string>(),
         pickupPoints: [],
+        dineInPoints: [],
       }
       fulfillmentAgg.set(row.id, agg)
     }
@@ -99,7 +132,12 @@ export default defineEventHandler(async (event) => {
       if (r.supports_pickup && !agg.pickupRestaurantIds.has(r.id)) {
         agg.pickupRestaurantIds.add(r.id)
         agg.hasPickup = true
-        agg.pickupPoints.push({ name: r.name, address: r.address })
+        agg.pickupPoints.push({ restaurantId: r.id, name: r.name, address: r.address })
+      }
+      if (r.supports_dine_in && !agg.dineInRestaurantIds.has(r.id)) {
+        agg.dineInRestaurantIds.add(r.id)
+        agg.hasDineIn = true
+        agg.dineInPoints.push({ restaurantId: r.id, name: r.name, address: r.address })
       }
     }
   }
@@ -110,11 +148,13 @@ export default defineEventHandler(async (event) => {
   // чтобы карточки на странице города отражали настройку бренда.
   const items = await Promise.all(uniqueRows.map(async (row) => {
     const agg = fulfillmentAgg.get(row.id)
-    let fulfillment: { delivery: boolean, pickup: boolean } = {
+    let fulfillment: { delivery: boolean, pickup: boolean, dineIn: boolean } = {
       delivery: Boolean(agg?.hasDelivery),
       pickup: Boolean(agg?.hasPickup),
+      dineIn: Boolean(agg?.hasDineIn),
     }
-    let pickupPoints: Array<{ name: string, address: string }> = []
+    let pickupPoints: Array<{ restaurantId: string, name: string, address: string }> = []
+    let dineInPoints: Array<{ restaurantId: string, name: string, address: string }> = []
 
     try {
       const org = await getOrganizationSettings(event, row.id)
@@ -122,10 +162,13 @@ export default defineEventHandler(async (event) => {
       fulfillment = {
         delivery: modes.has('delivery') && Boolean(agg?.hasDelivery),
         pickup: modes.has('pickup') && Boolean(agg?.hasPickup),
+        dineIn: modes.has('dine-in') && Boolean(agg?.hasDineIn),
       }
       pickupPoints = fulfillment.pickup && agg?.pickupPoints?.length ? agg.pickupPoints : []
+      dineInPoints = fulfillment.dineIn && agg?.dineInPoints?.length ? agg.dineInPoints : []
     } catch {
       pickupPoints = fulfillment.pickup && agg?.pickupPoints?.length ? agg.pickupPoints : []
+      dineInPoints = fulfillment.dineIn && agg?.dineInPoints?.length ? agg.dineInPoints : []
     }
 
     try {
@@ -140,6 +183,7 @@ export default defineEventHandler(async (event) => {
         description: cfg.identity.shortDescription || (typeof row.ui_settings?.description === 'string' ? row.ui_settings?.description : null),
         fulfillment,
         pickupPoints,
+        dineInPoints,
       }
     } catch {
       return {
@@ -150,6 +194,7 @@ export default defineEventHandler(async (event) => {
         description: typeof row.ui_settings?.description === 'string' ? row.ui_settings?.description : null,
         fulfillment,
         pickupPoints,
+        dineInPoints,
       }
     }
   }))

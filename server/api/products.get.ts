@@ -6,6 +6,7 @@ import { evaluateMenuAvailability, normalizeTimeWindows, type FulfillmentType } 
 
 export default defineEventHandler(async (event) => {
   const { shopId } = await requireTenantShop(event)
+  /** В UI — «в ресторане»; в API заказа тот же сценарий, что и org `dine-in` + dineInHallMode (см. /api/restaurants). */
   const fulfillmentType = (() => {
     const raw = getHeader(event, 'x-fulfillment-type') || getQuery(event).fulfillment_type
     if (raw === 'pickup' || raw === 'qr-menu') return raw as FulfillmentType

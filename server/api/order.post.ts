@@ -518,8 +518,12 @@ export default defineEventHandler(async (event) => {
   if (fulfillmentType === 'pickup' && !restaurant.supports_pickup) {
     throw createError({ statusCode: 400, message: 'Pickup is not available for selected restaurant' })
   }
-  // QR-меню управляется настройками ops.fulfillmentTypes (глобально/для организации),
-  // а не колонкой supports_qr_menu у конкретного ресторана.
+  if (fulfillmentType === 'qr-menu' && orgSettings.ops.dineInHallMode === 'qr-menu-browse') {
+    throw createError({
+      statusCode: 400,
+      message: 'Оформление заказа «в зале» недоступно в режиме только просмотра меню',
+    })
+  }
 
   const deliveryZone: DeliveryZoneProperties | null =
     fulfillmentType === 'delivery'
