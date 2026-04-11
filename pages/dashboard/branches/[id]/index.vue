@@ -82,42 +82,29 @@
         <input v-model="form.supportsPickup" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical || !allowedModesSet.has('pickup')">
         Самовывоз
       </label>
-      <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+      <label class="inline-flex items-center gap-2 text-sm text-gray-700 md:col-span-2">
         <input v-model="form.supportsDineIn" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical || !allowedModesSet.has('dine-in')">
         В зале
       </label>
-      <label class="inline-flex items-center gap-2 text-sm text-gray-700">
-        <input v-model="form.supportsQrMenu" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical || !allowedModesSet.has('qr-menu')">
-        QR-меню
-      </label>
-      <label class="inline-flex items-center gap-2 text-sm text-gray-700 md:col-span-2">
-        <input v-model="form.supportsShowcaseOrder" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical || !allowedModesSet.has('showcase-order')">
-        Витрина + к столу
-      </label>
-      <div v-if="form.supportsShowcaseOrder" class="md:col-span-2 rounded border border-gray-200 bg-gray-50 p-3">
-        <p class="text-sm font-medium text-gray-700">Режим "Витрина + к столу"</p>
-        <p class="mt-1 text-xs text-gray-500">Радиокнопки становятся disabled, если режим не разрешен на уровне организации или у пользователя нет прав Owner.</p>
-        <div class="mt-2 grid gap-2 md:grid-cols-2">
-          <label class="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
-            <input
-              v-model="showcaseOrderFulfillment"
-              type="radio"
-              value="to-table"
-              :disabled="!canEditCritical || !allowedModesSet.has('showcase-order') || !form.supportsShowcaseOrder"
-            >
-            До столика
-          </label>
-          <label class="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
-            <input
-              v-model="showcaseOrderFulfillment"
-              type="radio"
-              value="pickup-point"
-              :disabled="!canEditCritical || !allowedModesSet.has('showcase-order') || !form.supportsShowcaseOrder"
-            >
-            На выдачу
-          </label>
-        </div>
-      </div>
+      <template v-if="form.supportsDineIn && allowedModesSet.has('dine-in')">
+        <label
+          v-if="orgDineInHallMode === 'to-table'"
+          class="inline-flex items-center gap-2 text-sm text-gray-700 md:col-span-2"
+        >
+          <input v-model="form.supportsQrMenu" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical">
+          Заказы до столика (QR со столика)
+        </label>
+        <label
+          v-if="orgDineInHallMode === 'pickup-point'"
+          class="inline-flex items-center gap-2 text-sm text-gray-700 md:col-span-2"
+        >
+          <input v-model="form.supportsShowcaseOrder" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical">
+          Заказ на общую выдачу (по QR)
+        </label>
+        <p v-if="orgDineInHallMode === 'qr-menu-browse'" class="md:col-span-2 text-xs text-gray-500">
+          В организации включён только просмотр меню в зале — заказы через филиал не настраиваются.
+        </p>
+      </template>
       <div class="md:col-span-2">
         <div class="mb-3 rounded border border-gray-200 bg-gray-50 p-3">
           <p class="text-sm font-medium text-gray-700">График работы филиала</p>
@@ -245,9 +232,9 @@ const form = ref({
   },
 })
 const logs = ref<Array<{ action: string; at: string }>>([])
-const allowedModes = ref<Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>>(['delivery', 'pickup'])
+const allowedModes = ref<Array<'delivery' | 'pickup' | 'dine-in'>>(['delivery', 'pickup'])
 const allowedModesSet = computed(() => new Set(allowedModes.value))
-const showcaseOrderFulfillment = ref<'to-table' | 'pickup-point'>('to-table')
+const orgDineInHallMode = ref<'qr-menu-browse' | 'to-table' | 'pickup-point'>('to-table')
 const workingDayRows: Array<{ key: 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'; label: string }> = [
   { key: 'mon', label: 'Понедельник' },
   { key: 'tue', label: 'Вторник' },
@@ -332,16 +319,16 @@ onMounted(async () => {
     const orgPayload = await orgRes.json() as {
       settings?: {
         ops?: {
-          fulfillmentTypes?: Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>
-          showcaseOrderFulfillment?: 'to-table' | 'pickup-point'
+          fulfillmentTypes?: Array<'delivery' | 'pickup' | 'dine-in'>
+          dineInHallMode?: 'qr-menu-browse' | 'to-table' | 'pickup-point'
         }
       }
     }
     const modes = orgPayload.settings?.ops?.fulfillmentTypes
     if (Array.isArray(modes) && modes.length) allowedModes.value = modes
-    const orgShowcaseOrderFulfillment = orgPayload.settings?.ops?.showcaseOrderFulfillment
-    if (orgShowcaseOrderFulfillment === 'pickup-point' || orgShowcaseOrderFulfillment === 'to-table') {
-      showcaseOrderFulfillment.value = orgShowcaseOrderFulfillment
+    const hall = orgPayload.settings?.ops?.dineInHallMode
+    if (hall === 'qr-menu-browse' || hall === 'to-table' || hall === 'pickup-point') {
+      orgDineInHallMode.value = hall
     }
   }
   if (found) {
@@ -351,8 +338,8 @@ onMounted(async () => {
       supportsDelivery: found.supportsDelivery && allowedModesSet.value.has('delivery'),
       supportsPickup: found.supportsPickup && allowedModesSet.value.has('pickup'),
       supportsDineIn: found.supportsDineIn && allowedModesSet.value.has('dine-in'),
-      supportsQrMenu: found.supportsQrMenu && allowedModesSet.value.has('qr-menu'),
-      supportsShowcaseOrder: found.supportsShowcaseOrder && allowedModesSet.value.has('showcase-order'),
+      supportsQrMenu: found.supportsQrMenu,
+      supportsShowcaseOrder: found.supportsShowcaseOrder,
       useOrganizationWorkingHours: found.useOrganizationWorkingHours !== false,
       workingHours: found.workingHours,
     }
@@ -375,8 +362,8 @@ async function save() {
       supportsDelivery: allowedModesSet.value.has('delivery') && form.value.supportsDelivery,
       supportsPickup: allowedModesSet.value.has('pickup') && form.value.supportsPickup,
       supportsDineIn: allowedModesSet.value.has('dine-in') && form.value.supportsDineIn,
-      supportsQrMenu: allowedModesSet.value.has('qr-menu') && form.value.supportsQrMenu,
-      supportsShowcaseOrder: allowedModesSet.value.has('showcase-order') && form.value.supportsShowcaseOrder,
+      supportsQrMenu: allowedModesSet.value.has('dine-in') && orgDineInHallMode.value === 'to-table' && form.value.supportsQrMenu,
+      supportsShowcaseOrder: allowedModesSet.value.has('dine-in') && orgDineInHallMode.value === 'pickup-point' && form.value.supportsShowcaseOrder,
       useOrganizationWorkingHours: form.value.useOrganizationWorkingHours,
       workingHours: form.value.workingHours,
     }),

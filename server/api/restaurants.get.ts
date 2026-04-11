@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
   let error: any = null
   const primary = await client
     .from('restaurants')
-    .select('id,name,address,supports_delivery,supports_pickup,supports_qr_menu,use_organization_working_hours,working_hours,is_active')
+    .select('id,name,address,supports_delivery,supports_pickup,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active')
     .eq('shop_id', shopId)
     .eq('is_active', true)
     .order('name', { ascending: true })
@@ -27,12 +27,13 @@ export default defineEventHandler(async (event) => {
   if (error && error.code === '42703') {
     const fallback = await client
       .from('restaurants')
-      .select('id,name,address,supports_delivery,supports_pickup,supports_qr_menu,is_active')
+      .select('id,name,address,supports_delivery,supports_pickup,supports_qr_menu,supports_showcase_order,is_active')
       .eq('shop_id', shopId)
       .eq('is_active', true)
       .order('name', { ascending: true })
     data = (fallback.data as any[] | null)?.map((item) => ({
       ...item,
+      supports_showcase_order: item.supports_showcase_order ?? false,
       use_organization_working_hours: true,
       working_hours: null,
     })) ?? []
@@ -44,11 +45,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, message: 'Failed to load restaurants' })
   }
 
+  const hallOrderingEnabled =
+    allowedSet.has('dine-in')
+    && org.ops.dineInHallMode !== 'qr-menu-browse'
+
   return {
     ok: true,
     shopId,
     organizationTimezone,
     organizationWorkingHours,
+    dineInHallMode: org.ops.dineInHallMode,
     items: (data ?? []).map((item: any) => ({
       ...item,
       ...(() => {
@@ -65,10 +71,13 @@ export default defineEventHandler(async (event) => {
       })(),
       supports_delivery: Boolean(item.supports_delivery) && allowedSet.has('delivery'),
       supports_pickup: Boolean(item.supports_pickup) && allowedSet.has('pickup'),
-      // Для QR-меню считаем доступность управляемой настройками ops.fulfillmentTypes.
-      // Поэтому не пересекаем с колонкой supports_qr_menu (иначе "только qr-menu"
-      // на уровне организации не включит режим в checkout).
-      supports_qr_menu: allowedSet.has('qr-menu'),
+      /** Заказ «в зале» в чекауте (тип qr-menu): подрежим to-table → флаг филиала supports_qr_menu; pickup-point → supports_showcase_order. */
+      supports_qr_menu:
+        hallOrderingEnabled
+        && (
+          (org.ops.dineInHallMode === 'to-table' && Boolean(item.supports_qr_menu))
+          || (org.ops.dineInHallMode === 'pickup-point' && Boolean(item.supports_showcase_order))
+        ),
     })),
   }
 })

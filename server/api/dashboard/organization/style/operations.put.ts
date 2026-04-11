@@ -5,10 +5,10 @@ import {
   getOrganizationSettings,
   getStyleRecord,
   persistOrganizationSettings,
-  validateOrganizationContactsSettings,
+  validateOrganizationOperationsSettings,
 } from '~/server/utils/organizationStyle'
 
-type SaveContactsBody = {
+type SaveOperationsBody = {
   data?: OrganizationStyleConfig
   settings?: OrganizationSettings
 }
@@ -16,21 +16,22 @@ type SaveContactsBody = {
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
   if (access.role !== 'owner') {
-    throw createError({ statusCode: 403, statusMessage: 'Only owner can save organization contacts' })
+    throw createError({ statusCode: 403, statusMessage: 'Only owner can save organization operations' })
   }
 
-  const body = await readBody<SaveContactsBody>(event)
-  if (!body?.settings?.contacts) {
-    throw createError({ statusCode: 400, statusMessage: 'Organization contacts payload is required' })
+  const body = await readBody<SaveOperationsBody>(event)
+  if (!body?.settings) {
+    throw createError({ statusCode: 400, statusMessage: 'Organization settings payload is required' })
   }
 
   const current = await getOrganizationSettings(event, access.shopId)
   const nextSettings: OrganizationSettings = {
     ...current,
-    contacts: body.settings.contacts,
-    legal: body.settings.legal ?? current.legal,
+    ops: body.settings.ops,
+    locale: body.settings.locale,
+    tax: body.settings.tax,
   }
-  const errors = validateOrganizationContactsSettings(nextSettings)
+  const errors = validateOrganizationOperationsSettings(nextSettings)
   if (errors.length) {
     throw createError({ statusCode: 400, statusMessage: errors.join(' ') })
   }

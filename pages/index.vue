@@ -23,12 +23,13 @@
 
         <div
           v-if="isRestaurantModesLoaded && showFulfillmentSelector"
-          class="hidden shrink-0 items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 sm:flex"
+          class="hidden max-w-[min(100%,22rem)] shrink-0 items-center gap-0.5 rounded-xl border border-gray-200 bg-white p-1 sm:flex"
           :style="{ borderColor: theme.primary_100 || '#e5e7eb' }"
         >
           <button
+            v-if="hasDeliveryOption"
             type="button"
-            class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
+            class="min-w-0 flex-1 rounded-lg px-2 py-1 text-xs font-medium transition sm:px-3 sm:text-sm"
             :class="selectedFulfillmentType === 'delivery'
               ? 'bg-primary text-on-primary shadow-sm'
               : 'text-gray-600 hover:bg-gray-100'"
@@ -37,8 +38,9 @@
             Доставка
           </button>
           <button
+            v-if="hasPickupOption"
             type="button"
-            class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
+            class="min-w-0 flex-1 rounded-lg px-2 py-1 text-xs font-medium transition sm:px-3 sm:text-sm"
             :class="selectedFulfillmentType === 'pickup'
               ? 'bg-primary text-on-primary shadow-sm'
               : 'text-gray-600 hover:bg-gray-100'"
@@ -46,9 +48,21 @@
           >
             Самовывоз
           </button>
+          <button
+            v-if="hasQrMenuOption"
+            type="button"
+            class="min-w-0 flex-1 rounded-lg px-2 py-1 text-xs font-medium transition sm:px-3 sm:text-sm"
+            :class="selectedFulfillmentType === 'qr-menu'
+              ? 'bg-primary text-on-primary shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'"
+            @click="setFulfillmentType('qr-menu')"
+          >
+            QR-меню
+          </button>
         </div>
 
         <button
+          v-if="!orderingDisabled"
           type="button"
           class="hidden shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 sm:flex"
           @click="goToCheckout"
@@ -216,12 +230,13 @@
     >
       <div
         v-if="isRestaurantModesLoaded && showFulfillmentSelector"
-        class="inline-flex w-full rounded-xl border border-gray-200 bg-white p-1"
+        class="inline-flex w-full gap-0.5 rounded-xl border border-gray-200 bg-white p-1"
         :style="{ borderColor: theme.primary_100 || '#e5e7eb' }"
       >
         <button
+          v-if="hasDeliveryOption"
           type="button"
-          class="flex-1 rounded-lg px-3 py-2 text-xs font-medium transition"
+          class="min-w-0 flex-1 rounded-lg px-2 py-2 text-[11px] font-medium leading-tight transition sm:text-xs"
           :class="selectedFulfillmentType === 'delivery'
             ? 'bg-primary text-on-primary shadow-sm'
             : 'text-gray-600 hover:bg-gray-100'"
@@ -230,8 +245,9 @@
           Доставка
         </button>
         <button
+          v-if="hasPickupOption"
           type="button"
-          class="flex-1 rounded-lg px-3 py-2 text-xs font-medium transition"
+          class="min-w-0 flex-1 rounded-lg px-2 py-2 text-[11px] font-medium leading-tight transition sm:text-xs"
           :class="selectedFulfillmentType === 'pickup'
             ? 'bg-primary text-on-primary shadow-sm'
             : 'text-gray-600 hover:bg-gray-100'"
@@ -239,9 +255,21 @@
         >
           Самовывоз
         </button>
+        <button
+          v-if="hasQrMenuOption"
+          type="button"
+          class="min-w-0 flex-1 rounded-lg px-2 py-2 text-[11px] font-medium leading-tight transition sm:text-xs"
+          :class="selectedFulfillmentType === 'qr-menu'
+            ? 'bg-primary text-on-primary shadow-sm'
+            : 'text-gray-600 hover:bg-gray-100'"
+          @click="setFulfillmentType('qr-menu')"
+        >
+          QR-меню
+        </button>
       </div>
 
       <button
+        v-if="!orderingDisabled"
         type="button"
         class="flex w-full items-center justify-between gap-3 rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary shadow-md"
         @click="goToCheckout"
@@ -402,7 +430,11 @@
               </div>
             </div>
 
-            <div class="shrink-0 border-t p-4 sm:p-5 bg-white" :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }">
+            <div
+              v-if="!orderingDisabled"
+              class="shrink-0 border-t p-4 sm:p-5 bg-white"
+              :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }"
+            >
               <button
                 type="button"
                 class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
@@ -412,6 +444,13 @@
                 <span>{{ isModifiersValid ? 'Добавить в корзину' : 'Выберите опции' }}</span>
                 <span v-if="isModifiersValid" class="font-bold">{{ formatPrice(selectedProductPrice) }}</span>
               </button>
+            </div>
+            <div
+              v-else
+              class="shrink-0 border-t p-4 sm:p-5 text-center text-sm text-gray-600"
+              :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }"
+            >
+              Оформление заказа недоступно в этом режиме.
             </div>
           </div>
         </div>
@@ -530,6 +569,10 @@ function onStoryAction(payload: { slide: StorySlideDto; actionType: string }) {
       if (typeof window !== 'undefined') window.alert('Товар не найден в меню')
       return
     }
+    if (orderingDisabled.value) {
+      if (typeof window !== 'undefined') window.alert('Оформление заказа недоступно в этом режиме')
+      return
+    }
     const { modifiers, parameters } = buildDefaultCartSelections(product)
     cartStore.addItem(product, qty, modifiers, parameters)
     viewerOpen.value = false
@@ -608,6 +651,7 @@ type RestaurantOps = {
   id: string
   supports_delivery: boolean
   supports_pickup: boolean
+  supports_qr_menu?: boolean
 }
 
 const CHECKOUT_STORAGE_KEY = 'teleshop_checkout_state'
@@ -640,28 +684,36 @@ const fulfillmentTypeLabel = computed(() =>
 
 const derivedAllowedFulfillmentTypes = computed<FulfillmentType[]>(() => {
   const ops = restaurantOps.value
-  const fallback: FulfillmentType[] = ['delivery', 'pickup', 'qr-menu']
-
-  if (!ops.length) return fallback
+  if (!ops.length) return []
 
   if (ops.length === 1) {
     const out: FulfillmentType[] = []
     if (ops[0].supports_delivery) out.push('delivery')
     if (ops[0].supports_pickup) out.push('pickup')
-    if (!out.length) out.push('qr-menu')
+    if (ops[0].supports_qr_menu === true) out.push('qr-menu')
     return out
   }
 
   const out: FulfillmentType[] = []
   if (ops.some((r) => r.supports_delivery)) out.push('delivery')
   if (ops.some((r) => r.supports_pickup)) out.push('pickup')
-  if (!out.length) out.push('qr-menu')
+  if (ops.some((r) => r.supports_qr_menu === true)) out.push('qr-menu')
   return out
 })
 
+/** Нет ни одного способа оформить заказ (например только просмотр меню в зале). */
+const orderingDisabled = computed(
+  () => isRestaurantModesLoaded.value && derivedAllowedFulfillmentTypes.value.length === 0,
+)
+
+const catalogFulfillmentType = computed<FulfillmentType>(() =>
+  orderingDisabled.value ? 'delivery' : selectedFulfillmentType.value,
+)
+
 const hasDeliveryOption = computed(() => derivedAllowedFulfillmentTypes.value.includes('delivery'))
 const hasPickupOption = computed(() => derivedAllowedFulfillmentTypes.value.includes('pickup'))
-const showFulfillmentSelector = computed(() => hasDeliveryOption.value && hasPickupOption.value)
+const hasQrMenuOption = computed(() => derivedAllowedFulfillmentTypes.value.includes('qr-menu'))
+const showFulfillmentSelector = computed(() => derivedAllowedFulfillmentTypes.value.length > 1)
 
 const selectedRestaurantIdForCheckout = computed(() => {
   return restaurantOps.value.length === 1 ? restaurantOps.value[0].id : null
@@ -792,13 +844,16 @@ async function loadRestaurantModes() {
     isRestaurantModesLoaded.value = true
     const allowed = derivedAllowedFulfillmentTypes.value
     if (!allowed.length) {
-      persistFulfillmentTypeToCheckout(selectedFulfillmentType.value)
+      selectedFulfillmentType.value = 'delivery'
+      persistFulfillmentTypeToCheckout('delivery')
+      void loadCatalog()
       return
     }
     if (!allowed.includes(selectedFulfillmentType.value)) {
       selectedFulfillmentType.value = allowed.includes('delivery') ? 'delivery' : allowed[0]
     }
     persistFulfillmentTypeToCheckout(selectedFulfillmentType.value)
+    void loadCatalog()
   }
 }
 
@@ -986,6 +1041,7 @@ const selectedProductPrice = computed(() => {
 })
 
 function addSelectedToCart() {
+  if (orderingDisabled.value) return
   if (!selectedProduct.value || !isModifiersValid.value) return
   
   const modifiers: SelectedModifier[] = []
@@ -1038,6 +1094,7 @@ function addSelectedToCart() {
 }
 
 function goToCheckout() {
+  if (orderingDisabled.value) return
   persistFulfillmentTypeToCheckout(selectedFulfillmentType.value)
 
   const readFirstQueryString = (key: string): string | null => {
@@ -1117,7 +1174,7 @@ watch(
 async function loadCatalog() {
   if (isCatalogLoading.value) return
   const restaurantId = getCurrentRestaurantIdFromQuery()
-  const cacheKey = buildCatalogCacheKey(tenantKey.value || null, restaurantId, selectedFulfillmentType.value)
+  const cacheKey = buildCatalogCacheKey(tenantKey.value || null, restaurantId, catalogFulfillmentType.value)
   const cachedItems = readCatalogCache(cacheKey)
   if (cachedItems && cachedItems.length) {
     cartStore.setProducts(cachedItems)
@@ -1133,12 +1190,12 @@ async function loadCatalog() {
     const headers: Record<string, string> = {}
     if (tenantKey.value) headers['x-shop-id'] = tenantKey.value
     if (restaurantId) headers['x-restaurant-id'] = restaurantId
-    headers['x-fulfillment-type'] = selectedFulfillmentType.value
+    headers['x-fulfillment-type'] = catalogFulfillmentType.value
 
     const res = await $fetch<{ ok: boolean; items: Product[] }>('/api/products', {
       query: {
         ...(Object.keys(query).length ? query : {}),
-        fulfillment_type: selectedFulfillmentType.value,
+        fulfillment_type: catalogFulfillmentType.value,
       },
       headers: Object.keys(headers).length ? headers : undefined,
     })
@@ -1153,6 +1210,10 @@ async function loadCatalog() {
     isCatalogLoading.value = false
   }
 }
+
+watch(catalogFulfillmentType, () => {
+  void loadCatalog()
+})
 
 </script>
 

@@ -2,7 +2,7 @@ import { createError, defineEventHandler } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
 import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
-import { getDefaultOrganizationSettings } from '~/server/utils/organizationStyle'
+import { getDefaultOrganizationSettings, getOrganizationSettings } from '~/server/utils/organizationStyle'
 import { normalizeWeeklyWorkingHours } from '~/utils/workingHours'
 
 type RestaurantRow = {
@@ -22,8 +22,11 @@ type RestaurantRow = {
 
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
-  const allowedModes = await applyGlobalFulfillmentPolicy(event, access.shopId, ['delivery', 'pickup', 'dine-in', 'qr-menu', 'showcase-order'])
+  const org = await getOrganizationSettings(event, access.shopId)
+  const allowedModes = await applyGlobalFulfillmentPolicy(event, access.shopId, org.ops.fulfillmentTypes)
   const allowedSet = new Set(allowedModes)
+  const hallMode = org.ops.dineInHallMode
+  const hallOrderingEnabled = allowedSet.has('dine-in') && hallMode !== 'qr-menu-browse'
   const client = await serverSupabaseServiceRole(event)
   let data: RestaurantRow[] | null = null
   let error: any = null
@@ -65,8 +68,14 @@ export default defineEventHandler(async (event) => {
       supportsDelivery: row.supports_delivery && allowedSet.has('delivery'),
       supportsPickup: row.supports_pickup && allowedSet.has('pickup'),
       supportsDineIn: row.supports_dine_in && allowedSet.has('dine-in'),
-      supportsQrMenu: row.supports_qr_menu && allowedSet.has('qr-menu'),
-      supportsShowcaseOrder: row.supports_showcase_order && allowedSet.has('showcase-order'),
+      supportsQrMenu:
+        row.supports_qr_menu
+        && hallOrderingEnabled
+        && hallMode === 'to-table',
+      supportsShowcaseOrder:
+        row.supports_showcase_order
+        && hallOrderingEnabled
+        && hallMode === 'pickup-point',
       useOrganizationWorkingHours: row.use_organization_working_hours !== false,
       workingHours: normalizeWeeklyWorkingHours(row.working_hours, fallbackWorkingHours),
       isActive: row.is_active,

@@ -391,8 +391,8 @@ const fulfillmentModes = computed(() => {
   if (b.supportsDelivery) opts.push({ value: 'delivery', label: 'Доставка' })
   if (b.supportsPickup) opts.push({ value: 'pickup', label: 'Самовывоз' })
   if (b.supportsDineIn) opts.push({ value: 'dine-in', label: 'В зале' })
-  if (b.supportsQrMenu) opts.push({ value: 'qr-menu', label: 'QR-меню' })
-  if (b.supportsShowcaseOrder) opts.push({ value: 'showcase-order', label: 'Витрина' })
+  if (b.supportsQrMenu) opts.push({ value: 'qr-menu', label: 'В зале · до столика' })
+  if (b.supportsShowcaseOrder) opts.push({ value: 'showcase-order', label: 'В зале · на выдачу' })
   return opts.length ? opts : [{ value: 'delivery', label: 'Доставка' }]
 })
 
@@ -527,8 +527,8 @@ function fulfillmentLabel(ft: string) {
     delivery: 'Доставка',
     pickup: 'Самовывоз',
     'dine-in': 'В зале',
-    'qr-menu': 'QR-меню',
-    'showcase-order': 'Витрина',
+    'qr-menu': 'В зале · до столика',
+    'showcase-order': 'В зале · на выдачу',
   }
   return m[ft] || ft
 }

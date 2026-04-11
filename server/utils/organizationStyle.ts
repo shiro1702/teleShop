@@ -2,6 +2,7 @@ import { createError } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
 import type {
+  OrganizationDineInHallMode,
   OrganizationStyleAuditEntry,
   OrganizationStyleConfig,
   OrganizationSettings,
@@ -223,7 +224,8 @@ export function getDefaultOrganizationSettings(): OrganizationSettings {
       deliveryFee: 150,
       freeDeliveryFrom: 1000,
       fulfillmentTypes: ['delivery', 'pickup'],
-      showcaseOrderFulfillment: 'to-table',
+      dineInHallMode: 'to-table',
+      dineInStaffButtons: { waiter: true, hookah: false },
       orderAcceptanceMode: 'manual',
       ordersPaused: false,
       ordersPausedReason: '',
@@ -346,14 +348,48 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
   const legal = source.legal && typeof source.legal === 'object' ? source.legal : {}
   const status = ['open', 'closed', 'coming_soon', 'temporarily_unavailable'].includes(ops.status) ? ops.status : defaults.ops.status
   const orderAcceptanceMode = ['auto', 'manual'].includes(ops.orderAcceptanceMode) ? ops.orderAcceptanceMode : defaults.ops.orderAcceptanceMode
-  const showcaseOrderFulfillment = ['to-table', 'pickup-point'].includes(ops.showcaseOrderFulfillment)
-    ? ops.showcaseOrderFulfillment
-    : defaults.ops.showcaseOrderFulfillment
   const vatMode = ['none', 'included', 'excluded'].includes(tax.vatMode) ? tax.vatMode : defaults.tax.vatMode
   const fulfillmentRaw = Array.isArray(ops.fulfillmentTypes) ? ops.fulfillmentTypes : defaults.ops.fulfillmentTypes
-  const fulfillmentTypes = fulfillmentRaw.filter(
-    (item: unknown) => ['delivery', 'pickup', 'dine-in', 'qr-menu', 'showcase-order'].includes(String(item)),
-  ) as Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>
+  const legacyList = fulfillmentRaw
+    .map((item: unknown) => String(item))
+    .filter((item: string) =>
+      ['delivery', 'pickup', 'dine-in', 'qr-menu', 'showcase-order'].includes(item),
+    )
+  const hadShowcase = legacyList.includes('showcase-order')
+  const hadQrMenu = legacyList.includes('qr-menu')
+  const hadDineIn = legacyList.includes('dine-in')
+  const nextFulfillment = new Set<'delivery' | 'pickup' | 'dine-in'>()
+  for (const item of legacyList) {
+    if (item === 'delivery' || item === 'pickup') nextFulfillment.add(item)
+    if (item === 'dine-in' || item === 'qr-menu' || item === 'showcase-order') nextFulfillment.add('dine-in')
+  }
+  const fulfillmentTypes =
+    nextFulfillment.size > 0
+      ? Array.from(nextFulfillment)
+      : [...defaults.ops.fulfillmentTypes]
+
+  const HALL: OrganizationDineInHallMode[] = ['qr-menu-browse', 'to-table', 'pickup-point']
+  let dineInHallMode: OrganizationDineInHallMode = defaults.ops.dineInHallMode
+  const rawHall = ops.dineInHallMode
+  if (typeof rawHall === 'string' && HALL.includes(rawHall as OrganizationDineInHallMode)) {
+    dineInHallMode = rawHall as OrganizationDineInHallMode
+  } else {
+    const legacyShowcaseFf =
+      ops.showcaseOrderFulfillment === 'pickup-point' ? 'pickup-point' : 'to-table'
+    if (hadShowcase) {
+      dineInHallMode = legacyShowcaseFf
+    } else if (hadQrMenu && !hadShowcase) {
+      dineInHallMode = 'to-table'
+    } else if (hadDineIn && !hadQrMenu && !hadShowcase) {
+      dineInHallMode = 'to-table'
+    }
+  }
+
+  const staffRaw = ops.dineInStaffButtons && typeof ops.dineInStaffButtons === 'object' ? ops.dineInStaffButtons : null
+  const dineInStaffButtons = {
+    waiter: typeof staffRaw?.waiter === 'boolean' ? staffRaw.waiter : defaults.ops.dineInStaffButtons.waiter,
+    hookah: typeof staffRaw?.hookah === 'boolean' ? staffRaw.hookah : defaults.ops.dineInStaffButtons.hookah,
+  }
   const dayKeys: WorkingDayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
   const sourceWorkingHours = ops.workingHours && typeof ops.workingHours === 'object' ? ops.workingHours : {}
   const workingHours = dayKeys.reduce((acc, day) => {
@@ -386,7 +422,8 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
       deliveryFee: asNullableNumber(ops.deliveryFee),
       freeDeliveryFrom: asNullableNumber(ops.freeDeliveryFrom),
       fulfillmentTypes,
-      showcaseOrderFulfillment,
+      dineInHallMode,
+      dineInStaffButtons,
       orderAcceptanceMode,
       ordersPaused: Boolean(ops.ordersPaused),
       ordersPausedReason: asString(ops.ordersPausedReason, defaults.ops.ordersPausedReason),
@@ -671,7 +708,8 @@ export function getSystemPresets(): OrganizationStylePreset[] {
   return SYSTEM_STYLE_PRESETS.map((item) => ({ ...item, isSystem: true }))
 }
 
-export function validateOrganizationSettings(settings: OrganizationSettings): string[] {
+/** Публичные поля, ops, locale, tax — без контактов и реквизитов (для PUT operations). */
+export function validateOrganizationOperationsSettings(settings: OrganizationSettings): string[] {
   const errors: string[] = []
   const slug = settings.slug.trim().toLowerCase()
   if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
@@ -682,9 +720,6 @@ export function validateOrganizationSettings(settings: OrganizationSettings): st
   }
   if (settings.tagline.trim().length > 120) errors.push('Короткий слоган под названием не должен превышать 120 символов.')
   if (settings.cuisine.trim().length > 300) errors.push('Категория кухни не должна превышать 300 символов.')
-  if (settings.contacts.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.contacts.email)) {
-    errors.push('Некорректный email в контактах.')
-  }
   const numericChecks: Array<[string, number | null]> = [
     ['minOrderAmount', settings.ops.minOrderAmount],
     ['prepTimeMinutes', settings.ops.prepTimeMinutes],
@@ -712,6 +747,15 @@ export function validateOrganizationSettings(settings: OrganizationSettings): st
   if (settings.locale.languages.length === 0) {
     errors.push('Нужен минимум один язык витрины.')
   }
+  return errors
+}
+
+/** Контакты и реквизиты футера — для PUT contacts. */
+export function validateOrganizationContactsSettings(settings: OrganizationSettings): string[] {
+  const errors: string[] = []
+  if (settings.contacts.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.contacts.email)) {
+    errors.push('Некорректный email в контактах.')
+  }
   const legalName = settings.legal.legalName.trim()
   const inn = settings.legal.inn.trim()
   const ogrn = settings.legal.ogrn.trim()
@@ -725,6 +769,10 @@ export function validateOrganizationSettings(settings: OrganizationSettings): st
     errors.push('ОГРН/ОГРНИП должен содержать 13 или 15 цифр.')
   }
   return errors
+}
+
+export function validateOrganizationSettings(settings: OrganizationSettings): string[] {
+  return [...validateOrganizationOperationsSettings(settings), ...validateOrganizationContactsSettings(settings)]
 }
 
 export function validateStyleConfig(config: OrganizationStyleConfig): string[] {
