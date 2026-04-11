@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { serverSupabaseServiceRole } from '#supabase/server'
 
 const TELEGRAM_API = (token: string) => `https://api.telegram.org/bot${token}`
@@ -21,37 +20,12 @@ async function telegram(
 }
 
 type CallbackKind = 'status' | 'delay'
-type ParsedAuthStart = {
-  shopRef: string
-  bridgeKey: string
-}
 type ChatLinkTokenRow = {
   token: string
   shop_id: string
   restaurant_id: string
   expires_at: string
   used_at: string | null
-}
-
-function parseAuthStartParts(parts: string[]): ParsedAuthStart {
-  const out: ParsedAuthStart = { shopRef: '', bridgeKey: '' }
-  for (const part of parts) {
-    const chunk = (part || '').trim()
-    if (!chunk) continue
-    if (chunk.startsWith('s-') && chunk.length > 2) {
-      out.shopRef = chunk.slice(2)
-      continue
-    }
-    if (chunk.startsWith('b-') && chunk.length > 2) {
-      out.bridgeKey = chunk.slice(2)
-      continue
-    }
-  }
-  // Backward compatibility: auth_link_<shopRef>
-  if (!out.shopRef && parts.length > 0) {
-    out.shopRef = (parts[0] || '').trim()
-  }
-  return out
 }
 
 function parseCallbackData(
@@ -133,6 +107,53 @@ function appendOrderDetails(baseText: string, details: {
   ].join('\n')
 }
 
+type LinkContextPayload = {
+  shop_slug?: string
+  city_slug?: string
+  redirect_path?: string
+  custom_domain_hostname?: string | null
+}
+
+function buildLinkTelegramUrlFromTokenRow(options: {
+  appUrlBase: string
+  defaultCitySlug: string
+  token: string
+  bridgePayload: Record<string, unknown> | null | undefined
+  tenantShop?: { slug?: string; custom_domain?: string | null }
+}): string {
+  const raw = (options.bridgePayload?.link_context || {}) as LinkContextPayload
+  const baseApp = options.appUrlBase.replace(/\/$/, '')
+  let baseUrl = baseApp
+  const host = raw.custom_domain_hostname && String(raw.custom_domain_hostname).trim()
+  if (host) {
+    const clean = host.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+    baseUrl = `https://${clean}`
+  } else {
+    const city =
+      (raw.city_slug && String(raw.city_slug).trim()) || options.defaultCitySlug
+    const shopSlug =
+      (raw.shop_slug && String(raw.shop_slug).trim()) ||
+      (options.tenantShop?.slug && String(options.tenantShop.slug).trim()) ||
+      ''
+    if (shopSlug) {
+      baseUrl = `${baseApp}/${encodeURIComponent(city)}/${encodeURIComponent(shopSlug)}`
+    }
+  }
+  const redirectPath =
+    typeof raw.redirect_path === 'string' && raw.redirect_path.startsWith('/') && !raw.redirect_path.startsWith('//')
+      ? raw.redirect_path
+      : '/cart'
+  const shopId =
+    (raw.shop_slug && String(raw.shop_slug).trim()) ||
+    (options.tenantShop?.slug && String(options.tenantShop.slug).trim()) ||
+    ''
+  const q = new URLSearchParams()
+  q.set('token', options.token)
+  q.set('redirect', redirectPath)
+  if (shopId) q.set('shop_id', shopId)
+  return `${baseUrl}/link-telegram?${q.toString()}`
+}
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const tenant = event.context.tenant
@@ -183,6 +204,135 @@ export default defineEventHandler(async (event) => {
 
     if (isStart) {
       const startParam = paramRaw || ''
+      const appUrlBase = ((config.appUrl as string) || '').replace(/\/$/, '')
+
+      const linkSessionMatch = /^link_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(
+        startParam,
+      )
+      if (linkSessionMatch && appUrlBase) {
+        const tokenUuid = linkSessionMatch[1]
+        const supabase = await serverSupabaseServiceRole(event)
+        const { data: row, error: fetchErr } = await supabase
+          .from('auth_tokens')
+          .select('token, telegram_id, expires_at, bridge_payload, channel')
+          .eq('token', tokenUuid)
+          .maybeSingle()
+
+        if (fetchErr) {
+          console.error('link_ session fetch:', fetchErr)
+          await telegram(botToken, 'sendMessage', {
+            chat_id: chatId,
+            text: 'Не удалось проверить ссылку. Попробуйте позже.',
+          })
+          return { ok: true }
+        }
+
+        if (!row || String((row as { channel?: string }).channel || 'telegram') !== 'telegram') {
+          await telegram(botToken, 'sendMessage', {
+            chat_id: chatId,
+            text: 'Ссылка недействительна или устарела. Запросите вход на сайте ещё раз.',
+          })
+          return { ok: true }
+        }
+
+        const expiresAt = new Date(String((row as { expires_at?: string }).expires_at)).getTime()
+        if (Number.isFinite(expiresAt) && expiresAt < Date.now()) {
+          await supabase.from('auth_tokens').delete().eq('token', tokenUuid)
+          await telegram(botToken, 'sendMessage', {
+            chat_id: chatId,
+            text: 'Срок ссылки истёк. Вернитесь на сайт и запросите вход снова.',
+          })
+          return { ok: true }
+        }
+
+        const existingTg = (row as { telegram_id?: number | null }).telegram_id
+        if (existingTg != null && existingTg !== chatId) {
+          await telegram(botToken, 'sendMessage', {
+            chat_id: chatId,
+            text: 'Эта ссылка уже была использована в другом Telegram-аккаунте. Запросите новую на сайте.',
+          })
+          return { ok: true }
+        }
+
+        if (existingTg == null) {
+          const { data: updated, error: updErr } = await supabase
+            .from('auth_tokens')
+            .update({ telegram_id: chatId })
+            .eq('token', tokenUuid)
+            .is('telegram_id', null)
+            .select('token')
+            .maybeSingle()
+
+          if (updErr) {
+            console.error('link_ session update:', updErr)
+            await telegram(botToken, 'sendMessage', {
+              chat_id: chatId,
+              text: 'Не удалось подтвердить вход. Попробуйте позже.',
+            })
+            return { ok: true }
+          }
+
+          if (!updated) {
+            const { data: again } = await supabase
+              .from('auth_tokens')
+              .select('telegram_id')
+              .eq('token', tokenUuid)
+              .maybeSingle()
+            const rid = (again as { telegram_id?: number | null } | null)?.telegram_id
+            if (rid != null && rid !== chatId) {
+              await telegram(botToken, 'sendMessage', {
+                chat_id: chatId,
+                text: 'Эта ссылка уже была использована в другом Telegram-аккаунте. Запросите новую на сайте.',
+              })
+              return { ok: true }
+            }
+          }
+        }
+
+        const bridgePayload = (row as { bridge_payload?: Record<string, unknown> }).bridge_payload
+        const link = buildLinkTelegramUrlFromTokenRow({
+          appUrlBase,
+          defaultCitySlug,
+          token: tokenUuid,
+          bridgePayload: bridgePayload ?? null,
+          tenantShop: tenant?.shop,
+        })
+
+        const replyMarkup = {
+          inline_keyboard: [
+            [{ text: 'Привязать аккаунт и открыть сайт', url: link }],
+            [{ text: 'Скопировать ссылку для браузера', copy_text: { text: link } }],
+          ],
+        }
+
+        try {
+          await telegram(botToken, 'sendMessage', {
+            chat_id: chatId,
+            text: [
+              '✅ Telegram подтверждён.',
+              '',
+              'Вернитесь на сайт — вход завершится автоматически. Если страница не обновилась, нажмите кнопку «Привязать аккаунт…» или скопируйте ссылку и откройте её в браузере.',
+            ].join('\n'),
+            reply_markup: replyMarkup,
+          })
+        } catch (e) {
+          console.warn('sendMessage with copy_text failed, retrying without copy button:', e)
+          await telegram(botToken, 'sendMessage', {
+            chat_id: chatId,
+            text: [
+              '✅ Telegram подтверждён.',
+              '',
+              'Вернитесь на сайт. Если вход не завершился, откройте ссылку:',
+              link,
+            ].join('\n'),
+            reply_markup: {
+              inline_keyboard: [[{ text: 'Открыть сайт для завершения входа', url: link }]],
+            },
+          })
+        }
+        return { ok: true }
+      }
+
       const startParts = startParam.split('_')
       const startKey = startParts.slice(0, 2).join('_')
 
@@ -208,67 +358,6 @@ export default defineEventHandler(async (event) => {
         return { ok: true }
       }
 
-      // Специальный сценарий: старт с параметром для авторизации с возвратом на сайт
-      if (startKey === 'auth_link' && appUrl) {
-        const supabase = await serverSupabaseServiceRole(event)
-        const token = randomUUID()
-        const parsedAuthStart = parseAuthStartParts(startParts.slice(2))
-        const startShopId = parsedAuthStart.shopRef
-        const bridgeKey = parsedAuthStart.bridgeKey
-        let bridgePayload: Record<string, unknown> | null = null
-
-        if (bridgeKey) {
-          const { data: bridgeRow } = await supabase
-            .from('auth_bridge_sessions')
-            .select('payload, shop_id, expires_at')
-            .eq('bridge_key', bridgeKey)
-            .maybeSingle()
-
-          const isExpired = bridgeRow?.expires_at
-            ? new Date(String(bridgeRow.expires_at)).getTime() < Date.now()
-            : true
-          if (bridgeRow && !isExpired) {
-            bridgePayload = (bridgeRow.payload as Record<string, unknown>) || null
-            await supabase.from('auth_bridge_sessions').delete().eq('bridge_key', bridgeKey)
-          }
-        }
-
-        const { error } = await supabase
-          .from('auth_tokens')
-          .insert({
-            token,
-            telegram_id: chatId,
-            channel: 'telegram',
-            bridge_payload: bridgePayload,
-          })
-
-        if (error) {
-          console.error('Error inserting auth token from /start auth_link:', error)
-          await telegram(botToken, 'sendMessage', {
-            chat_id: chatId,
-            text: 'Произошла ошибка при создании ссылки. Попробуйте позже.',
-          })
-          return { ok: true }
-        }
-
-        const baseUrl = appUrl.replace(/\/$/, '')
-        // После привязки возвращаем пользователя на корзину текущего ресторана.
-        const effectiveShopId = tenant?.shop?.slug || startShopId || ''
-        const redirectPath = tenant?.shop?.custom_domain
-          ? '/cart'
-          : `${effectiveShopId ? `/${defaultCitySlug}/${effectiveShopId}` : ''}/cart`
-        const link = `${baseUrl}/link-telegram?token=${token}&redirect=${encodeURIComponent(redirectPath)}${effectiveShopId ? `&shop_id=${encodeURIComponent(effectiveShopId)}` : ''}`
-
-        await telegram(botToken, 'sendMessage', {
-          chat_id: chatId,
-          text: 'Для привязки вашего Telegram к аккаунту на сайте нажмите кнопку ниже, затем вернитесь на сайт.',
-          reply_markup: {
-            inline_keyboard: [[{ text: 'Привязать Telegram и вернуться на сайт', url: link }]],
-          },
-        })
-        return { ok: true }
-      }
-
       // Обычный /start без параметров — приветствие и кнопка Web App
       if (!startParam) {
         const replyMarkup = appUrl
@@ -283,50 +372,24 @@ export default defineEventHandler(async (event) => {
         })
         return { ok: true }
       }
-    }
-    if (isLogin) {
-      // Привязка Telegram-аккаунта к аккаунту на сайте через одноразовый токен
-      if (!appUrl) {
-        await telegram(botToken, 'sendMessage', {
-          chat_id: chatId,
-          text: 'Ссылка для привязки временно недоступна. Попробуйте позже.',
-        })
-        return { ok: true }
-      }
-
-      const supabase = await serverSupabaseServiceRole(event)
-      const token = randomUUID()
-
-      const { error } = await supabase
-        .from('auth_tokens')
-        .insert({
-          token,
-          telegram_id: chatId,
-        })
-
-      if (error) {
-        console.error('Error inserting auth token from /login:', error)
-        await telegram(botToken, 'sendMessage', {
-          chat_id: chatId,
-          text: 'Произошла ошибка при создании ссылки. Попробуйте позже.',
-        })
-        return { ok: true }
-      }
-
-      const baseUrl = appUrl.replace(/\/$/, '')
-      const fallbackRedirect = tenant?.shop?.custom_domain
-        ? '/cart'
-        : `${tenant?.shop?.slug ? `/${defaultCitySlug}/${tenant.shop.slug}` : ''}/cart`
-      const link = `${baseUrl}/link-telegram?token=${token}&redirect=${encodeURIComponent(fallbackRedirect)}${tenant?.shop?.slug ? `&shop_id=${encodeURIComponent(tenant.shop.slug)}` : ''}`
 
       await telegram(botToken, 'sendMessage', {
         chat_id: chatId,
-        text: 'Чтобы привязать ваш Telegram к аккаунту на сайте, нажмите кнопку ниже.',
-        reply_markup: {
-          inline_keyboard: [[{ text: 'Привязать Telegram', url: link }]],
-        },
+        text: [
+          'Чтобы войти на сайт, откройте магазин в браузере и нажмите «Войти через Telegram».',
+          'Сайт создаст одноразовую ссылку — откройте её здесь, в чате с ботом.',
+        ].join('\n'),
       })
-
+      return { ok: true }
+    }
+    if (isLogin) {
+      await telegram(botToken, 'sendMessage', {
+        chat_id: chatId,
+        text: [
+          'Вход выполняется через сайт.',
+          'Откройте магазин в браузере и нажмите «Войти через Telegram» — вам откроется этот бот с готовой ссылкой.',
+        ].join('\n'),
+      })
       return { ok: true }
     }
     const bindToken = parseBindToken(text)

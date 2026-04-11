@@ -84,6 +84,13 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (tokenRow.telegram_id == null) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Telegram confirmation pending',
+    })
+  }
+
   const telegramId: number = tokenRow.telegram_id
 
   // Пытаемся найти существующий профиль по telegram_id

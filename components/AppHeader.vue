@@ -321,14 +321,43 @@ function onDocumentClickCapture(e: MouseEvent) {
   }
 }
 
-function openTelegramAuth() {
+async function openTelegramAuth() {
   showAuthModal.value = false
-  if (!telegramBotUrl.value) return
-  if (typeof window !== 'undefined') {
-    const startParts = ['auth_link']
-    if (tenantKey.value) startParts.push(`s-${encodeURIComponent(tenantKey.value)}`)
-    const url = `${telegramBotUrl.value}?start=${startParts.join('_')}`
-    window.open(url, '_blank', 'noopener')
+  if (!telegramBotUrl.value || typeof window === 'undefined') return
+  const shopRef = tenantKey.value?.trim() || ''
+  if (!shopRef) {
+    window.alert('Откройте вход из страницы ресторана.')
+    return
+  }
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  try {
+    const res = await $fetch<{ ok: boolean; token: string; botStartParam: string }>(
+      '/api/auth/request-telegram-link',
+      {
+        method: 'POST',
+        headers: { 'x-shop-id': shopRef },
+        body: {
+          shopId: shopRef,
+          citySlug: citySlug || undefined,
+          redirectPath: tenantPath('/cart'),
+        },
+      },
+    )
+    if (!res?.ok || !res.token || !res.botStartParam) {
+      throw new Error('bad_response')
+    }
+    const tgUrl = `${telegramBotUrl.value}?start=${encodeURIComponent(res.botStartParam)}`
+    window.open(tgUrl, '_blank', 'noopener')
+    await router.push({
+      path: '/link-telegram',
+      query: {
+        token: res.token,
+        redirect: tenantPath('/cart'),
+        shop_id: shopRef,
+      },
+    })
+  } catch {
+    window.alert('Не удалось начать вход через Telegram. Попробуйте ещё раз.')
   }
 }
 

@@ -1765,10 +1765,7 @@ async function placeOrder() {
   } catch (error: any) {
     const status = error?.statusCode || error?.status
     if (isClient() && !isTelegram.value && (status === 401 || status === 409)) {
-      await navigateTo({
-        path: '/link-telegram',
-        query: { redirect: tenantPath('/checkout') },
-      })
+      await openTelegramAuth()
       return
     }
     if (isClient()) {
@@ -1796,7 +1793,8 @@ function openMaxAuth() {
   void openMaxAuthFlow()
 }
 
-async function buildAuthStartParam() {
+/** Параметр start для MAX (пока без серверной выдачи токена на сайте). */
+async function buildMaxAuthStartParam() {
   const shopRef = shopIdFromRoute.value || ''
   let bridgeKey = ''
   try {
@@ -1826,14 +1824,66 @@ async function buildAuthStartParam() {
 
 async function openTelegramAuth() {
   if (!telegramBotUrl.value || !isClient()) return
-  const startParam = await buildAuthStartParam()
-  const url = `${telegramBotUrl.value}?start=${startParam}`
-  window.open(url, '_blank', 'noopener')
+  const shopRef = shopIdFromRoute.value || ''
+  if (!shopRef) {
+    window.alert('Не удалось определить ресторан. Обновите страницу.')
+    return
+  }
+  let bridgeKey = ''
+  try {
+    if (cartStore.items.length) {
+      const bridgeRes = await $fetch<{ ok: boolean; bridgeKey?: string }>('/api/auth/bridge-session', {
+        method: 'POST',
+        body: {
+          shopId: shopRef,
+          scopeKey: resolveCartScopeKey(route, shopRef),
+          redirectPath: tenantPath('/cart'),
+          items: cartStore.items,
+        },
+      })
+      if (bridgeRes?.ok && typeof bridgeRes.bridgeKey === 'string') {
+        bridgeKey = bridgeRes.bridgeKey
+      }
+    }
+  } catch {
+    // bridge optional
+  }
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  try {
+    const res = await $fetch<{ ok: boolean; token: string; botStartParam: string }>(
+      '/api/auth/request-telegram-link',
+      {
+        method: 'POST',
+        headers: { 'x-shop-id': shopRef },
+        body: {
+          shopId: shopRef,
+          citySlug: citySlug || undefined,
+          redirectPath: tenantPath('/checkout'),
+          bridgeKey: bridgeKey || undefined,
+        },
+      },
+    )
+    if (!res?.ok || !res.token || !res.botStartParam) {
+      throw new Error('bad_response')
+    }
+    const tgUrl = `${telegramBotUrl.value}?start=${encodeURIComponent(res.botStartParam)}`
+    window.open(tgUrl, '_blank', 'noopener')
+    await navigateTo({
+      path: '/link-telegram',
+      query: {
+        token: res.token,
+        redirect: tenantPath('/checkout'),
+        shop_id: shopRef,
+      },
+    })
+  } catch {
+    window.alert('Не удалось начать вход через Telegram. Попробуйте ещё раз.')
+  }
 }
 
 async function openMaxAuthFlow() {
   if (!maxBotUrl.value || !isClient()) return
-  const startParam = await buildAuthStartParam()
+  const startParam = await buildMaxAuthStartParam()
   const hasQuery = maxBotUrl.value.includes('?')
   const url = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(startParam)}`
   window.open(url, '_blank', 'noopener')

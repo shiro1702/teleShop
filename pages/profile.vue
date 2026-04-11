@@ -146,7 +146,10 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useSupabaseUser } from '#imports'
 import { useRoute } from 'vue-router'
+import { useTenant } from '../composables/useTenant'
+
 declare const useRuntimeConfig: any
+declare const navigateTo: (to: any) => Promise<void> | void
 
 type BalanceRow = {
   shopId: string
@@ -158,6 +161,7 @@ type BalanceRow = {
 
 const user = useSupabaseUser()
 const route = useRoute()
+const { tenantPath, tenantKey } = useTenant()
 const config = useRuntimeConfig()
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() => (telegramBotName ? `https://t.me/${telegramBotName}` : null))
@@ -256,20 +260,52 @@ watch([user, page, debouncedSearch], () => {
   void loadList()
 }, { immediate: true })
 
-function openTelegramAuth() {
+async function openTelegramAuth() {
   showAuthModal.value = false
   if (!telegramBotUrl.value || typeof window === 'undefined') return
-  const shopRef = typeof route.query.shop_id === 'string' ? route.query.shop_id.trim() : ''
-  const startParts = ['auth_link']
-  if (shopRef) startParts.push(`s-${encodeURIComponent(shopRef)}`)
-  const url = `${telegramBotUrl.value}?start=${startParts.join('_')}`
-  window.open(url, '_blank', 'noopener')
+  const shopRef =
+    (typeof route.query.shop_id === 'string' && route.query.shop_id.trim()) || tenantKey.value?.trim() || ''
+  if (!shopRef) {
+    window.alert('Откройте вход из витрины ресторана или добавьте ?shop_id= в адрес страницы.')
+    return
+  }
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  try {
+    const res = await $fetch<{ ok: boolean; token: string; botStartParam: string }>(
+      '/api/auth/request-telegram-link',
+      {
+        method: 'POST',
+        headers: { 'x-shop-id': shopRef },
+        body: {
+          shopId: shopRef,
+          citySlug: citySlug || undefined,
+          redirectPath: tenantPath('/profile'),
+        },
+      },
+    )
+    if (!res?.ok || !res.token || !res.botStartParam) {
+      throw new Error('bad_response')
+    }
+    const tgUrl = `${telegramBotUrl.value}?start=${encodeURIComponent(res.botStartParam)}`
+    window.open(tgUrl, '_blank', 'noopener')
+    await navigateTo({
+      path: '/link-telegram',
+      query: {
+        token: res.token,
+        redirect: tenantPath('/profile'),
+        shop_id: shopRef,
+      },
+    })
+  } catch {
+    window.alert('Не удалось начать вход через Telegram. Попробуйте ещё раз.')
+  }
 }
 
 function openMaxAuth() {
   showAuthModal.value = false
   if (!maxBotUrl.value || typeof window === 'undefined') return
-  const shopRef = typeof route.query.shop_id === 'string' ? route.query.shop_id.trim() : ''
+  const shopRef =
+    (typeof route.query.shop_id === 'string' && route.query.shop_id.trim()) || tenantKey.value?.trim() || ''
   const startParts = ['auth_link']
   if (shopRef) startParts.push(`s-${encodeURIComponent(shopRef)}`)
   const startParam = startParts.join('_')
