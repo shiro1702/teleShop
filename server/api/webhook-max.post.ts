@@ -11,6 +11,9 @@ type MaxMessage = {
 
 type MaxUpdate = {
   update_type?: string
+  payload?: string | null
+  chat_id?: number | string
+  user?: { user_id?: number | string; is_bot?: boolean }
   message?: MaxMessage
 }
 
@@ -24,6 +27,9 @@ function parseNumericId(value: unknown): number | null {
 }
 
 function extractTokenUuidFromUpdate(update: MaxUpdate): string | null {
+  const payloadToken = parseAuthLinkTokenUuidFromText(String(update.payload || ''))
+  if (payloadToken) return payloadToken
+
   const msg = update.message
   const candidates = [
     typeof msg?.body?.text === 'string' ? msg.body.text : '',
@@ -146,7 +152,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const msg = body.message
-  if (msg.sender?.is_bot === true) {
+  if (msg?.sender?.is_bot === true || body.user?.is_bot === true) {
     return { ok: true }
   }
 
@@ -154,20 +160,26 @@ export default defineEventHandler(async (event) => {
   if (!tokenUuid) {
     console.info('webhook-max: token not found in update payload', {
       updateType,
-      sender: msg.sender,
-      recipient: msg.recipient,
+      sender: msg?.sender ?? body.user ?? null,
+      recipient: msg?.recipient ?? null,
+      chat_id: body.chat_id ?? null,
+      payload: body.payload ?? null,
     })
     return { ok: true }
   }
 
-  const senderId = parseNumericId(msg.sender?.user_id)
+  const senderId = parseNumericId(msg?.sender?.user_id) ?? parseNumericId(body.user?.user_id)
   if (senderId == null) {
-    console.info('webhook-max: sender_id not found/invalid', { updateType, sender: msg.sender })
+    console.info('webhook-max: sender_id not found/invalid', {
+      updateType,
+      sender: msg?.sender ?? body.user ?? null,
+      payload: body.payload ?? null,
+    })
     return { ok: true }
   }
 
-  const chatId = parseNumericId(msg.recipient?.chat_id)
-  const recipientUserId = parseNumericId(msg.recipient?.user_id)
+  const chatId = parseNumericId(msg?.recipient?.chat_id) ?? parseNumericId(body.chat_id)
+  const recipientUserId = parseNumericId(msg?.recipient?.user_id)
   const conversationKey =
     typeof chatId === 'number'
       ? String(chatId)
