@@ -3,14 +3,43 @@ import { serverSupabaseServiceRole } from '#supabase/server'
 import { buildAuthSiteLinkUrl, parseAuthLinkTokenUuidFromText } from '~/server/utils/authSiteLink'
 
 type MaxMessage = {
-  sender?: { user_id?: number; is_bot?: boolean }
-  recipient?: { chat_id?: number; user_id?: number; chat_type?: string }
-  body?: { text?: string }
+  sender?: { user_id?: number | string; is_bot?: boolean }
+  recipient?: { chat_id?: number | string; user_id?: number | string; chat_type?: string }
+  body?: { text?: string; caption?: string }
+  text?: string
 }
 
 type MaxUpdate = {
   update_type?: string
   message?: MaxMessage
+}
+
+function parseNumericId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value.trim())
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function extractTokenUuidFromUpdate(update: MaxUpdate): string | null {
+  const msg = update.message
+  const candidates = [
+    typeof msg?.body?.text === 'string' ? msg.body.text : '',
+    typeof msg?.body?.caption === 'string' ? msg.body.caption : '',
+    typeof msg?.text === 'string' ? msg.text : '',
+  ]
+
+  for (const raw of candidates) {
+    const token = parseAuthLinkTokenUuidFromText(raw)
+    if (token) return token
+  }
+
+  // Fallback: MAX может присылать start-параметр в неожиданных полях.
+  const dump = JSON.stringify(update)
+  const hit = /link_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(dump)
+  return hit?.[1] ?? null
 }
 
 async function sendMaxDm(options: {
@@ -121,23 +150,24 @@ export default defineEventHandler(async (event) => {
     return { ok: true }
   }
 
-  const text = String(msg.body?.text || '').trim()
-  if (!text) {
-    return { ok: true }
-  }
-
-  const tokenUuid = parseAuthLinkTokenUuidFromText(text)
+  const tokenUuid = extractTokenUuidFromUpdate(body)
   if (!tokenUuid) {
+    console.info('webhook-max: token not found in update payload', {
+      updateType,
+      sender: msg.sender,
+      recipient: msg.recipient,
+    })
     return { ok: true }
   }
 
-  const senderId = typeof msg.sender?.user_id === 'number' ? msg.sender.user_id : null
+  const senderId = parseNumericId(msg.sender?.user_id)
   if (senderId == null) {
+    console.info('webhook-max: sender_id not found/invalid', { updateType, sender: msg.sender })
     return { ok: true }
   }
 
-  const chatId = msg.recipient?.chat_id
-  const recipientUserId = msg.recipient?.user_id
+  const chatId = parseNumericId(msg.recipient?.chat_id)
+  const recipientUserId = parseNumericId(msg.recipient?.user_id)
   const conversationKey =
     typeof chatId === 'number'
       ? String(chatId)
