@@ -35,11 +35,12 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute, useRouter, useSupabaseClient } from '#imports'
+import { useRoute, useRouter, useRuntimeConfig, useSupabaseClient } from '#imports'
 
 const route = useRoute()
 const router = useRouter()
 const supabase = useSupabaseClient()
+const config = useRuntimeConfig()
 
 const token = computed(() => {
   const t = route.query.token
@@ -54,9 +55,14 @@ const shopId = computed(() => {
   const s = route.query.shop_id
   return typeof s === 'string' && s.trim() ? s.trim() : undefined
 })
+const maxBotUrl = computed(() => {
+  const raw = (config.public.maxBotUrl as string | undefined) || ''
+  return raw.trim()
+})
 const maxStartLink = computed(() => {
-  if (!token.value) return ''
-  return `https://max.ru/:share?text=${encodeURIComponent(`link_${token.value}`)}`
+  if (!token.value || !maxBotUrl.value) return ''
+  const hasQuery = maxBotUrl.value.includes('?')
+  return `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(`link_${token.value}`)}`
 })
 
 const isLoading = ref(false)
