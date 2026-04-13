@@ -73,8 +73,6 @@ export default defineEventHandler(async (event) => {
     token,
     telegram_id: null,
     channel: 'max',
-    max_user_id: null,
-    max_conversation_id: null,
     bridge_payload: bridgePayload,
   })
 
