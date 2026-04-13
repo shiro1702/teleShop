@@ -15,6 +15,16 @@
       >
         Открыть MAX и подтвердить вход
       </button>
+      <div v-if="manualAuthText" class="manual-box">
+        <p class="manual-title">Если вход не завершился автоматически</p>
+        <p class="manual-help">
+          Откройте чат с ботом MAX и отправьте сообщение ниже:
+        </p>
+        <div class="manual-code">{{ manualAuthText }}</div>
+        <button type="button" class="btn btn-secondary" @click="copyManualAuthText">
+          {{ copyStatus || 'Скопировать сообщение' }}
+        </button>
+      </div>
 
       <button
         type="button"
@@ -64,6 +74,8 @@ const maxStartLink = computed(() => {
   const hasQuery = maxBotUrl.value.includes('?')
   return `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(`link_${token.value}`)}`
 })
+const manualAuthText = computed(() => (token.value ? `link_${token.value}` : ''))
+const copyStatus = ref<string>('')
 
 const isLoading = ref(false)
 const isSuccess = ref(false)
@@ -80,6 +92,19 @@ onBeforeUnmount(() => {
 function openMaxBot(): void {
   if (!maxStartLink.value || typeof window === 'undefined') return
   window.location.href = maxStartLink.value
+}
+
+async function copyManualAuthText(): Promise<void> {
+  if (!manualAuthText.value || typeof window === 'undefined') return
+  try {
+    await navigator.clipboard.writeText(manualAuthText.value)
+    copyStatus.value = 'Скопировано'
+  } catch {
+    copyStatus.value = 'Скопируйте вручную'
+  }
+  setTimeout(() => {
+    copyStatus.value = ''
+  }, 1500)
 }
 
 function resolveTenantCartTarget() {
@@ -260,6 +285,38 @@ onMounted(async () => {
 .btn-secondary {
   background: #eef2ff;
   color: #1f2937;
+}
+
+.manual-box {
+  margin-top: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: #f9fafb;
+}
+
+.manual-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.manual-help {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.manual-code {
+  margin-top: 0.45rem;
+  border-radius: 0.4rem;
+  border: 1px dashed #d1d5db;
+  background: #ffffff;
+  padding: 0.5rem 0.6rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.82rem;
+  color: #111827;
+  overflow-wrap: anywhere;
 }
 
 .btn-primary {

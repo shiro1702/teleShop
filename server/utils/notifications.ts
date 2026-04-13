@@ -101,7 +101,7 @@ async function sendMaxMessage(baseUrl: string, token: string, conversationId: st
   const response = await fetch(`${baseUrl.replace(/\/$/, '')}/messages`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: token,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({

@@ -84,7 +84,7 @@ async function sendMaxDm(options: {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${options.token}`,
+      Authorization: options.token,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -110,7 +110,7 @@ async function sendMaxDmPlain(options: {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${options.token}`,
+      Authorization: options.token,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ text: options.text }),
@@ -147,7 +147,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<MaxUpdate>(event)
   const updateType = String(body?.update_type || '').trim()
   const supportedType = updateType === 'message_created' || updateType === 'bot_started'
-  if (!body || !supportedType || !body.message) {
+  if (!body || !supportedType) {
     return { ok: true }
   }
 
