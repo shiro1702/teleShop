@@ -6,7 +6,7 @@
           Рестораны в {{ cityNameRu }}
         </h1>
         <p class="mt-2 text-sm text-gray-600">
-          pocketmenu.ru - меню в вашем кармане. Доставку и готовку выполняет каждый ресторан самостоятельно.
+          меню в вашем кармане. Доставку и готовку выполняет каждый ресторан самостоятельно.
         </p>
       </div>
     </header>
@@ -16,7 +16,6 @@
       class="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur"
     >
       <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-        <span class="text-xs font-medium text-gray-500 sm:text-sm">Режим</span>
         <div class="inline-flex flex-1 flex-wrap gap-0.5 rounded-xl border border-gray-200 bg-gray-50 p-1 sm:max-w-2xl">
           <button
             v-if="modeAvailability.delivery"
@@ -49,7 +48,7 @@
               : 'text-gray-600 hover:bg-white'"
             @click="listMode = 'dine-in'"
           >
-            В ресторане
+            В&nbsp;ресторане
           </button>
         </div>
       </div>
@@ -225,7 +224,7 @@
                     class="mt-2 space-y-1 border-t border-gray-100 pt-2"
                   >
                     <p class="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-                      В ресторане
+                      В&nbsp;ресторане
                     </p>
                     <p
                       v-for="(dp, di) in shop.dineInPoints.slice(0, 2)"
