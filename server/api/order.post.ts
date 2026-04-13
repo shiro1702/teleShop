@@ -24,37 +24,17 @@ import {
 import { evaluateMenuAvailability, normalizeTimeWindows } from '~/server/utils/menuAvailability'
 import { isOpenNowBySchedule, normalizeWeeklyWorkingHours, resolveEffectiveWorkingHours } from '~/utils/workingHours'
 import { dispatchNotificationEvent } from '~/server/utils/notifications'
+import {
+  getMaxBotTokenForShop,
+  validateWebAppInitData,
+  type WebAppInitUser,
+} from '~/server/utils/messengerInitData'
 
 interface TelegramUser {
   id: number
   first_name?: string
   last_name?: string
   username?: string
-}
-
-function validateInitData(initData: string, botToken: string): TelegramUser | null {
-  const params = new URLSearchParams(initData)
-  const hash = params.get('hash')
-  if (!hash) return null
-
-  params.delete('hash')
-  const dataCheckString = [...params.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
-    .join('\n')
-
-  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest()
-  const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
-
-  if (computedHash !== hash) return null
-
-  const userStr = params.get('user')
-  if (!userStr) return null
-  try {
-    return JSON.parse(decodeURIComponent(userStr)) as TelegramUser
-  } catch {
-    return null
-  }
 }
 
 function formatPrice(value: number): string {
@@ -348,6 +328,10 @@ export default defineEventHandler(async (event) => {
     changeFrom?: number | null
     promoCode?: string | null
     bonusPointsToSpend?: number | null
+    /** Клиент: web | telegram_mini | max_mini */
+    orderClientChannel?: string | null
+    /** Сессия после моста с сайта */
+    orderContinuation?: string | null
   } | null>(event)
   if (!body?.items?.length) {
     throw createError({ statusCode: 400, message: 'Expected { items }' })
@@ -381,19 +365,54 @@ export default defineEventHandler(async (event) => {
 
   const serviceClient = await serverSupabaseServiceRole(event)
 
-  let user: TelegramUser | null = null
+  type MiniChannel = 'telegram_mini' | 'max_mini'
+  let user: WebAppInitUser
   let customerProfileId: string | null = null
+  let customerTelegramIdForInsert: number | null = null
+  let miniChannel: MiniChannel | null = null
+  let maxConversationId: string | null = null
+
   if (body.initData && typeof body.initData === 'string') {
-    user = validateInitData(body.initData, botToken)
-    if (!user) {
-      throw createError({ statusCode: 401, message: 'Invalid initData' })
+    const requested: MiniChannel = body.orderClientChannel === 'max_mini' ? 'max_mini' : 'telegram_mini'
+    miniChannel = requested
+
+    if (requested === 'max_mini') {
+      const maxTok = getMaxBotTokenForShop(tenantIntegrationKeys as Record<string, unknown>, {
+        maxMiniAppBotToken: config.maxMiniAppBotToken as string | undefined,
+        maxApiToken: config.maxApiToken as string | undefined,
+      })
+      if (!maxTok) {
+        throw createError({ statusCode: 500, message: 'Server config: MAX bot token missing' })
+      }
+      const parsed = validateWebAppInitData(body.initData, maxTok)
+      if (!parsed) {
+        throw createError({ statusCode: 401, message: 'Invalid initData' })
+      }
+      user = parsed
+      const maxId = String(parsed.id)
+      const { data: maxProfile } = await serviceClient
+        .from('profiles')
+        .select('id, max_conversation_id')
+        .eq('max_user_id', maxId)
+        .maybeSingle()
+      customerProfileId = maxProfile?.id ? String(maxProfile.id) : null
+      const rawConv = (maxProfile as { max_conversation_id?: string | null } | null)?.max_conversation_id
+      maxConversationId = typeof rawConv === 'string' && rawConv.trim() ? rawConv.trim() : null
+      customerTelegramIdForInsert = null
+    } else {
+      const parsed = validateWebAppInitData(body.initData, botToken)
+      if (!parsed) {
+        throw createError({ statusCode: 401, message: 'Invalid initData' })
+      }
+      user = parsed
+      const { data: tmaProfile } = await serviceClient
+        .from('profiles')
+        .select('id')
+        .eq('telegram_id', user.id)
+        .maybeSingle()
+      customerProfileId = tmaProfile?.id ? String(tmaProfile.id) : null
+      customerTelegramIdForInsert = user.id
     }
-    const { data: tmaProfile } = await serviceClient
-      .from('profiles')
-      .select('id')
-      .eq('telegram_id', user.id)
-      .maybeSingle()
-    customerProfileId = tmaProfile?.id ? String(tmaProfile.id) : null
   } else {
     const supabaseUser = await serverSupabaseUser(event)
     if (!supabaseUser) {
@@ -424,6 +443,20 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 409, message: 'Telegram not linked' })
     }
     user = { id: profile.telegram_id as number }
+    customerTelegramIdForInsert = user.id
+  }
+
+  const orderClientStored: 'web' | 'telegram_mini' | 'max_mini' =
+    body.initData && typeof body.initData === 'string'
+      ? miniChannel === 'max_mini'
+        ? 'max_mini'
+        : 'telegram_mini'
+      : 'web'
+
+  let orderContinuationStored: string | null = null
+  const oc = body.orderContinuation
+  if (oc === 'web_to_telegram' || oc === 'web_to_max') {
+    orderContinuationStored = oc
   }
 
   const uniqueProductIds = Array.from(new Set(body.items.map((item) => item.id)))
@@ -618,7 +651,6 @@ export default defineEventHandler(async (event) => {
       : orderId.slice(0, 8)
 
   // Persist order for dashboard & kitchen.
-  // Note: WEB/TMA modes are normalized to `user.id` (Telegram id) above.
   const initialMetadata = {
     timeline: [
       {
@@ -631,6 +663,10 @@ export default defineEventHandler(async (event) => {
         comment: null,
       },
     ],
+    order_client_source: {
+      channel: orderClientStored,
+      continuation: orderContinuationStored,
+    },
   }
 
   const { error: insertError } = await serviceClient.from('orders').insert({
@@ -638,8 +674,10 @@ export default defineEventHandler(async (event) => {
     shop_id: tenantShopId,
     restaurant_id: restaurant.id,
     city_id: restaurant.city_id,
-    customer_telegram_id: user.id,
+    customer_telegram_id: customerTelegramIdForInsert,
     customer_profile_id: customerProfileId,
+    order_client_channel: orderClientStored,
+    order_continuation: orderContinuationStored,
     order_number: orderNumber,
     status: 'new',
     fulfillment_type: fulfillmentType,
@@ -729,7 +767,9 @@ export default defineEventHandler(async (event) => {
       status: 'new',
     },
     actorContext: {
-      customerTelegramId: user.id,
+      customerTelegramId: customerTelegramIdForInsert,
+      customerMaxUserId: miniChannel === 'max_mini' ? String(user.id) : null,
+      customerMaxConversationId: maxConversationId,
     },
   })
 

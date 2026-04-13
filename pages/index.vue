@@ -472,7 +472,7 @@ import { $fetch } from 'ofetch'
 import type { Product, ModifierGroup, ModifierOption, ProductParameterGroup, ProductParameterOption } from '../data/products'
 import type { SelectedModifier, SelectedParameter } from '../stores/cart'
 import { useTenant } from '../composables/useTenant'
-import { useTelegram } from '../composables/useTelegram'
+import { useMessengerStorage } from '../composables/useMessengerStorage'
 import { useCartStore } from '../stores/cart'
 import { resolveCartScopeKey } from '../utils/cartScope'
 import StoriesTopBar from '../components/stories/StoriesTopBar.vue'
@@ -483,7 +483,7 @@ import type { StoryCampaignDto, StorySlideDto } from '../types/stories'
 import { buildDefaultCartSelections, findProductById } from '../utils/storyCart'
 
 const cartStore = useCartStore()
-const { isTelegram, webApp } = useTelegram()
+const { canUseMessengerStorage, setItem } = useMessengerStorage()
 const router = useRouter()
 const route = useRoute()
 const { tenant, tenantKey, tenantPath } = useTenant()
@@ -781,15 +781,11 @@ function persistCheckoutStateLocal(data: string) {
   }
 }
 
-function persistCheckoutStateCloud(data: string) {
-  if (!isTelegram.value || !(webApp.value as any)?.CloudStorage) {
-    persistCheckoutStateLocal(data)
-    return
+async function persistCheckoutStateCloud(data: string) {
+  persistCheckoutStateLocal(data)
+  if (canUseMessengerStorage()) {
+    await setItem(checkoutStorageKey.value, data)
   }
-
-  ;(webApp.value as any).CloudStorage.setItem(checkoutStorageKey.value, data, () => {
-    persistCheckoutStateLocal(data)
-  })
 }
 
 function persistFulfillmentTypeToCheckout(next: FulfillmentType) {
@@ -804,7 +800,7 @@ function persistFulfillmentTypeToCheckout(next: FulfillmentType) {
   }
 
   const payload = JSON.stringify(nextState)
-  persistCheckoutStateCloud(payload)
+  void persistCheckoutStateCloud(payload)
 }
 
 function setFulfillmentType(next: FulfillmentType) {

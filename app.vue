@@ -1,7 +1,7 @@
 <template>
   <div class="app-root min-h-screen bg-gray-50 text-gray-900" :style="rootStyle">
     <AppHeader />
-    <div :class="isTelegram ? '' : 'pt-16'">
+    <div :class="isMessengerMiniApp ? '' : 'pt-16'">
       <NuxtLayout>
         <NuxtPage />
       </NuxtLayout>
@@ -76,7 +76,7 @@ import { useTenant } from './composables/useTenant'
 import type { WeeklyWorkingHours } from './types/organization-style'
 import { isOpenNowBySchedule } from './utils/workingHours'
 
-const { isTelegram } = useTelegram()
+const { isMessengerMiniApp } = useTelegram()
 const { cssVars, loadTenantSettings, tenant } = useTenant()
 const route = useRoute()
 

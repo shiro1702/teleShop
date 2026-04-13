@@ -8,6 +8,7 @@ import {
   resolveShopIdFromEvent,
 } from '~/server/utils/tenant'
 import { getStyleRecord } from '~/server/utils/organizationStyle'
+import { getMessengerInitDataFromEvent } from '~/server/utils/messengerInitData'
 
 const REQUIRED_PATHS = [
   '/api/order',
@@ -111,7 +112,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (!shop) {
-    const initData = getHeader(event, 'x-telegram-init-data')
+    const initData = getMessengerInitDataFromEvent(event)
     const botId = initData ? extractBotIdFromInitData(initData) : null
     if (botId) {
       shop = await getShopByBotId(event, botId)

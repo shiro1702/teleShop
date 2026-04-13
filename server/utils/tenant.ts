@@ -1,5 +1,6 @@
 import type { H3Event } from 'h3'
 import { createError, getHeader, getQuery } from 'h3'
+import { getMessengerInitDataFromEvent } from '~/server/utils/messengerInitData'
 import { serverSupabaseServiceRole } from '#supabase/server'
 
 export type TenantShop = {
@@ -101,9 +102,9 @@ export async function resolveShopIdFromEvent(event: H3Event): Promise<string | n
   const headerShop = getHeader(event, 'x-shop-id')
   if (headerShop?.trim()) return headerShop.trim()
 
-  const rawInitDataHeader = getHeader(event, 'x-telegram-init-data')
-  if (rawInitDataHeader?.trim()) {
-    return extractShopIdFromInitData(rawInitDataHeader) ?? null
+  const rawInitData = getMessengerInitDataFromEvent(event)
+  if (rawInitData?.trim()) {
+    return extractShopIdFromInitData(rawInitData) ?? null
   }
 
   return null

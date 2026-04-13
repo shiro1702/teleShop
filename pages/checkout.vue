@@ -764,7 +764,7 @@
       <div
         v-if="showBottomBar"
       class="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 px-4 pt-3 pb-10 backdrop-blur sm:hidden"
-        :class="isTelegram ? 'pb-20' : ''"
+        :class="isMessengerMiniApp ? 'pb-20' : ''"
       >
       <!-- Шаг 1: навигация -->
       <button
@@ -840,6 +840,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCheckoutAddress } from '~/composables/useCheckoutAddress'
 import { useCheckoutTenantRestaurants } from '~/composables/useCheckoutTenantRestaurants'
 import type { FulfillmentType } from '~/composables/useCheckoutTenantRestaurants'
+import { useMessengerStorage } from '~/composables/useMessengerStorage'
+import {
+  clearOrderContinuationHint,
+  readOrderContinuationHint,
+} from '~/composables/useTelegram'
 import { resolveCartScopeKey } from '~/utils/cartScope'
 import type { WeeklyWorkingHours } from '~/types/organization-style'
 import { isOpenNowBySchedule } from '~/utils/workingHours'
@@ -847,7 +852,13 @@ import { isOpenNowBySchedule } from '~/utils/workingHours'
 const cartStore = useCartStore()
 const route = useRoute()
 const router = useRouter()
-const { isTelegram, webApp } = useTelegram()
+const {
+  isMessengerMiniApp,
+  messengerInitData,
+  messengerClientChannel,
+  buildMessengerAuthHeaders,
+} = useTelegram()
+const { canUseMessengerStorage, setItem, getItem } = useMessengerStorage()
 const supabaseUser = useSupabaseUser()
 const config = useRuntimeConfig()
 const { tenant, tenantKey, tenantPath } = useTenant()
@@ -1349,8 +1360,8 @@ const step1NextButtonLabel = computed(() =>
 )
 
 const isAuthorizedForOrder = computed(() => {
-  // В TMA авторизацию обеспечивает initData, в вебе — Supabase-сессия
-  return isTelegram.value || !!supabaseUser.value
+  // В мини-приложении (Telegram / MAX) авторизацию обеспечивает initData, в вебе — Supabase-сессия
+  return isMessengerMiniApp.value || !!supabaseUser.value
 })
 
 const isCheckoutRoute = computed(() => route.path.endsWith('/checkout'))
@@ -1566,38 +1577,25 @@ function loadCheckoutStateLocal() {
   }
 }
 
-function persistCheckoutStateCloud(data: string) {
-  if (!isTelegram.value || !(webApp.value as any)?.CloudStorage) {
-    persistCheckoutStateLocal(data)
-    return
+async function persistCheckoutStateCloud(data: string) {
+  persistCheckoutStateLocal(data)
+  if (canUseMessengerStorage()) {
+    await setItem(checkoutStorageKey.value, data)
   }
-
-  (webApp.value as any).CloudStorage.setItem(checkoutStorageKey.value, data, () => {
-    persistCheckoutStateLocal(data)
-  })
 }
 
-function loadCheckoutStateCloud(): Promise<any | null> {
-  if (!isTelegram.value || !(webApp.value as any)?.CloudStorage) {
-    return Promise.resolve(loadCheckoutStateLocal())
+async function loadCheckoutStateCloud(): Promise<any | null> {
+  if (canUseMessengerStorage()) {
+    const raw = await getItem(checkoutStorageKey.value)
+    if (raw) {
+      try {
+        return JSON.parse(raw)
+      } catch {
+        // fall through to local
+      }
+    }
   }
-
-  return new Promise((resolve) => {
-    (webApp.value as any).CloudStorage.getItem(
-      checkoutStorageKey.value,
-      (_err: unknown, value: string | null) => {
-        if (value) {
-          try {
-            resolve(JSON.parse(value))
-            return
-          } catch {
-            // fall through to local
-          }
-        }
-        resolve(loadCheckoutStateLocal())
-      },
-    )
-  })
+  return loadCheckoutStateLocal()
 }
 
 watch(
@@ -1617,7 +1615,7 @@ watch(
   }),
   () => {
     const data = serializeState()
-    persistCheckoutStateCloud(data)
+    void persistCheckoutStateCloud(data)
   },
   { deep: true },
 )
@@ -1710,17 +1708,26 @@ async function placeOrder() {
       bonusPointsToSpend: bonusToSpend.value || 0,
     }
 
-    if (isTelegram.value && webApp.value?.initData) {
-      body.initData = webApp.value.initData
+    if (isMessengerMiniApp.value && messengerInitData.value) {
+      body.initData = messengerInitData.value
     }
+
+    const continuation = readOrderContinuationHint()
+    body.orderClientChannel = messengerClientChannel()
+    body.orderContinuation = continuation
+
+    const orderHeaders = buildMessengerAuthHeaders(
+      shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+    )
 
     const res = await $fetch<{ ok: boolean; orderId?: string }>('/api/order', {
       method: 'POST',
-      headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+      headers: orderHeaders,
       body,
     })
 
     if (res?.ok) {
+      clearOrderContinuationHint()
       if (state.paymentMethod === 'online' && res.orderId) {
         const returnUrl = isClient()
           ? `${window.location.origin}${tenantPath('/checkout')}?payment=return&orderId=${encodeURIComponent(res.orderId)}`
@@ -1737,7 +1744,7 @@ async function placeOrder() {
           throw new Error('Payment confirmation URL not received')
         }
         const data = serializeState()
-        persistCheckoutStateCloud(data)
+        void persistCheckoutStateCloud(data)
         cartStore.clear()
         if (isClient()) {
           localStorage.removeItem(checkoutStorageKey.value)
@@ -1747,7 +1754,7 @@ async function placeOrder() {
       }
 
       const data = serializeState()
-      persistCheckoutStateCloud(data)
+      void persistCheckoutStateCloud(data)
       cartStore.clear()
       if (isClient()) {
         localStorage.removeItem(checkoutStorageKey.value)
@@ -1764,7 +1771,7 @@ async function placeOrder() {
     }
   } catch (error: any) {
     const status = error?.statusCode || error?.status
-    if (isClient() && !isTelegram.value && (status === 401 || status === 409)) {
+    if (isClient() && !isMessengerMiniApp.value && (status === 401 || status === 409)) {
       await openTelegramAuth()
       return
     }

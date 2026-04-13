@@ -1,3 +1,5 @@
+import { setOrderContinuationHint } from '~/composables/useTelegram'
+
 export default defineNuxtPlugin(() => {
   const cartStore = useCartStore()
   const { webApp, isTelegram, hideMainButton } = useTelegram()
@@ -18,6 +20,7 @@ export default defineNuxtPlugin(() => {
           if (typeof res.shopId === 'string' && res.shopId.trim()) {
             cartStore.setScope(res.shopId.trim())
           }
+          setOrderContinuationHint('web_to_telegram')
           console.log('[TMA][Bridge] Restoring cart from token, items:', res.items.length)
           cartStore.clear()
           res.items.forEach((item) => {

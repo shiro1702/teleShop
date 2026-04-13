@@ -56,7 +56,7 @@
           </p>
         </div>
 
-        <p v-if="!isTelegram" class="mt-6 text-center text-sm">
+        <p v-if="!isMessengerMiniApp" class="mt-6 text-center text-sm">
           <NuxtLink
             to="/profile"
             class="font-medium underline decoration-dotted underline-offset-2"
@@ -78,11 +78,11 @@ import { useTelegram } from '~/composables/useTelegram'
 
 const user = useSupabaseUser()
 const { tenant, tenantPath } = useTenant()
-const { isTelegram, webApp } = useTelegram()
+const { isMessengerMiniApp, messengerInitData, buildMessengerAuthHeaders } = useTelegram()
 
-/** Сайт: Supabase. Mini App: сессия через initData (без отдельного «ЛК») */
+/** Сайт: Supabase. Mini App (Telegram / MAX): сессия через initData (без отдельного «ЛК») */
 const canViewBonuses = computed(
-  () => !!user.value || (!!isTelegram.value && !!webApp.value?.initData),
+  () => !!user.value || (!!isMessengerMiniApp.value && !!messengerInitData.value),
 )
 
 const theme = computed(() => tenant.value.theme || {})
@@ -122,14 +122,7 @@ const balanceDisplay = computed(() => {
 })
 
 function balanceRequestHeaders() {
-  const headers: Record<string, string> = {}
-  if (shopId.value) {
-    headers['x-shop-id'] = shopId.value
-  }
-  if (isTelegram.value && webApp.value?.initData) {
-    headers['x-telegram-init-data'] = webApp.value.initData
-  }
-  return headers
+  return buildMessengerAuthHeaders(shopId.value ? { 'x-shop-id': shopId.value } : undefined)
 }
 
 async function loadBalance() {
@@ -151,7 +144,7 @@ async function loadBalance() {
 }
 
 watch(
-  [user, shopId, canViewBonuses, isTelegram, () => (isTelegram.value ? webApp.value?.initData : '')],
+  [user, shopId, canViewBonuses, isMessengerMiniApp, () => (isMessengerMiniApp.value ? messengerInitData.value : '')],
   () => {
     void loadBalance()
   },

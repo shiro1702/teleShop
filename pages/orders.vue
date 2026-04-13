@@ -159,7 +159,7 @@ const data = ref<{ ok: boolean; items: ClientOrder[] }>({ ok: true, items: [] })
 
 const route = useRoute()
 const { tenantKey } = useTenant()
-const { isTelegram, webApp } = useTelegram()
+const { buildMessengerAuthHeaders } = useTelegram()
 
 const selectedOrderId = computed(() => {
   const raw = route.query.orderId
@@ -191,14 +191,9 @@ type NormalizedOrder = ClientOrder & {
 }
 
 function requestHeaders() {
-  const headers: Record<string, string> = {}
-  if (typeof tenantKey.value === 'string' && tenantKey.value.trim()) {
-    headers['x-shop-id'] = tenantKey.value.trim()
-  }
-  if (isTelegram.value && webApp.value?.initData) {
-    headers['x-telegram-init-data'] = webApp.value.initData
-  }
-  return headers
+  const shop =
+    typeof tenantKey.value === 'string' && tenantKey.value.trim() ? tenantKey.value.trim() : ''
+  return buildMessengerAuthHeaders(shop ? { 'x-shop-id': shop } : undefined)
 }
 
 function detailStatusClass(status: string) {

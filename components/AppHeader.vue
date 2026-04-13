@@ -32,30 +32,53 @@
         </select>
       </div>
 
-      <!-- Miniapp: без «ЛК», но заказы и бонусы по ресторану доступны -->
+      <!-- Miniapp (Telegram / MAX): без «ЛК» — заказы и бонусы в выпадающем меню как у авторизованного на сайте -->
       <div
-        v-if="isTelegram && showMiniappCustomerLinks"
-        class="flex shrink-0 items-center gap-1.5 sm:gap-2"
+        v-if="isMessengerMiniApp && showMiniappCustomerLinks"
+        ref="miniappMenuRootRef"
+        class="relative z-[51] shrink-0"
       >
-        <NuxtLink
-          :to="ordersLink"
-          class="rounded-lg px-2.5 py-1.5 text-xs font-medium transition sm:px-3 sm:text-sm"
+        <button
+          type="button"
+          class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm"
           :style="ghostButtonStyle"
+          :aria-expanded="showMiniappMenu"
+          aria-label="Меню заказов"
+          @click="showMiniappMenu = !showMiniappMenu"
         >
-          Заказы
-        </NuxtLink>
-        <NuxtLink
-          v-if="bonusesMenuVisible"
-          :to="bonusesLink"
-          class="rounded-lg px-2.5 py-1.5 text-xs font-medium transition sm:px-3 sm:text-sm"
-          :style="ghostButtonStyle"
+          <span class="hidden sm:inline">Заказы и бонусы</span>
+          <span class="sm:hidden">Меню</span>
+          <svg class="h-3 w-3 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <div
+          v-if="showMiniappMenu"
+          class="absolute right-0 mt-2 w-52 rounded-lg py-1 text-sm shadow-lg"
+          :style="menuStyle"
         >
-          Бонусы
-        </NuxtLink>
+          <NuxtLink
+            :to="ordersLink"
+            class="block px-3 py-2"
+            :style="{ color: mainTextColor }"
+            @click="showMiniappMenu = false"
+          >
+            История заказов
+          </NuxtLink>
+          <NuxtLink
+            v-if="bonusesMenuVisible"
+            :to="bonusesLink"
+            class="block px-3 py-2"
+            :style="{ color: mainTextColor }"
+            @click="showMiniappMenu = false"
+          >
+            Бонусы
+          </NuxtLink>
+        </div>
       </div>
 
       <div
-        v-if="!isTelegram"
+        v-if="!isMessengerMiniApp"
         class="flex items-center gap-2 sm:gap-3" 
       >
         <NuxtLink
@@ -194,7 +217,7 @@ declare const useSupabaseClient: any
 declare const useSupabaseUser: any
 declare const useRuntimeConfig: any
 
-const { isTelegram } = useTelegram()
+const { isMessengerMiniApp } = useTelegram()
 const user = useSupabaseUser()
 const config = useRuntimeConfig()
 const route = useRoute()
@@ -308,16 +331,21 @@ const menuStyle = computed(() => ({
 }))
 
 const showUserMenu = ref(false)
+const showMiniappMenu = ref(false)
 const showAuthModal = ref(false)
 const userMenuRootRef = ref<HTMLElement | null>(null)
+const miniappMenuRootRef = ref<HTMLElement | null>(null)
 
 function onDocumentClickCapture(e: MouseEvent) {
-  if (!showUserMenu.value) return
-  const root = userMenuRootRef.value
   const target = e.target as Node | null
-  if (!root || !target) return
-  if (!root.contains(target)) {
-    showUserMenu.value = false
+  if (!target) return
+  if (showUserMenu.value) {
+    const root = userMenuRootRef.value
+    if (root && !root.contains(target)) showUserMenu.value = false
+  }
+  if (showMiniappMenu.value) {
+    const miniRoot = miniappMenuRootRef.value
+    if (miniRoot && !miniRoot.contains(target)) showMiniappMenu.value = false
   }
 }
 

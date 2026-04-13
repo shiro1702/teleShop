@@ -2,6 +2,7 @@ import { useRoute } from 'vue-router'
 import { dadataSuggest, type DadataSuggestItem } from '~/utils/dadataApi'
 import { useDeliveryZone } from '~/composables/useDeliveryZone'
 import { useTelegram } from '~/composables/useTelegram'
+import { useMessengerStorage } from '~/composables/useMessengerStorage'
 import { useTenant } from '~/composables/useTenant'
 import type { DeliveryZoneFeature } from '~/utils/deliveryZones'
 import { resolveCartScopeKey } from '~/utils/cartScope'
@@ -62,7 +63,12 @@ export function useCheckoutAddress() {
   const savedAddresses = ref<SavedAddressItem[]>([])
 
   const { properties: deliveryZoneProps, reason, refresh: refreshZone, setZones } = useDeliveryZone()
-  const { isTelegram, webApp } = useTelegram()
+  const {
+    isMessengerMiniApp,
+    messengerInitData,
+    buildMessengerAuthHeaders,
+  } = useTelegram()
+  const { canUseMessengerStorage, setItem, getItem } = useMessengerStorage()
   const supabaseUser = useSupabaseUser()
 
   const addressScopeKey = computed(() => resolveCartScopeKey(route, tenantKey.value))
@@ -97,10 +103,8 @@ export function useCheckoutAddress() {
     } catch {
       // ignore
     }
-    if (isTelegram.value && (webApp.value as any)?.CloudStorage) {
-      await new Promise<void>((resolve) => {
-        (webApp.value as any).CloudStorage.setItem(addressStorageKey.value, data, () => resolve())
-      })
+    if (canUseMessengerStorage()) {
+      await setItem(addressStorageKey.value, data)
     }
   }
 
@@ -122,40 +126,20 @@ export function useCheckoutAddress() {
     return out.slice(0, 5)
   }
 
-  function telegramCloudGet(key: string): Promise<string | null> {
-    return new Promise((resolve) => {
-      const wa = webApp.value as any
-      if (!wa?.CloudStorage) {
-        resolve(null)
-        return
-      }
-      wa.CloudStorage.getItem(key, (_err: unknown, value: string | null) => {
-        resolve(value ?? null)
-      })
-    })
-  }
-
   async function readGuestAddressesForMerge(): Promise<SavedAddressItem[]> {
     const fromLocal = readGuestAddressesFromLocalStorage()
-    if (!isTelegram.value || !(webApp.value as any)?.CloudStorage) {
+    if (!canUseMessengerStorage()) {
       return fromLocal
     }
-    const scopedCloud = parseSavedAddressesJson(await telegramCloudGet(addressStorageKey.value))
+    const scopedCloud = parseSavedAddressesJson(await getItem(addressStorageKey.value))
     const fromCloud = scopedCloud.length > 0
       ? scopedCloud
-      : parseSavedAddressesJson(await telegramCloudGet(LEGACY_ADDRESS_STORAGE_KEY))
+      : parseSavedAddressesJson(await getItem(LEGACY_ADDRESS_STORAGE_KEY))
     return mergeAddressesDedupe(fromCloud, fromLocal)
   }
 
   function buildAuthHeaders() {
-    const headers: Record<string, string> = {}
-    if (shopId.value) {
-      headers['x-shop-id'] = shopId.value
-    }
-    if (isTelegram.value && webApp.value?.initData) {
-      headers['x-telegram-init-data'] = webApp.value.initData
-    }
-    return headers
+    return buildMessengerAuthHeaders(shopId.value ? { 'x-shop-id': shopId.value } : undefined)
   }
 
   async function syncGuestAddressesToServer(guest: SavedAddressItem[], apiItems: SavedAddressItem[]) {
@@ -236,7 +220,7 @@ export function useCheckoutAddress() {
   }
 
   async function loadSavedAddresses() {
-    if (shopId.value && (supabaseUser.value || (isTelegram.value && webApp.value?.initData))) {
+    if (shopId.value && (supabaseUser.value || (isMessengerMiniApp.value && messengerInitData.value))) {
       try {
         const guestBefore = await readGuestAddressesForMerge()
         const res = await $fetch<{ ok: boolean; items?: SavedAddressItem[] }>('/api/customer/addresses', {
@@ -255,7 +239,7 @@ export function useCheckoutAddress() {
       }
     }
 
-    if (isTelegram.value && (webApp.value as any)?.CloudStorage) {
+    if (canUseMessengerStorage()) {
       savedAddresses.value = await readGuestAddressesForMerge()
       return
     }
@@ -269,10 +253,8 @@ export function useCheckoutAddress() {
     const data = JSON.stringify(savedAddresses.value)
     const key = addressStorageKey.value
 
-    if (isTelegram.value && (webApp.value as any)?.CloudStorage) {
-      await new Promise<void>((resolve) => {
-        (webApp.value as any).CloudStorage.setItem(key, data, () => resolve())
-      })
+    if (canUseMessengerStorage()) {
+      await setItem(key, data)
     }
     if (process.client) {
       try {
@@ -299,7 +281,7 @@ export function useCheckoutAddress() {
     savedAddresses.value.unshift(nextAddress)
 
     savedAddresses.value = savedAddresses.value.slice(0, 5)
-    if (shopId.value && (supabaseUser.value || (isTelegram.value && webApp.value?.initData))) {
+    if (shopId.value && (supabaseUser.value || (isMessengerMiniApp.value && messengerInitData.value))) {
       try {
         await $fetch('/api/customer/addresses', {
           method: 'POST',
@@ -321,7 +303,7 @@ export function useCheckoutAddress() {
 
   async function deleteSavedAddress(id: string) {
     savedAddresses.value = savedAddresses.value.filter((a) => a.id !== id)
-    if (shopId.value && (supabaseUser.value || (isTelegram.value && webApp.value?.initData))) {
+    if (shopId.value && (supabaseUser.value || (isMessengerMiniApp.value && messengerInitData.value))) {
       try {
         await $fetch(`/api/customer/addresses/${encodeURIComponent(id)}`, {
           method: 'DELETE',
@@ -353,7 +335,7 @@ export function useCheckoutAddress() {
       supabaseUser.value?.id ?? null,
       shopId.value,
       addressStorageKey.value,
-      isTelegram.value ? (webApp.value?.initData ? 't' : '') : '',
+      isMessengerMiniApp.value ? (messengerInitData.value ? 'm' : '') : '',
     ],
     () => {
       if (!process.client) return
