@@ -115,8 +115,7 @@
             :aria-expanded="showUserMenu"
             @click="toggleUserMenu"
           >
-            <span class="hidden md:inline">Вошли через Telegram</span>
-            <span class="md:hidden">Профиль</span>
+            <span>Профиль</span>
             <svg class="h-3 w-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>
@@ -415,7 +414,7 @@ async function openMaxAuth() {
       throw new Error('bad_response')
     }
     const hasQuery = maxBotUrl.value.includes('?')
-    const maxUrl = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(res.botStartParam)}`
+    const maxUrl = `${maxBotUrl.value}${hasQuery ? '&' : '?'}startapp=${encodeURIComponent(res.botStartParam)}`
     window.open(maxUrl, '_blank', 'noopener')
     await router.push({
       path: '/link-max',

@@ -328,7 +328,7 @@ async function openMaxAuth() {
       throw new Error('bad_response')
     }
     const hasQuery = maxBotUrl.value.includes('?')
-    const maxUrl = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(res.botStartParam)}`
+    const maxUrl = `${maxBotUrl.value}${hasQuery ? '&' : '?'}startapp=${encodeURIComponent(res.botStartParam)}`
     window.open(maxUrl, '_blank', 'noopener')
     await navigateTo({
       path: '/link-max',

@@ -62,7 +62,7 @@ const maxBotUrl = computed(() => {
 const maxStartLink = computed(() => {
   if (!token.value || !maxBotUrl.value) return ''
   const hasQuery = maxBotUrl.value.includes('?')
-  return `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(`link_${token.value}`)}`
+  return `${maxBotUrl.value}${hasQuery ? '&' : '?'}startapp=${encodeURIComponent(`link_${token.value}`)}`
 })
 
 const isLoading = ref(false)
