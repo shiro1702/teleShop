@@ -14,12 +14,12 @@ function readString(value: unknown): string | null {
 }
 
 export function resolveCartScopeKey(route: RouteLike, tenantKey?: string | null): string | null {
-  const byTenantKey = readString(tenantKey)
-  if (byTenantKey) return byTenantKey
-
+  // Явный shop_id в query (deep link / bridge) — выше маршрута.
   const byShopIdQuery = readString(route.query?.shop_id) || readString(route.query?.shopId)
   if (byShopIdQuery) return byShopIdQuery
 
+  // Агрегатор /{city}/{tenant}/... — всегда важнее tenantKey (slug без города),
+  // иначе витрина и checkout получают разные ключи localStorage.
   const tenantSlug = readString(route.params?.tenant_slug)
   if (tenantSlug) {
     const citySlug = readString(route.params?.city_slug)
@@ -37,6 +37,9 @@ export function resolveCartScopeKey(route: RouteLike, tenantKey?: string | null)
       return first
     }
   }
+
+  const byTenantKey = readString(tenantKey)
+  if (byTenantKey) return byTenantKey
 
   if (typeof window !== 'undefined' && window.location.hostname) {
     return `host:${window.location.hostname}`

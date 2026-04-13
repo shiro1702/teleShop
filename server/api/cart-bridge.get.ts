@@ -62,6 +62,37 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Missing token' })
   }
 
+  const serviceClient = await serverSupabaseServiceRole(event)
+
+  if (token.startsWith('cart_')) {
+    const bridgeKey = token.slice(5).trim()
+    if (!bridgeKey) {
+      throw createError({ statusCode: 400, message: 'Invalid cart bridge token' })
+    }
+
+    const { data: bridgeRow } = await serviceClient
+      .from('auth_bridge_sessions')
+      .select('payload, scope_key, expires_at')
+      .eq('bridge_key', bridgeKey)
+      .maybeSingle()
+
+    const isExpired = bridgeRow?.expires_at
+      ? new Date(String(bridgeRow.expires_at)).getTime() < Date.now()
+      : true
+    if (!bridgeRow || isExpired) {
+      throw createError({ statusCode: 400, message: 'Cart bridge token expired' })
+    }
+
+    const payload = (bridgeRow.payload ?? {}) as { items?: unknown[]; scopeKey?: string | null }
+    const scopeKey = typeof payload.scopeKey === 'string' && payload.scopeKey.trim()
+      ? payload.scopeKey.trim()
+      : (typeof bridgeRow.scope_key === 'string' && bridgeRow.scope_key.trim() ? bridgeRow.scope_key.trim() : null)
+    const items = Array.isArray(payload.items) ? payload.items : []
+
+    await serviceClient.from('auth_bridge_sessions').delete().eq('bridge_key', bridgeKey)
+    return { ok: true, items, scopeKey }
+  }
+
   const decoded = decodeItems(token)
   if (!decoded.items.length) {
     return { ok: true, items: [] }
@@ -78,7 +109,6 @@ export default defineEventHandler(async (event) => {
   }> = []
 
   if (decoded.shopId) {
-    const serviceClient = await serverSupabaseServiceRole(event)
     const ids = Array.from(new Set(decoded.items.map((item) => item.id)))
     const { data, error } = await serviceClient
       .from('products')

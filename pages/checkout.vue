@@ -1810,7 +1810,7 @@ async function openMaxAuthFlow() {
         method: 'POST',
         body: {
           shopId: shopRef,
-          scopeKey: resolveCartScopeKey(route, shopRef),
+          scopeKey: resolveCartScopeKey(route),
           redirectPath: tenantPath('/cart'),
           items: cartStore.items,
         },
@@ -1874,7 +1874,7 @@ async function openTelegramAuth() {
         method: 'POST',
         body: {
           shopId: shopRef,
-          scopeKey: resolveCartScopeKey(route, shopRef),
+          scopeKey: resolveCartScopeKey(route),
           redirectPath: tenantPath('/cart'),
           items: cartStore.items,
         },
@@ -1926,7 +1926,7 @@ async function runAuthAction(channel: 'telegram' | 'max') {
       await continueInTelegramFromCheckout()
       return
     }
-    await openMaxAuthFlow()
+    await continueInMaxFromCheckout()
     return
   }
   if (channel === 'telegram') {
@@ -1937,31 +1937,32 @@ async function runAuthAction(channel: 'telegram' | 'max') {
 }
 
 async function continueInTelegramFromCheckout() {
-  if (!cartStore.items.length) return
+  await continueInMiniAppFromCheckout('telegram')
+}
 
+async function continueInMaxFromCheckout() {
+  await continueInMiniAppFromCheckout('max')
+}
+
+async function continueInMiniAppFromCheckout(channel: 'telegram' | 'max') {
+  if (!cartStore.items.length || !isClient()) return
   try {
     const res = await $fetch<{ ok: boolean; deepLink: string }>('/api/cart-bridge', {
       method: 'POST',
       headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
       body: {
-        items: cartStore.items.map((item) => ({
-          id: item.id,
-          quantity: item.quantity,
-        })),
+        channel,
+        scopeKey: resolveCartScopeKey(route),
+        items: cartStore.items,
       },
     })
-
     if (res?.ok && res.deepLink) {
-      if (isClient()) {
-        window.location.href = res.deepLink
-      }
-    } else if (isClient()) {
-      window.alert('Не удалось подготовить корзину для Telegram. Попробуйте ещё раз.')
+      window.location.href = res.deepLink
+      return
     }
+    window.alert(`Не удалось подготовить корзину для ${channel === 'max' ? 'MAX' : 'Telegram'}. Попробуйте ещё раз.`)
   } catch {
-    if (isClient()) {
-      window.alert('Ошибка при подготовке корзины для Telegram. Попробуйте ещё раз.')
-    }
+    window.alert(`Ошибка при подготовке корзины для ${channel === 'max' ? 'MAX' : 'Telegram'}. Попробуйте ещё раз.`)
   }
 }
 </script>
