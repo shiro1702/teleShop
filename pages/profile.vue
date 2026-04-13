@@ -327,8 +327,7 @@ async function openMaxAuth() {
     if (!res?.ok || !res.token || !res.botStartParam) {
       throw new Error('bad_response')
     }
-    const hasQuery = maxBotUrl.value.includes('?')
-    const maxUrl = `${maxBotUrl.value}${hasQuery ? '&' : '?'}startapp=${encodeURIComponent(res.botStartParam)}`
+    const maxUrl = `https://max.ru/:share?text=${encodeURIComponent(res.botStartParam)}`
     window.open(maxUrl, '_blank', 'noopener')
     await navigateTo({
       path: '/link-max',
