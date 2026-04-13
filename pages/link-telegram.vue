@@ -6,6 +6,15 @@
 
     <div v-else>
       <p v-if="statusLine" class="status">{{ statusLine }}</p>
+      <button
+        v-if="telegramStartLink"
+        type="button"
+        class="btn btn-secondary"
+        :disabled="isSuccess"
+        @click="openTelegramBot"
+      >
+        Открыть Telegram и подтвердить вход
+      </button>
 
       <button
         type="button"
@@ -26,11 +35,12 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute, useRouter, useSupabaseClient } from '#imports'
+import { useRoute, useRouter, useRuntimeConfig, useSupabaseClient } from '#imports'
 
 const route = useRoute()
 const router = useRouter()
 const supabase = useSupabaseClient()
+const config = useRuntimeConfig()
 
 const token = computed(() => {
   const t = route.query.token
@@ -45,6 +55,14 @@ const shopId = computed(() => {
   const s = route.query.shop_id
   return typeof s === 'string' && s.trim() ? s.trim() : undefined
 })
+const telegramBotName = computed(() => {
+  const raw = (config.public.telegramBotName as string | undefined) || ''
+  return raw.trim().replace(/^@/, '')
+})
+const telegramStartLink = computed(() => {
+  if (!token.value || !telegramBotName.value) return ''
+  return `https://t.me/${telegramBotName.value}?start=${encodeURIComponent(`link_${token.value}`)}`
+})
 
 const isLoading = ref(false)
 const isSuccess = ref(false)
@@ -57,6 +75,11 @@ let pollAborted = false
 onBeforeUnmount(() => {
   pollAborted = true
 })
+
+function openTelegramBot(): void {
+  if (!telegramStartLink.value || typeof window === 'undefined') return
+  window.location.href = telegramStartLink.value
+}
 
 function resolveTenantCartTarget() {
   const fallbackPath = shopId.value ? `/${shopId.value}/cart` : '/cart'
@@ -230,6 +253,13 @@ onMounted(async () => {
   border-radius: 0.4rem;
   border: none;
   cursor: pointer;
+  width: 100%;
+  margin-top: 0.6rem;
+}
+
+.btn-secondary {
+  background: #eef2ff;
+  color: #1f2937;
 }
 
 .btn-primary {
