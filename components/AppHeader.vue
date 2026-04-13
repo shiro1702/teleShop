@@ -74,6 +74,14 @@
           >
             Бонусы
           </NuxtLink>
+          <NuxtLink
+            to="/profile"
+            class="block px-3 py-2"
+            :style="{ color: mainTextColor }"
+            @click="showMiniappMenu = false"
+          >
+            Профиль
+          </NuxtLink>
         </div>
       </div>
 
@@ -253,11 +261,12 @@ const bonusesMenuVisible = computed(() => {
   return !!(citySlug && tenantSlug) || !!tenant.value.tenantSlug
 })
 
-/** Витрина ресторана (не глобальные страницы вроде /profile, /partners) — для ссылок «Заказы» / «Бонусы» в Telegram Mini App */
+/** Показываем miniapp-меню на витрине ресторана и на городской странице агрегатора. */
 const showMiniappCustomerLinks = computed(() => {
   if (isNonTenantRoute.value || isDashboardRoute.value) return false
+  const routeCitySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
   const routeTenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
-  return !!(routeTenantSlug || tenant.value.tenantSlug)
+  return !!(routeCitySlug || routeTenantSlug || tenant.value.tenantSlug)
 })
 const tenantName = computed(() => tenant.value.shopName || 'PocketMenu')
 const tenantLogoUrl = computed(() => tenant.value.logoUrl || tenant.value.logoLargeUrl || '/logo.webp')

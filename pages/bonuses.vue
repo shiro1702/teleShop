@@ -45,10 +45,10 @@
               {{ shopDisplayName }}
             </p>
             <p class="mt-3 text-3xl font-bold tabular-nums" :style="{ color: mainTextColor }">
-              {{ balanceDisplay }} б
+              {{ balanceDisplay }}
             </p>
             <p class="mt-2 text-sm" :style="{ color: mutedTextColor }">
-              1 бонус = 1 б. Начисляются после успешной доставки или выдачи заказа. Списать бонусы можно при оформлении заказа.
+              1 бонус = 1 р. Начисляются после успешной доставки или выдачи заказа. Списать бонусы можно при оформлении заказа.
             </p>
           </template>
           <p v-else class="text-sm" :style="{ color: mutedTextColor }">
@@ -115,10 +115,20 @@ const shopDisplayName = computed(() => tenant.value.shopName || 'Рестора�
 const balance = ref<number | null>(null)
 const balanceLoading = ref(false)
 
+function formatBonuses(value: number): string {
+  const abs = Math.abs(value) % 100
+  const lastDigit = abs % 10
+
+  if (abs >= 11 && abs <= 14) return `${value} бонусов`
+  if (lastDigit === 1) return `${value} бонус`
+  if (lastDigit >= 2 && lastDigit <= 4) return `${value} бонуса`
+  return `${value} бонусов`
+}
+
 const balanceDisplay = computed(() => {
   if (balanceLoading.value) return '…'
-  if (balance.value === null) return '0'
-  return String(balance.value)
+  if (balance.value === null) return formatBonuses(0)
+  return formatBonuses(balance.value)
 })
 
 function balanceRequestHeaders() {

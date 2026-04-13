@@ -30,11 +30,37 @@
             <dt>Telegram</dt>
             <dd>Ещё не привязан</dd>
           </div>
+          <div v-if="maxUserId">
+            <dt>MAX ID</dt>
+            <dd>{{ maxUserId }}</dd>
+          </div>
+          <div v-else>
+            <dt>MAX</dt>
+            <dd>Ещё не привязан</dd>
+          </div>
         </dl>
         <p class="hint">
           Telegram‑аккаунт привязывается через бота и страницу привязки, после чего заказы с сайта будут
           уведомлять вас в Telegram.
         </p>
+        <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+          <button
+            v-if="telegramBotUrl"
+            type="button"
+            class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white"
+            @click="openTelegramAuth"
+          >
+            {{ telegramId !== null ? 'Перепривязать Telegram' : 'Привязать Telegram' }}
+          </button>
+          <button
+            v-if="maxBotUrl"
+            type="button"
+            class="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary"
+            @click="openMaxAuth"
+          >
+            {{ maxUserId ? 'Перепривязать MAX' : 'Привязать MAX' }}
+          </button>
+        </div>
       </div>
 
       <div class="card">
@@ -180,6 +206,16 @@ const userId = computed<string | null>(() => {
 const telegramId = computed<number | null>(() => {
   const raw = (user.value as any)?.user_metadata?.telegram_id
   return typeof raw === 'number' ? raw : null
+})
+
+const maxUserId = computed<string | null>(() => {
+  const raw = (user.value as any)?.user_metadata?.max_user_id
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    return trimmed || null
+  }
+  if (typeof raw === 'number') return String(raw)
+  return null
 })
 
 const searchInput = ref('')
