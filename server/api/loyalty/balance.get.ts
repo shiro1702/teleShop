@@ -6,13 +6,11 @@ import { resolveCustomerProfileId } from '~/server/utils/customerProfile'
 
 export default defineEventHandler(async (event) => {
   const { shopId, shop } = await requireTenantShop(event)
-  if (!shop.telegram_bot_token) {
-    throw createError({ statusCode: 500, statusMessage: 'Shop bot token missing' })
-  }
+  const botToken = typeof shop.telegram_bot_token === 'string' ? shop.telegram_bot_token.trim() : ''
 
   let customerProfileId: string
   try {
-    customerProfileId = await resolveCustomerProfileId(event, shop.telegram_bot_token)
+    customerProfileId = await resolveCustomerProfileId(event, botToken)
   } catch {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
