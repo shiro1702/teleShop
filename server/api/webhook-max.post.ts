@@ -110,7 +110,9 @@ export default defineEventHandler(async (event) => {
       : 'ulan-ude'
 
   const body = await readBody<MaxUpdate>(event)
-  if (!body || body.update_type !== 'message_created' || !body.message) {
+  const updateType = String(body?.update_type || '').trim()
+  const supportedType = updateType === 'message_created' || updateType === 'bot_started'
+  if (!body || !supportedType || !body.message) {
     return { ok: true }
   }
 
