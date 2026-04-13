@@ -159,7 +159,7 @@ const data = ref<{ ok: boolean; items: ClientOrder[] }>({ ok: true, items: [] })
 
 const route = useRoute()
 const { tenantKey } = useTenant()
-const { buildMessengerAuthHeaders } = useTelegram()
+const { buildMessengerAuthHeaders, isMessengerMiniApp, messengerInitData } = useTelegram()
 
 const selectedOrderId = computed(() => {
   const raw = route.query.orderId
@@ -191,9 +191,37 @@ type NormalizedOrder = ClientOrder & {
 }
 
 function requestHeaders() {
-  const shop =
+  const shopFromTenant =
     typeof tenantKey.value === 'string' && tenantKey.value.trim() ? tenantKey.value.trim() : ''
+  const shopFromQuery =
+    typeof route.query.shop_id === 'string' && route.query.shop_id.trim() ? route.query.shop_id.trim() : ''
+  const shop = shopFromTenant || shopFromQuery
   return buildMessengerAuthHeaders(shop ? { 'x-shop-id': shop } : undefined)
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function waitForMessengerInitData(timeoutMs = 2500) {
+  if (!isMessengerMiniApp.value || messengerInitData.value) return
+  const startedAt = Date.now()
+  while (!messengerInitData.value && Date.now() - startedAt < timeoutMs) {
+    await sleep(150)
+  }
+}
+
+async function fetchOrders(): Promise<{ ok: boolean; items: ClientOrder[] }> {
+  const res = await fetch('/api/client-orders', {
+    method: 'GET',
+    headers: requestHeaders(),
+  })
+  if (!res.ok) {
+    const errJson = (await res.json().catch(() => null)) as any
+    throw new Error(errJson?.statusMessage || errJson?.message || 'Не удалось загрузить заказы')
+  }
+  const json = (await res.json()) as { ok: boolean; items: ClientOrder[] }
+  return json ?? { ok: true, items: [] }
 }
 
 function detailStatusClass(status: string) {
@@ -242,17 +270,21 @@ onMounted(async () => {
   pending.value = true
   errorMessage.value = ''
   try {
-    const res = await fetch('/api/client-orders', {
-      method: 'GET',
-      headers: requestHeaders(),
-    })
-    if (!res.ok) {
-      throw new Error('Не удалось загрузить заказы')
-    }
-    const json = await res.json() as { ok: boolean; items: ClientOrder[] }
-    data.value = json ?? { ok: true, items: [] }
+    await waitForMessengerInitData()
+    data.value = await fetchOrders()
   } catch (error: any) {
-    errorMessage.value = error?.statusMessage || error?.message || 'Не удалось загрузить заказы'
+    const maybeUnauthorized = String(error?.message || '').toLowerCase().includes('unauthorized')
+    if (isMessengerMiniApp.value && maybeUnauthorized && !messengerInitData.value) {
+      try {
+        await waitForMessengerInitData(4000)
+        data.value = await fetchOrders()
+        errorMessage.value = ''
+      } catch (retryError: any) {
+        errorMessage.value = retryError?.statusMessage || retryError?.message || 'Не удалось загрузить заказы'
+      }
+    } else {
+      errorMessage.value = error?.statusMessage || error?.message || 'Не удалось загрузить заказы'
+    }
   } finally {
     pending.value = false
   }
