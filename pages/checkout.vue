@@ -731,26 +731,27 @@
                   <span v-if="isPlacing">Оформляем заказ...</span>
                   <span v-else>Оформить заказ</span>
                 </button>
-                <p v-if="!isRestaurantOpenNow" class="text-xs text-red-600">
-                  Ресторан сейчас закрыт. Оформление заказа недоступно.
-                </p>
-
-                <template v-else-if="!isAuthorizedForOrder">
+                <template v-else>
                   <button
                     type="button"
-                    class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 sm:w-auto"
+                    class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300 sm:w-auto"
+                    :disabled="!isRestaurantOpenNow"
                     @click="openAuthModal('auth')"
                   >
                     Авторизоваться и оформить
                   </button>
                   <button
                     type="button"
-                    class="w-full rounded-lg border border-primary px-4 py-3 text-base font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100 sm:w-auto"
+                    class="w-full rounded-lg border border-primary px-4 py-3 text-base font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 sm:w-auto"
+                    :disabled="!isRestaurantOpenNow"
                     @click="openAuthModal('continue')"
                   >
                     Продолжить в боте
                   </button>
                 </template>
+                <p v-if="!isRestaurantOpenNow" class="text-xs text-red-600">
+                  Ресторан сейчас закрыт. Оформление заказа недоступно.
+                </p>
               </div>
             </div>
           </div>
@@ -789,25 +790,27 @@
           <span v-if="isPlacing">Оформляем заказ...</span>
           <span v-else>Оформить заказ</span>
         </button>
-        <p v-if="!isRestaurantOpenNow" class="text-xs text-red-600">
-          Ресторан сейчас закрыт. Оформление заказа недоступно.
-        </p>
-        <template v-else-if="!isAuthorizedForOrder">
+        <template v-else>
           <button
             type="button"
-            class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700"
+            class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+            :disabled="!isRestaurantOpenNow"
             @click="openAuthModal('auth')"
           >
             Авторизоваться и оформить
           </button>
           <button
             type="button"
-            class="w-full rounded-lg border border-primary px-4 py-3 text-base font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100"
+            class="w-full rounded-lg border border-primary px-4 py-3 text-base font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+            :disabled="!isRestaurantOpenNow"
             @click="openAuthModal('continue')"
           >
             Продолжить в боте
           </button>
         </template>
+        <p v-if="!isRestaurantOpenNow" class="text-xs text-red-600">
+          Ресторан сейчас закрыт. Оформление заказа недоступно.
+        </p>
       </div>
       </div>
     </Transition>
@@ -846,8 +849,7 @@ import {
   readOrderContinuationHint,
 } from '~/composables/useTelegram'
 import { resolveCartScopeKey } from '~/utils/cartScope'
-import type { WeeklyWorkingHours } from '~/types/organization-style'
-import { isOpenNowBySchedule } from '~/utils/workingHours'
+import { useWorkingHoursStatus } from '~/composables/useWorkingHoursStatus'
 
 const cartStore = useCartStore()
 const route = useRoute()
@@ -1081,10 +1083,16 @@ const canGoToSummary = computed(() => {
     hasAllRequiredParameterSelections.value
   )
 })
-const isRestaurantOpenNow = computed(() => {
-  const schedule = selectedRestaurantWorkingHours.value as WeeklyWorkingHours | null
-  if (!schedule) return true
-  return isOpenNowBySchedule(schedule, organizationTimezone.value).isOpen
+const workingHoursStatusCacheKey = computed(() => {
+  const shopRef = shopIdFromRoute.value || 'unknown'
+  const restaurantRef = selectedRestaurantId.value || 'default'
+  return `checkout:${shopRef}:${restaurantRef}`
+})
+const { isOpenNow: isRestaurantOpenNow } = useWorkingHoursStatus({
+  workingHours: selectedRestaurantWorkingHours as any,
+  timezone: organizationTimezone,
+  cacheKey: workingHoursStatusCacheKey,
+  defaultIsOpenWhenNoSchedule: true,
 })
 const canPlaceOrder = computed(() =>
   !isPlacing.value && !!cartStore.items.length && !!canGoToSummary.value && isRestaurantOpenNow.value,

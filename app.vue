@@ -73,8 +73,8 @@ import { computed, onMounted, onServerPrefetch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTelegram } from './composables/useTelegram'
 import { useTenant } from './composables/useTenant'
+import { useWorkingHoursStatus } from './composables/useWorkingHoursStatus'
 import type { WeeklyWorkingHours } from './types/organization-style'
-import { isOpenNowBySchedule } from './utils/workingHours'
 
 const { isMessengerMiniApp } = useTelegram()
 const { cssVars, loadTenantSettings, tenant } = useTenant()
@@ -104,9 +104,14 @@ const effectiveWorkingHours = computed(() => {
   if (!source || typeof source !== 'object') return null
   return source as unknown as WeeklyWorkingHours
 })
-const isOpenNow = computed(() => {
-  if (!effectiveWorkingHours.value) return false
-  return isOpenNowBySchedule(effectiveWorkingHours.value, tenantTimezone.value).isOpen
+const workingHoursStatusCacheKey = computed(() => {
+  const tenantRef = tenant.value.shopId || tenant.value.tenantSlug || 'unknown'
+  return `app-footer:${tenantRef}`
+})
+const { isOpenNow } = useWorkingHoursStatus({
+  workingHours: effectiveWorkingHours,
+  timezone: tenantTimezone,
+  cacheKey: workingHoursStatusCacheKey,
 })
 const workingHoursRows = computed<Array<{ label: string; value: string }>>(() => {
   if (!effectiveWorkingHours.value) return []
