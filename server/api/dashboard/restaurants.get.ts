@@ -19,6 +19,20 @@ type RestaurantRow = {
   is_active: boolean
   created_at: string
 }
+type RestaurantFallbackRow = Partial<RestaurantRow> & Pick<RestaurantRow, 'id' | 'name' | 'address' | 'is_active' | 'created_at'>
+
+function isMissingColumnError(error: any): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = typeof error.code === 'string' ? error.code : ''
+  const message = typeof error.message === 'string' ? error.message.toLowerCase() : ''
+  const details = typeof error.details === 'string' ? error.details.toLowerCase() : ''
+  return (
+    code === '42703'
+    || code === 'PGRST204'
+    || message.includes('column')
+    || details.includes('column')
+  )
+}
 
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
@@ -28,27 +42,32 @@ export default defineEventHandler(async (event) => {
   const hallMode = org.ops.dineInHallMode
   const hallOrderingEnabled = allowedSet.has('dine-in') && hallMode !== 'qr-menu-browse'
   const client = await serverSupabaseServiceRole(event)
-  let data: RestaurantRow[] | null = null
+  let data: RestaurantFallbackRow[] | null = null
   let error: any = null
   const primary = await client
     .from('restaurants')
     .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,created_at')
     .eq('shop_id', access.shopId)
     .order('created_at', { ascending: false })
-  data = primary.data as RestaurantRow[] | null
+  data = primary.data as RestaurantFallbackRow[] | null
   error = primary.error
-  if (error && error.code === '42703') {
+  if (isMissingColumnError(error)) {
     const fallback = await client
       .from('restaurants')
       .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active,created_at')
       .eq('shop_id', access.shopId)
       .order('created_at', { ascending: false })
-    data = (fallback.data as RestaurantRow[] | null)?.map((row) => ({
-      ...row,
-      use_organization_working_hours: true,
-      working_hours: null,
-    })) ?? []
+    data = fallback.data as RestaurantFallbackRow[] | null
     error = fallback.error
+  }
+  if (isMissingColumnError(error)) {
+    const fallbackLegacy = await client
+      .from('restaurants')
+      .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,is_active,created_at')
+      .eq('shop_id', access.shopId)
+      .order('created_at', { ascending: false })
+    data = fallbackLegacy.data as RestaurantFallbackRow[] | null
+    error = fallbackLegacy.error
   }
 
   if (error) {
@@ -56,7 +75,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: 'Failed to load restaurants' })
   }
 
-  const rows = (data ?? []) as RestaurantRow[]
+  const rows = (data ?? []) as RestaurantFallbackRow[]
   const fallbackWorkingHours = getDefaultOrganizationSettings().ops.workingHours
   return {
     ok: true,
@@ -65,15 +84,15 @@ export default defineEventHandler(async (event) => {
       id: row.id,
       name: row.name,
       address: row.address,
-      supportsDelivery: row.supports_delivery && allowedSet.has('delivery'),
-      supportsPickup: row.supports_pickup && allowedSet.has('pickup'),
-      supportsDineIn: row.supports_dine_in && allowedSet.has('dine-in'),
+      supportsDelivery: row.supports_delivery === true && allowedSet.has('delivery'),
+      supportsPickup: row.supports_pickup === true && allowedSet.has('pickup'),
+      supportsDineIn: row.supports_dine_in === true && allowedSet.has('dine-in'),
       supportsQrMenu:
-        row.supports_qr_menu
+        row.supports_qr_menu === true
         && hallOrderingEnabled
         && hallMode === 'to-table',
       supportsShowcaseOrder:
-        row.supports_showcase_order
+        row.supports_showcase_order === true
         && hallOrderingEnabled
         && hallMode === 'pickup-point',
       useOrganizationWorkingHours: row.use_organization_working_hours !== false,

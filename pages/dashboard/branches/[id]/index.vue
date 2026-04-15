@@ -13,6 +13,13 @@
             Экран кухни (KDS)
           </NuxtLink>
           <NuxtLink
+            v-if="branch"
+            :to="`/dashboard/branches/${branch.id}/zones`"
+            class="text-sm text-primary hover:underline"
+          >
+            Зоны доставки
+          </NuxtLink>
+          <NuxtLink
             v-if="branch && storefrontPath"
             :to="{ path: storefrontPath, query: { branch_id: branch.id } }"
             target="_blank"

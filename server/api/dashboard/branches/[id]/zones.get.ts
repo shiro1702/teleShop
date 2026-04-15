@@ -1,23 +1,20 @@
-import { createError, defineEventHandler, getQuery } from 'h3'
+import { createError, defineEventHandler, getRouterParam } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
-import { requireTenantShop } from '~/server/utils/tenant'
+import { requireDashboardAccess } from '~/server/utils/dashboard'
 
 export default defineEventHandler(async (event) => {
-  const query = getQuery(event)
-  const restaurantId = typeof query.restaurant_id === 'string' ? query.restaurant_id : null
-  if (!restaurantId) {
-    throw createError({ statusCode: 400, message: 'Missing restaurant_id' })
+  const access = await requireDashboardAccess(event)
+  const branchId = getRouterParam(event, 'id')
+  if (!branchId?.trim()) {
+    throw createError({ statusCode: 400, statusMessage: 'Branch id is required' })
   }
-
-  const { shopId } = await requireTenantShop(event)
 
   const client = await serverSupabaseServiceRole(event)
   const zonesQuery = client
     .from('restaurant_delivery_zones')
     .select('id,name,polygon_geojson,min_order_amount,delivery_cost,free_delivery_threshold,is_active,priority')
-    .eq('shop_id', shopId)
-    .eq('restaurant_id', restaurantId)
-    .eq('is_active', true)
+    .eq('shop_id', access.shopId)
+    .eq('restaurant_id', branchId.trim())
     .order('delivery_cost', { ascending: true })
     .order('priority', { ascending: false })
 
@@ -27,23 +24,23 @@ export default defineEventHandler(async (event) => {
     const fb = await client
       .from('restaurant_delivery_zones')
       .select('id,name,polygon_geojson,min_order_amount,delivery_cost,free_delivery_threshold,is_active')
-      .eq('shop_id', shopId)
-      .eq('restaurant_id', restaurantId)
-      .eq('is_active', true)
+      .eq('shop_id', access.shopId)
+      .eq('restaurant_id', branchId.trim())
       .order('delivery_cost', { ascending: true })
     data = fb.data
     error = fb.error
   }
 
   if (error) {
-    console.error('Failed to load delivery zones by restaurant:', error)
-    throw createError({ statusCode: 500, message: 'Failed to load restaurant zones' })
+    console.error('dashboard zones list:', error)
+    throw createError({ statusCode: 500, statusMessage: 'Failed to load zones' })
   }
 
   return {
-    ok: true,
-    shopId,
-    restaurantId,
-    items: data ?? [],
+    ok: true as const,
+    items: (data ?? []).map((row: any) => ({
+      ...row,
+      priority: typeof row.priority === 'number' ? row.priority : 0,
+    })),
   }
 })

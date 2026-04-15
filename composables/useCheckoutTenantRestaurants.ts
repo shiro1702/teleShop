@@ -30,6 +30,7 @@ type RestaurantZoneApiItem = {
   min_order_amount: number
   delivery_cost: number
   free_delivery_threshold: number
+  priority?: number | null
 }
 
 type UseCheckoutTenantRestaurantsParams = {
@@ -38,6 +39,8 @@ type UseCheckoutTenantRestaurantsParams = {
   fulfillmentTypesConfigRaw: string
   currentFulfillmentType: Ref<FulfillmentType>
   setDeliveryZones: (zones: DeliveryZoneFeature[]) => void
+  /** When true, next zone reload after branch change will not clear delivery zone / error (server resolve will refresh) */
+  skipNextDeliveryZoneReset?: Ref<boolean>
 }
 
 export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurantsParams) {
@@ -214,6 +217,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
                 minOrderAmount: zone.min_order_amount,
                 deliveryCost: zone.delivery_cost,
                 freeDeliveryThreshold: zone.free_delivery_threshold,
+                priority: typeof zone.priority === 'number' && Number.isFinite(zone.priority) ? zone.priority : 0,
               },
             }
           })
@@ -221,11 +225,18 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
 
         restaurantZones.value = mapped
         params.setDeliveryZones(mapped)
-        cartStore.setDeliveryZone(null)
-        if (params.currentFulfillmentType.value === 'delivery') {
-          cartStore.setDeliveryError('Укажите адрес доставки, чтобы рассчитать доставку')
+        if (params.skipNextDeliveryZoneReset?.value) {
+          params.skipNextDeliveryZoneReset.value = false
+        } else {
+          cartStore.setDeliveryZone(null)
+          if (params.currentFulfillmentType.value === 'delivery') {
+            cartStore.setDeliveryError('Укажите адрес доставки, чтобы рассчитать доставку')
+          }
         }
       } catch {
+        if (params.skipNextDeliveryZoneReset?.value) {
+          params.skipNextDeliveryZoneReset.value = false
+        }
         restaurantZones.value = []
         params.setDeliveryZones([])
         cartStore.setDeliveryZone(null)

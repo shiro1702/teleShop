@@ -6,6 +6,8 @@ export interface DeliveryZoneProperties {
   minOrderAmount: number
   deliveryCost: number
   freeDeliveryThreshold: number
+  /** Higher wins when zones overlap and delivery cost is equal */
+  priority?: number
 }
 
 export interface DeliveryZoneFeature {

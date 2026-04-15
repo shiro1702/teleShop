@@ -411,7 +411,7 @@
                     :key="addr.id"
                     type="button"
                     class="group flex items-center gap-1 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:border-primary hover:bg-primary-50"
-                    @click="applySavedAddress(addr)"
+                    @click="applySavedAddressAndResolve(addr)"
                   >
                     <span class="max-w-[160px] truncate sm:max-w-[220px]">
                       {{ addr.address }}
@@ -501,6 +501,12 @@
                     class="text-xs text-gray-500"
                   >
                     {{ cartStore.deliverySummary.message }}
+                  </p>
+                  <p
+                    v-if="branchResolveInfo"
+                    class="text-xs text-amber-800/90"
+                  >
+                    {{ branchResolveInfo }}
                   </p>
                 </div>
               </section>
@@ -970,6 +976,10 @@ const isStep2ActionsVisible = ref(false)
 const stepDirection = ref<'forward' | 'backward'>('forward')
 const showAuthModal = ref(false)
 const authModalMode = ref<'auth' | 'continue'>('auth')
+const branchResolveInfo = ref<string | null>(null)
+const skipNextDeliveryZoneReset = ref(false)
+const lastDeliveryCoords = ref<{ lat: number; lon: number } | null>(null)
+const isResolvingDeliveryFromServer = ref(false)
 
 const stepTransitionName = computed(() =>
   stepDirection.value === 'forward' ? 'step-forward' : 'step-backward',
@@ -980,22 +990,6 @@ const showBottomBar = computed(() => {
   if (state.currentStep === 1) return !isStep1InlineNavVisible.value
   return !isStep2ActionsVisible.value
 })
-
-const {
-  addressLine,
-  flat,
-  comment,
-  addressInputRef,
-  suggestItems,
-  isSuggestLoading,
-  savedAddresses,
-  setDeliveryZones,
-  onAddressInput,
-  selectSuggestion,
-  applySavedAddress,
-  saveCurrentAddress,
-  deleteSavedAddress,
-} = useCheckoutAddress()
 
 const shopIdFromRoute = computed(() => {
   const fromTenantState = typeof tenantKey.value === 'string' ? tenantKey.value.trim() : ''
@@ -1019,10 +1013,32 @@ function applyCartScope() {
 applyCartScope()
 
 const {
+  addressLine,
+  flat,
+  comment,
+  addressInputRef,
+  suggestItems,
+  isSuggestLoading,
+  savedAddresses,
+  setDeliveryZones,
+  refreshDeliveryZone,
+  onAddressInput,
+  selectSuggestion,
+  applySavedAddress,
+  saveCurrentAddress,
+  deleteSavedAddress,
+} = useCheckoutAddress({
+  onGeocodedCoords: async (coords) => {
+    await resolveDeliveryBranch(coords.lat, coords.lon)
+  },
+})
+
+const {
   selectedPickupPointId,
   selectedRestaurantId,
   selectedPickupPoint,
   restaurants,
+  restaurantZones,
   pickupPoints,
   availableFulfillmentTypes,
   hasDeliveryOption,
@@ -1038,7 +1054,148 @@ const {
   fulfillmentTypesConfigRaw,
   currentFulfillmentType: toRef(state, 'fulfillmentType'),
   setDeliveryZones,
+  skipNextDeliveryZoneReset,
 })
+
+type DeliveryResolveApi = {
+  ok: boolean
+  reason?: string
+  selected: null | {
+    restaurantId: string
+    restaurantName: string
+    zone: {
+      slug: string
+      name: string
+      minOrderAmount: number
+      deliveryCost: number
+      freeDeliveryThreshold: number
+      priority?: number
+    }
+  }
+  infoMessage?: string | null
+}
+
+function deliveryResolveReasonMessage(reason: string | undefined): string {
+  switch (reason) {
+    case 'out_of_zone':
+      return 'Мы пока не доставляем по этому адресу'
+    case 'all_closed':
+      return 'Сейчас нет открытых филиалов с доставкой по этому адресу'
+    case 'delivery_disabled':
+      return 'Доставка не подключена для этого магазина'
+    case 'no_restaurants':
+      return 'Нет доступных филиалов для доставки'
+    default:
+      return 'Не удалось определить зону доставки'
+  }
+}
+
+async function waitForRestaurantZonesLoaded(timeoutMs = 5000) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    await nextTick()
+    if (restaurantZones.value.length > 0) return true
+    await new Promise<void>((r) => setTimeout(r, 30))
+  }
+  return restaurantZones.value.length > 0
+}
+
+async function resolveDeliveryBranch(lat: number, lon: number) {
+  branchResolveInfo.value = null
+  if (!shopIdFromRoute.value) return
+
+  isResolvingDeliveryFromServer.value = true
+  try {
+    const res = await $fetch<DeliveryResolveApi>('/api/delivery-resolve', {
+      method: 'POST',
+      headers: { 'x-shop-id': shopIdFromRoute.value },
+      body: { lat, lon },
+    })
+
+    if (!res.selected) {
+      lastDeliveryCoords.value = null
+      cartStore.setDeliveryZone(null)
+      cartStore.setDeliveryError(deliveryResolveReasonMessage(res?.reason))
+      return
+    }
+
+    branchResolveInfo.value = typeof res.infoMessage === 'string' && res.infoMessage.trim()
+      ? res.infoMessage.trim()
+      : null
+
+    lastDeliveryCoords.value = { lat, lon }
+
+    cartStore.setDeliveryError(null)
+    skipNextDeliveryZoneReset.value = true
+    selectedRestaurantId.value = res.selected.restaurantId
+    await nextTick()
+    await waitForRestaurantZonesLoaded()
+
+    if (restaurantZones.value.length > 0) {
+      refreshDeliveryZone(lat, lon)
+    } else {
+      cartStore.setDeliveryZone(res.selected.zone)
+    }
+  } catch {
+    lastDeliveryCoords.value = null
+    cartStore.setDeliveryZone(null)
+    cartStore.setDeliveryError('Не удалось рассчитать доставку')
+  } finally {
+    isResolvingDeliveryFromServer.value = false
+  }
+}
+
+async function ensureLastDeliveryCoordsFromAddress(): Promise<{ lat: number; lon: number } | null> {
+  if (lastDeliveryCoords.value) return lastDeliveryCoords.value
+  const query = addressLine.value.trim()
+  if (query.length < 3) return null
+  try {
+    const geo = await $fetch<{ ok?: boolean; lat?: number; lon?: number }>('/api/geocode', {
+      query: { q: query },
+    })
+    if (geo?.ok && typeof geo.lat === 'number' && typeof geo.lon === 'number') {
+      lastDeliveryCoords.value = { lat: geo.lat, lon: geo.lon }
+      return lastDeliveryCoords.value
+    }
+  } catch {
+    // keep silent; user can refine address
+  }
+  return null
+}
+
+watch(selectedRestaurantId, async (id, prev) => {
+  if (isResolvingDeliveryFromServer.value) return
+  if (!id || !prev || id === prev) return
+  if (state.fulfillmentType !== 'delivery') return
+  // При смене филиала с уже введенным адресом не даем промежуточно
+  // выставлять "Укажите адрес...", пока пересчитываем доступность для нового филиала.
+  if (addressLine.value.trim().length >= 3 || !!lastDeliveryCoords.value) {
+    skipNextDeliveryZoneReset.value = true
+  }
+  const coords = await ensureLastDeliveryCoordsFromAddress()
+  if (!coords) {
+    cartStore.setDeliveryZone(null)
+    cartStore.setDeliveryError('Не удалось определить зону доставки для выбранного филиала')
+    return
+  }
+  await nextTick()
+  await waitForRestaurantZonesLoaded()
+  refreshDeliveryZone(coords.lat, coords.lon)
+})
+
+async function applySavedAddressAndResolve(addr: { id: string; address: string; flat?: string; comment?: string }) {
+  applySavedAddress(addr)
+  try {
+    const geo = await $fetch<{ ok?: boolean; lat?: number; lon?: number }>('/api/geocode', {
+      query: { q: addr.address },
+    })
+    if (geo?.ok && typeof geo.lat === 'number' && typeof geo.lon === 'number') {
+      await resolveDeliveryBranch(geo.lat, geo.lon)
+    }
+  } catch {
+    // no coords — user can pick suggestion later
+  }
+}
 
 const canGoToAddress = computed(
   () => cartStore.items.length > 0,
@@ -1073,13 +1230,9 @@ const canGoToSummary = computed(() => {
       hasAllRequiredParameterSelections.value
     )
   }
-  const hasHouseNumber = /\d/.test(addressLine.value.trim())
   return (
     hasDeliveryOption.value &&
-    hasHouseNumber &&
-    cartStore.items.length > 0 &&
-    !!cartStore.deliveryZone &&
-    !cartStore.deliveryError &&
+    cartStore.canCheckout &&
     hasAllRequiredParameterSelections.value
   )
 })
@@ -1698,6 +1851,8 @@ async function placeOrder() {
             flat: flat.value || null,
             comment: comment.value || null,
             zone: cartStore.deliveryZone ?? null,
+            lat: lastDeliveryCoords.value?.lat ?? null,
+            lon: lastDeliveryCoords.value?.lon ?? null,
           }
         : {
             line: null,

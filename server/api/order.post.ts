@@ -24,6 +24,7 @@ import {
 import { evaluateMenuAvailability, normalizeTimeWindows } from '~/server/utils/menuAvailability'
 import { isOpenNowBySchedule, normalizeWeeklyWorkingHours, resolveEffectiveWorkingHours } from '~/utils/workingHours'
 import { dispatchNotificationEvent } from '~/server/utils/notifications'
+import { resolveDeliveryForPoint } from '~/server/utils/resolveDeliveryForPoint'
 import {
   getMaxBotTokenForShop,
   validateWebAppInitData,
@@ -317,6 +318,8 @@ export default defineEventHandler(async (event) => {
       flat?: string | null
       comment?: string | null
       zone?: DeliveryZoneProperties | null
+      lat?: number | null
+      lon?: number | null
     } | null
     pickupPoint?: {
       id?: string | null
@@ -347,8 +350,49 @@ export default defineEventHandler(async (event) => {
     tenantShopId,
   )
 
-  const restaurantId = typeof body.restaurantId === 'string' ? body.restaurantId.trim() : ''
-  const restaurant: TenantRestaurant = await requireRestaurantForShop(event, tenantShopId, restaurantId)
+  const fulfillmentType: FulfillmentType =
+    body.fulfillmentType === 'pickup'
+      ? 'pickup'
+      : body.fulfillmentType === 'qr-menu'
+        ? 'qr-menu'
+        : 'delivery'
+
+  const bodyLatRaw = body.address?.lat
+  const bodyLonRaw = body.address?.lon
+  const bodyLat = typeof bodyLatRaw === 'number' ? bodyLatRaw : Number(bodyLatRaw)
+  const bodyLon = typeof bodyLonRaw === 'number' ? bodyLonRaw : Number(bodyLonRaw)
+  const hasDeliveryCoords =
+    fulfillmentType === 'delivery'
+    && Number.isFinite(bodyLat)
+    && Number.isFinite(bodyLon)
+
+  let deliveryZoneValidated: DeliveryZoneProperties | null = null
+
+  let restaurant: TenantRestaurant
+  if (hasDeliveryCoords) {
+    const resolved = await resolveDeliveryForPoint(event, tenantShopId, bodyLat, bodyLon)
+    if (!resolved.selected) {
+      const msg =
+        resolved.reason === 'all_closed'
+          ? 'Сейчас нет открытых филиалов с доставкой по этому адресу'
+          : resolved.reason === 'out_of_zone'
+            ? 'Мы не доставляем по этому адресу'
+            : 'Не удалось определить зону доставки'
+      throw createError({ statusCode: 400, message: msg })
+    }
+    restaurant = await requireRestaurantForShop(event, tenantShopId, resolved.selected.restaurantId)
+    deliveryZoneValidated = {
+      slug: resolved.selected.zoneId,
+      name: resolved.selected.zoneName,
+      minOrderAmount: resolved.selected.minOrderAmount,
+      deliveryCost: resolved.selected.deliveryCost,
+      freeDeliveryThreshold: resolved.selected.freeDeliveryThreshold,
+    }
+  } else {
+    const restaurantId = typeof body.restaurantId === 'string' ? body.restaurantId.trim() : ''
+    restaurant = await requireRestaurantForShop(event, tenantShopId, restaurantId)
+  }
+
   const orgSettings = await getOrganizationSettings(event, tenantShopId)
   const branchWorkingHours = normalizeWeeklyWorkingHours(restaurant.working_hours, orgSettings.ops.workingHours)
   const effectiveWorkingHours = resolveEffectiveWorkingHours(orgSettings.ops.workingHours, {
@@ -515,12 +559,6 @@ export default defineEventHandler(async (event) => {
 
   const payableGoods = Math.max(0, subtotalAfterPromo - bonusSpent)
 
-  const fulfillmentType: FulfillmentType =
-    body.fulfillmentType === 'pickup'
-      ? 'pickup'
-      : body.fulfillmentType === 'qr-menu'
-        ? 'qr-menu'
-        : 'delivery'
   if (!globallyAllowed.includes(fulfillmentType)) {
     throw createError({ statusCode: 400, message: `Fulfillment type "${fulfillmentType}" is disabled` })
   }
@@ -558,25 +596,18 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const deliveryZone: DeliveryZoneProperties | null =
-    fulfillmentType === 'delivery'
-      ? (() => {
-          // address.zone is required only for delivery
-          const incomingZone: DeliveryZoneProperties | null = body.address?.zone ?? null
-          const incomingZoneId = typeof incomingZone?.slug === 'string' ? incomingZone.slug.trim() : ''
-          return incomingZoneId ? incomingZone : null
-        })()
-      : null
-
-  let deliveryZoneValidated: DeliveryZoneProperties | null = null
-  if (fulfillmentType === 'delivery') {
-    if (!deliveryZone) {
+  if (fulfillmentType === 'delivery' && !hasDeliveryCoords) {
+    const incomingZone: DeliveryZoneProperties | null = body.address?.zone ?? null
+    const incomingZoneId = typeof incomingZone?.slug === 'string' ? incomingZone.slug.trim() : ''
+    if (!incomingZoneId) {
       throw createError({ statusCode: 400, message: 'Delivery zone is required for selected restaurant' })
     }
-    const incomingZoneId = typeof deliveryZone.slug === 'string' ? deliveryZone.slug.trim() : ''
-    const serverZone: TenantRestaurantZone | null = incomingZoneId
-      ? await requireRestaurantZoneForShop(event, tenantShopId, restaurant.id, incomingZoneId)
-      : null
+    const serverZone: TenantRestaurantZone | null = await requireRestaurantZoneForShop(
+      event,
+      tenantShopId,
+      restaurant.id,
+      incomingZoneId,
+    )
     deliveryZoneValidated = serverZone
       ? {
           slug: serverZone.id,
@@ -586,6 +617,17 @@ export default defineEventHandler(async (event) => {
           freeDeliveryThreshold: serverZone.free_delivery_threshold,
         }
       : null
+  }
+
+  if (
+    fulfillmentType === 'delivery'
+    && deliveryZoneValidated
+    && subtotalAfterPromo < deliveryZoneValidated.minOrderAmount
+  ) {
+    throw createError({
+      statusCode: 400,
+      message: `Минимальная сумма заказа для зоны — ${deliveryZoneValidated.minOrderAmount} ₽`,
+    })
   }
 
   const deliveryCost: number = (() => {

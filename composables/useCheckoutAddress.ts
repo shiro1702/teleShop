@@ -50,7 +50,12 @@ export type CheckoutAddressState = {
   comment: string
 }
 
-export function useCheckoutAddress() {
+export type UseCheckoutAddressOptions = {
+  /** If set, called after Dadata coords are known; can run multi-branch delivery-resolve instead of local zone-only check */
+  onGeocodedCoords?: (coords: { lat: number; lon: number }) => void | Promise<void>
+}
+
+export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
   const cartStore = useCartStore()
   const route = useRoute()
   const { tenant, tenantKey } = useTenant()
@@ -63,6 +68,7 @@ export function useCheckoutAddress() {
   const savedAddresses = ref<SavedAddressItem[]>([])
 
   const { properties: deliveryZoneProps, reason, refresh: refreshZone, setZones } = useDeliveryZone()
+  const onGeocodedCoords = options?.onGeocodedCoords
   const {
     isMessengerMiniApp,
     messengerInitData,
@@ -209,7 +215,11 @@ export function useCheckoutAddress() {
     isSuggestLoading.value = false
 
     if (item.lat != null && item.lon != null) {
-      refreshZone(item.lat, item.lon)
+      if (onGeocodedCoords) {
+        await onGeocodedCoords({ lat: item.lat, lon: item.lon })
+      } else {
+        refreshZone(item.lat, item.lon)
+      }
     }
   }
 
@@ -358,6 +368,7 @@ export function useCheckoutAddress() {
     savedAddresses,
     deliveryZoneProps,
     setDeliveryZones,
+    refreshDeliveryZone: refreshZone,
     onAddressInput,
     selectSuggestion,
     applySavedAddress,

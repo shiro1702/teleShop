@@ -18,6 +18,7 @@ const REQUIRED_PATHS = [
   '/api/products',
   '/api/restaurants',
   '/api/restaurant-zones',
+  '/api/delivery-resolve',
   '/api/cart-bridge',
   '/api/stories',
 ]
