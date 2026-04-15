@@ -50,6 +50,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
   const restaurants = ref<RestaurantItem[]>([])
   const restaurantsLoaded = ref(false)
   const restaurantZones = ref<DeliveryZoneFeature[]>([])
+  const allRestaurantZones = ref<Record<string, DeliveryZoneFeature[]>>({})
   const organizationTimezone = ref<string>('Asia/Irkutsk')
 
   const selectedRestaurant = computed(() =>
@@ -275,6 +276,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
       })
       if (res?.ok && Array.isArray(res.items)) {
         restaurants.value = res.items
+        await loadAllRestaurantZones(res.items)
         if (typeof res.organizationTimezone === 'string' && res.organizationTimezone.trim()) {
           organizationTimezone.value = res.organizationTimezone
         }
@@ -287,12 +289,64 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
     }
   }
 
+  async function loadAllRestaurantZones(items: RestaurantItem[]) {
+    const headers = params.shopIdFromRoute.value ? { 'x-shop-id': params.shopIdFromRoute.value } : undefined
+    const result: Record<string, DeliveryZoneFeature[]> = {}
+    await Promise.all(items.map(async (restaurant) => {
+      if (!restaurant.supports_delivery) {
+        result[restaurant.id] = []
+        return
+      }
+      try {
+        const query: Record<string, string> = { restaurant_id: restaurant.id }
+        if (params.shopIdFromRoute.value) query.shop_id = params.shopIdFromRoute.value
+        const res = await $fetch<{ ok: boolean; items: RestaurantZoneApiItem[] }>('/api/restaurant-zones', {
+          headers,
+          query,
+        })
+        const mapped: DeliveryZoneFeature[] = Array.isArray(res?.items)
+          ? res.items
+            .map((zone): DeliveryZoneFeature | null => {
+              const raw = zone.polygon_geojson
+              const geometry = raw?.type === 'Feature'
+                ? raw.geometry
+                : raw?.type === 'Polygon'
+                  ? { type: 'Polygon' as const, coordinates: raw.coordinates ?? [] }
+                  : raw?.geometry
+              if (!geometry || geometry.type !== 'Polygon' || !Array.isArray(geometry.coordinates)) return null
+              return {
+                type: 'Feature',
+                geometry: {
+                  type: 'Polygon',
+                  coordinates: geometry.coordinates,
+                },
+                properties: {
+                  slug: zone.id,
+                  name: zone.name,
+                  minOrderAmount: zone.min_order_amount,
+                  deliveryCost: zone.delivery_cost,
+                  freeDeliveryThreshold: zone.free_delivery_threshold,
+                  priority: typeof zone.priority === 'number' && Number.isFinite(zone.priority) ? zone.priority : 0,
+                },
+              }
+            })
+            .filter((z): z is DeliveryZoneFeature => z !== null)
+          : []
+        result[restaurant.id] = mapped
+      } catch {
+        result[restaurant.id] = []
+      }
+    }))
+    allRestaurantZones.value = result
+  }
+
   return {
     selectedPickupPointId,
     selectedRestaurantId,
     selectedPickupPoint,
     restaurants,
     restaurantZones,
+    allRestaurantZones,
     pickupPoints,
     organizationTimezone,
     selectedRestaurantWorkingHours,

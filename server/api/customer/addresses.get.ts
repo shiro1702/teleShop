@@ -3,6 +3,15 @@ import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireTenantShop } from '~/server/utils/tenant'
 import { resolveCustomerProfileId } from '~/server/utils/customerProfile'
 
+function normalizeCoord(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
 export default defineEventHandler(async (event) => {
   const { shopId, shop } = await requireTenantShop(event)
   const customerProfileId = await resolveCustomerProfileId(event, shop.telegram_bot_token)
@@ -10,7 +19,7 @@ export default defineEventHandler(async (event) => {
 
   const { data, error } = await client
     .from('customer_delivery_addresses')
-    .select('id,address_line,flat,comment,last_used_at')
+    .select('id,address_line,flat,comment,lat,lon,last_used_at')
     .eq('shop_id', shopId)
     .eq('customer_profile_id', customerProfileId)
     .order('last_used_at', { ascending: false })
@@ -28,6 +37,8 @@ export default defineEventHandler(async (event) => {
       address: String(row.address_line || ''),
       flat: row.flat ? String(row.flat) : '',
       comment: row.comment ? String(row.comment) : '',
+      lat: normalizeCoord(row.lat),
+      lon: normalizeCoord(row.lon),
     })),
   }
 })

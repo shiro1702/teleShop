@@ -11,11 +11,15 @@ export default defineEventHandler(async (event) => {
     addressLine?: string | null
     flat?: string | null
     comment?: string | null
+    lat?: number | null
+    lon?: number | null
   }>(event).catch(() => ({}))
 
   const addressLine = typeof body?.addressLine === 'string' ? body.addressLine.trim() : ''
   const flat = typeof body?.flat === 'string' ? body.flat.trim() : ''
   const comment = typeof body?.comment === 'string' ? body.comment.trim() : ''
+  const lat = typeof body?.lat === 'number' && Number.isFinite(body.lat) ? body.lat : null
+  const lon = typeof body?.lon === 'number' && Number.isFinite(body.lon) ? body.lon : null
   if (!addressLine) {
     throw createError({ statusCode: 400, statusMessage: 'addressLine is required' })
   }
@@ -36,6 +40,8 @@ export default defineEventHandler(async (event) => {
       .from('customer_delivery_addresses')
       .update({
         comment: comment || null,
+        lat,
+        lon,
         last_used_at: new Date().toISOString(),
       })
       .eq('id', existing.id)
@@ -47,6 +53,8 @@ export default defineEventHandler(async (event) => {
       address_line: addressLine,
       flat: flat || null,
       comment: comment || null,
+      lat,
+      lon,
       last_used_at: new Date().toISOString(),
     })
   }

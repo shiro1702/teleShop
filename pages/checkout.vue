@@ -342,6 +342,18 @@
                       {{ r.name }} — {{ r.address }}
                     </option>
                   </select>
+                  <div class="rounded-lg border border-gray-200 bg-white p-2">
+                    <CheckoutDeliveryBranchesMap
+                      :branches="restaurants"
+                      :all-zones="allRestaurantZones"
+                      :selected-branch-id="selectedRestaurantId"
+                      :allow-manual-select="true"
+                      :client-lat="mapClientLat"
+                      :client-lon="mapClientLon"
+                      :client-address="mapClientAddress"
+                      @select-branch="selectedRestaurantId = $event"
+                    />
+                  </div>
                 </div>
                 <h2 class="text-sm font-semibold text-gray-900">
                   Способ получения
@@ -399,18 +411,38 @@
               </section>
 
               <div
-                v-if="hasDeliveryOption && state.fulfillmentType === 'delivery' && savedAddresses.length"
+                v-if="hasDeliveryOption && state.fulfillmentType === 'delivery'"
                 class="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4"
               >
+                <div class="flex items-center justify-between gap-2">
+                  <button
+                    v-if="selectedAddress"
+                    type="button"
+                    class="truncate text-left text-sm font-medium text-gray-900 hover:text-primary"
+                    @click="openSavedAddressesModal"
+                  >
+                    Текущий адрес: {{ selectedAddress.address }}
+                  </button>
+                  <button
+                    type="button"
+                    class="text-xs font-medium text-primary hover:underline"
+                    @click="openNewAddressModal"
+                  >
+                    Ввести новый
+                  </button>
+                </div>
                 <p class="text-xs font-medium text-gray-500">
                   Ранее использованные адреса
                 </p>
-                <div class="flex flex-wrap gap-2">
+                <div v-if="savedAddresses.length" class="flex flex-wrap gap-2">
                   <button
                     v-for="addr in savedAddresses"
                     :key="addr.id"
                     type="button"
-                    class="group flex items-center gap-1 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 hover:border-primary hover:bg-primary-50"
+                    class="group flex items-center gap-1 rounded-full border px-4 py-2 text-sm transition"
+                    :class="addr.id === selectedCustomerAddressId
+                      ? 'border-primary bg-primary-50 text-gray-900'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-primary hover:bg-primary-50'"
                     @click="applySavedAddressAndResolve(addr)"
                   >
                     <span class="max-w-[160px] truncate sm:max-w-[220px]">
@@ -425,91 +457,29 @@
                     </div>
                   </button>
                 </div>
+                <p v-else class="text-xs text-gray-500">
+                  Сохраненных адресов пока нет.
+                </p>
               </div>
 
-              <section
-                v-if="hasDeliveryOption && state.fulfillmentType === 'delivery'"
-                class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4"
+              <p
+                v-if="hasDeliveryOption && state.fulfillmentType === 'delivery' && cartStore.deliverySummary.message"
+                class="text-xs text-gray-500"
               >
-                <div class="space-y-2">
-                  <div class="relative">
-                    <input
-                      ref="addressInputRef"
-                      v-model="addressLine"
-                      type="text"
-                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                      placeholder="Улан-Удэ, улица, дом"
-                      @input="onAddressInput"
-                    />
-                    <div
-                      v-if="isSuggestLoading"
-                      class="pointer-events-none absolute inset-y-0 right-2 flex items-center"
-                    >
-                      <svg
-                        class="h-4 w-4 animate-spin text-gray-400"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                      >
-                        <circle
-                          class="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          stroke-width="4"
-                        />
-                        <path
-                          class="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                        />
-                      </svg>
-                    </div>
-                    <div
-                      v-if="suggestItems.length"
-                      class="absolute inset-x-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg"
-                    >
-                      <button
-                        v-for="item in suggestItems"
-                        :key="item.value"
-                        type="button"
-                        class="flex w-full items-center justify-between px-4 py-3 text-left text-base text-gray-800 transition hover:bg-gray-50"
-                        @click="selectSuggestion(item)"
-                      >
-                        <span class="truncate">
-                          {{ item.displayName }}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                  <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <input
-                      v-model="flat"
-                      type="text"
-                      class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                      placeholder="Квартира / подъезд"
-                    />
-                    <textarea
-                      v-model="comment"
-                      rows="2"
-                      class="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                      placeholder="Комментарий курьеру"
-                    />
-                  </div>
-                  <p
-                    v-if="cartStore.deliverySummary.message"
-                    class="text-xs text-gray-500"
-                  >
-                    {{ cartStore.deliverySummary.message }}
-                  </p>
-                  <p
-                    v-if="branchResolveInfo"
-                    class="text-xs text-amber-800/90"
-                  >
-                    {{ branchResolveInfo }}
-                  </p>
-                </div>
-              </section>
+                {{ cartStore.deliverySummary.message }}
+              </p>
+              <p
+                v-if="hasDeliveryOption && state.fulfillmentType === 'delivery' && branchResolveInfo"
+                class="text-xs text-amber-800/90"
+              >
+                {{ branchResolveInfo }}
+              </p>
+              <p
+                v-if="hasDeliveryOption && state.fulfillmentType === 'delivery' && isResolvingDeliveryFromServer"
+                class="text-xs text-gray-500"
+              >
+                Проверяем зону...
+              </p>
 
               <section
                 v-else-if="hasPickupOption && state.fulfillmentType === 'pickup'"
@@ -758,6 +728,9 @@
                 <p v-if="!isRestaurantOpenNow" class="text-xs text-red-600">
                   Ресторан сейчас закрыт. Оформление заказа недоступно.
                 </p>
+                <p v-if="state.fulfillmentType === 'delivery' && isResolvingDeliveryFromServer" class="text-xs text-gray-500">
+                  Проверяем зону...
+                </p>
               </div>
             </div>
           </div>
@@ -817,6 +790,9 @@
         <p v-if="!isRestaurantOpenNow" class="text-xs text-red-600">
           Ресторан сейчас закрыт. Оформление заказа недоступно.
         </p>
+        <p v-if="state.fulfillmentType === 'delivery' && isResolvingDeliveryFromServer" class="text-xs text-gray-500">
+          Проверяем зону...
+        </p>
       </div>
       </div>
     </Transition>
@@ -840,6 +816,32 @@
         </div>
       </div>
     </Teleport>
+    <CheckoutDeliveryAddressModal
+      v-model="showAddressModal"
+      :addresses="savedAddresses"
+      :initial-tab="addressModalInitialTab"
+      :selected-address-id="selectedCustomerAddressId"
+      :address-line="addressLine"
+      :flat="flat"
+      :comment="comment"
+      :suggest-items="suggestItems"
+      :is-suggest-loading="isSuggestLoading"
+      :branches="restaurants"
+      :all-zones="allRestaurantZones"
+      :selected-branch-id="selectedRestaurantId"
+      :allow-manual-branch-select="state.fulfillmentType !== 'delivery'"
+      :client-lat="mapClientLat"
+      :client-lon="mapClientLon"
+      :client-address="mapClientAddress"
+      @pick-address="handleAddressPickFromModal"
+      @address-input="onAddressInput"
+      @pick-suggestion="selectSuggestion"
+      @save-new="saveAddressFromModal"
+      @update:address-line="onModalAddressLineInput"
+      @update:flat="flat = $event"
+      @update:comment="comment = $event"
+      @select-branch="handleBranchPickFromMap"
+    />
   </div>
 </template>
 
@@ -969,6 +971,9 @@ let promoPreviewTimer: ReturnType<typeof setTimeout> | null = null
 
 const changeFrom = ref<string>('')
 const showClearCartModal = ref(false)
+const showAddressModal = ref(false)
+const addressModalInitialTab = ref<'saved' | 'new'>('saved')
+const hasShownAddressModalOnCurrentEntry = ref(false)
 const step1InlineNavRef = ref<HTMLElement | null>(null)
 const step2ActionsRef = ref<HTMLElement | null>(null)
 const isStep1InlineNavVisible = ref(false)
@@ -979,7 +984,9 @@ const authModalMode = ref<'auth' | 'continue'>('auth')
 const branchResolveInfo = ref<string | null>(null)
 const skipNextDeliveryZoneReset = ref(false)
 const lastDeliveryCoords = ref<{ lat: number; lon: number } | null>(null)
+const lastGeocodedAddressLine = ref('')
 const isResolvingDeliveryFromServer = ref(false)
+const deliveryResolveRequestSeq = ref(0)
 
 const stepTransitionName = computed(() =>
   stepDirection.value === 'forward' ? 'step-forward' : 'step-backward',
@@ -1016,21 +1023,24 @@ const {
   addressLine,
   flat,
   comment,
-  addressInputRef,
   suggestItems,
   isSuggestLoading,
   savedAddresses,
+  selectedAddressId: selectedCustomerAddressId,
+  selectedAddress,
   setDeliveryZones,
   refreshDeliveryZone,
   onAddressInput,
   selectSuggestion,
-  applySavedAddress,
+  selectSavedAddressById,
+  saveAddress,
   saveCurrentAddress,
   deleteSavedAddress,
 } = useCheckoutAddress({
   onGeocodedCoords: async (coords) => {
     await resolveDeliveryBranch(coords.lat, coords.lon)
   },
+  getCurrentCoords: () => lastDeliveryCoords.value,
 })
 
 const {
@@ -1039,6 +1049,7 @@ const {
   selectedPickupPoint,
   restaurants,
   restaurantZones,
+  allRestaurantZones,
   pickupPoints,
   availableFulfillmentTypes,
   hasDeliveryOption,
@@ -1090,6 +1101,26 @@ function deliveryResolveReasonMessage(reason: string | undefined): string {
   }
 }
 
+function normalizeCoord(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function getSavedAddressCoordsByLine(lineRaw: string): { lat: number; lon: number } | null {
+  const line = lineRaw.trim().toLowerCase()
+  if (!line) return null
+  const found = savedAddresses.value.find((a: { address: string; lat?: unknown; lon?: unknown }) => a.address.trim().toLowerCase() === line)
+  if (!found) return null
+  const lat = normalizeCoord(found.lat)
+  const lon = normalizeCoord(found.lon)
+  if (lat == null || lon == null) return null
+  return { lat, lon }
+}
+
 async function waitForRestaurantZonesLoaded(timeoutMs = 5000) {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
@@ -1103,6 +1134,7 @@ async function waitForRestaurantZonesLoaded(timeoutMs = 5000) {
 async function resolveDeliveryBranch(lat: number, lon: number) {
   branchResolveInfo.value = null
   if (!shopIdFromRoute.value) return
+  const requestSeq = ++deliveryResolveRequestSeq.value
 
   isResolvingDeliveryFromServer.value = true
   try {
@@ -1111,6 +1143,8 @@ async function resolveDeliveryBranch(lat: number, lon: number) {
       headers: { 'x-shop-id': shopIdFromRoute.value },
       body: { lat, lon },
     })
+
+    if (requestSeq !== deliveryResolveRequestSeq.value) return
 
     if (!res.selected) {
       lastDeliveryCoords.value = null
@@ -1124,78 +1158,228 @@ async function resolveDeliveryBranch(lat: number, lon: number) {
       : null
 
     lastDeliveryCoords.value = { lat, lon }
+    lastGeocodedAddressLine.value = addressLine.value.trim()
 
     cartStore.setDeliveryError(null)
+    // Apply server-selected zone immediately so checkout button updates without waiting
+    // for client-side restaurant zones reload.
+    cartStore.setDeliveryZone(res.selected.zone)
     skipNextDeliveryZoneReset.value = true
     selectedRestaurantId.value = res.selected.restaurantId
-    await nextTick()
-    await waitForRestaurantZonesLoaded()
-
-    if (restaurantZones.value.length > 0) {
-      refreshDeliveryZone(lat, lon)
-    } else {
-      cartStore.setDeliveryZone(res.selected.zone)
-    }
   } catch {
+    if (requestSeq !== deliveryResolveRequestSeq.value) return
     lastDeliveryCoords.value = null
     cartStore.setDeliveryZone(null)
     cartStore.setDeliveryError('Не удалось рассчитать доставку')
   } finally {
-    isResolvingDeliveryFromServer.value = false
-  }
-}
-
-async function ensureLastDeliveryCoordsFromAddress(): Promise<{ lat: number; lon: number } | null> {
-  if (lastDeliveryCoords.value) return lastDeliveryCoords.value
-  const query = addressLine.value.trim()
-  if (query.length < 3) return null
-  try {
-    const geo = await $fetch<{ ok?: boolean; lat?: number; lon?: number }>('/api/geocode', {
-      query: { q: query },
-    })
-    if (geo?.ok && typeof geo.lat === 'number' && typeof geo.lon === 'number') {
-      lastDeliveryCoords.value = { lat: geo.lat, lon: geo.lon }
-      return lastDeliveryCoords.value
+    if (requestSeq === deliveryResolveRequestSeq.value) {
+      isResolvingDeliveryFromServer.value = false
     }
-  } catch {
-    // keep silent; user can refine address
   }
-  return null
 }
 
 watch(selectedRestaurantId, async (id, prev) => {
   if (isResolvingDeliveryFromServer.value) return
   if (!id || !prev || id === prev) return
   if (state.fulfillmentType !== 'delivery') return
-  // При смене филиала с уже введенным адресом не даем промежуточно
-  // выставлять "Укажите адрес...", пока пересчитываем доступность для нового филиала.
-  if (addressLine.value.trim().length >= 3 || !!lastDeliveryCoords.value) {
-    skipNextDeliveryZoneReset.value = true
-  }
-  const coords = await ensureLastDeliveryCoordsFromAddress()
-  if (!coords) {
-    cartStore.setDeliveryZone(null)
-    cartStore.setDeliveryError('Не удалось определить зону доставки для выбранного филиала')
+  const currentAddress = addressLine.value.trim()
+  if (!lastDeliveryCoords.value || !currentAddress || currentAddress !== lastGeocodedAddressLine.value) {
+    if (currentAddress.length >= 3) {
+      cartStore.setDeliveryZone(null)
+      cartStore.setDeliveryError('Выберите адрес из подсказки или сохраненный адрес, чтобы рассчитать доставку')
+    }
     return
   }
+  // Не сбрасываем в "Укажите адрес...", если пересчитываем по уже подтвержденному адресу.
+  skipNextDeliveryZoneReset.value = true
   await nextTick()
   await waitForRestaurantZonesLoaded()
-  refreshDeliveryZone(coords.lat, coords.lon)
+  refreshDeliveryZone(lastDeliveryCoords.value.lat, lastDeliveryCoords.value.lon)
 })
 
-async function applySavedAddressAndResolve(addr: { id: string; address: string; flat?: string; comment?: string }) {
-  applySavedAddress(addr)
+watch(addressLine, (next) => {
+  const trimmed = next.trim()
+  if (!trimmed) {
+    lastDeliveryCoords.value = null
+    lastGeocodedAddressLine.value = ''
+    if (state.fulfillmentType === 'delivery') {
+      cartStore.setDeliveryZone(null)
+      cartStore.setDeliveryError('Выберите адрес из подсказки или сохраненный адрес, чтобы рассчитать доставку')
+    }
+    return
+  }
+  if (trimmed !== lastGeocodedAddressLine.value) {
+    lastDeliveryCoords.value = null
+    if (state.fulfillmentType === 'delivery') {
+      cartStore.setDeliveryZone(null)
+      cartStore.setDeliveryError('Выберите адрес из подсказки или сохраненный адрес, чтобы рассчитать доставку')
+    }
+  }
+})
+
+watch(
+  () => [state.currentStep, state.fulfillmentType, hasDeliveryOption.value, selectedCustomerAddressId.value] as const,
+  ([step, fulfillment, hasDelivery, addressId]) => {
+    if (step !== 2) {
+      hasShownAddressModalOnCurrentEntry.value = false
+      return
+    }
+    if (!hasDelivery) return
+    if (fulfillment !== 'delivery') return
+    if (hasShownAddressModalOnCurrentEntry.value) return
+    if (addressId && addressLine.value.trim().length > 0) {
+      hasShownAddressModalOnCurrentEntry.value = true
+      return
+    }
+    hasShownAddressModalOnCurrentEntry.value = true
+    showAddressModal.value = true
+  },
+  { immediate: true },
+)
+
+watch(
+  () => [state.fulfillmentType, selectedCustomerAddressId.value, selectedAddress.value?.lat, selectedAddress.value?.lon] as const,
+  async ([fulfillment, addressId, latRaw, lonRaw]) => {
+    if (fulfillment !== 'delivery') return
+    if (!addressId) return
+    if (isResolvingDeliveryFromServer.value) return
+    if (cartStore.deliveryZone) return
+    const lat = normalizeCoord(latRaw)
+    const lon = normalizeCoord(lonRaw)
+    if (lat == null || lon == null) return
+    await resolveDeliveryBranch(lat, lon)
+  },
+  { immediate: true },
+)
+
+async function applySavedAddressAndResolve(addr: { id: string; address: string; flat?: string; comment?: string; lat?: unknown; lon?: unknown }) {
+  selectSavedAddressById(addr.id)
+  const lat = normalizeCoord(addr.lat)
+  const lon = normalizeCoord(addr.lon)
+  if (lat != null && lon != null) {
+    await resolveDeliveryBranch(lat, lon)
+    return
+  }
+  // Fallback for legacy saved addresses without coordinates.
   try {
     const geo = await $fetch<{ ok?: boolean; lat?: number; lon?: number }>('/api/geocode', {
       query: { q: addr.address },
     })
     if (geo?.ok && typeof geo.lat === 'number' && typeof geo.lon === 'number') {
       await resolveDeliveryBranch(geo.lat, geo.lon)
+      await saveAddress({
+        addressLine: addr.address,
+        flat: addr.flat ?? null,
+        comment: addr.comment ?? null,
+        lat: geo.lat,
+        lon: geo.lon,
+      })
+      return
     }
   } catch {
-    // no coords — user can pick suggestion later
+    // ignore geocode error and show validation message below
+  }
+  cartStore.setDeliveryZone(null)
+  cartStore.setDeliveryError('Не удалось определить координаты адреса. Выберите адрес из подсказки или введите новый.')
+}
+
+async function handleAddressPickFromModal(addressId: string) {
+  const addr = savedAddresses.value.find((x) => x.id === addressId)
+  if (!addr) return
+  await applySavedAddressAndResolve(addr)
+}
+
+async function saveAddressFromModal() {
+  const line = addressLine.value.trim()
+  if (line.length < 3) return
+  let lat: number | null = null
+  let lon: number | null = null
+  const resolvedCoords = line === lastGeocodedAddressLine.value ? lastDeliveryCoords.value : null
+  if (resolvedCoords) {
+    lat = resolvedCoords.lat
+    lon = resolvedCoords.lon
+  } else {
+    try {
+      const geo = await $fetch<{ ok?: boolean; lat?: number; lon?: number }>('/api/geocode', {
+        query: { q: line },
+      })
+      if (geo?.ok && typeof geo.lat === 'number' && typeof geo.lon === 'number') {
+        lat = geo.lat
+        lon = geo.lon
+      }
+    } catch {
+      // ignore geocode error, keep nullable coords
+    }
+  }
+
+  const saved = await saveAddress({
+    addressLine: line,
+    flat: flat.value || null,
+    comment: comment.value || null,
+    lat,
+    lon,
+  })
+  showAddressModal.value = false
+  const savedLat = normalizeCoord(saved?.lat)
+  const savedLon = normalizeCoord(saved?.lon)
+  if (savedLat != null && savedLon != null) {
+    await resolveDeliveryBranch(savedLat, savedLon)
   }
 }
+
+function handleBranchPickFromMap(branchId: string) {
+  if (state.fulfillmentType === 'delivery') return
+  if (!restaurants.value.some((r) => r.id === branchId)) return
+  selectedRestaurantId.value = branchId
+}
+
+function onModalAddressLineInput(value: string) {
+  addressLine.value = value
+  if (selectedCustomerAddressId.value && value.trim() !== selectedAddress.value?.address?.trim()) {
+    selectedCustomerAddressId.value = ''
+  }
+}
+
+function openSavedAddressesModal() {
+  addressModalInitialTab.value = 'saved'
+  showAddressModal.value = true
+}
+
+function openNewAddressModal() {
+  addressModalInitialTab.value = 'new'
+  addressLine.value = ''
+  flat.value = ''
+  comment.value = ''
+  lastDeliveryCoords.value = null
+  lastGeocodedAddressLine.value = ''
+  cartStore.setDeliveryZone(null)
+  cartStore.setDeliveryError('Выберите адрес из подсказки, чтобы рассчитать доставку')
+  showAddressModal.value = true
+}
+
+const mapClientLat = computed(() => {
+  if (lastDeliveryCoords.value?.lat != null) return lastDeliveryCoords.value.lat
+  const byAddressLine = getSavedAddressCoordsByLine(addressLine.value)
+  if (byAddressLine) return byAddressLine.lat
+  const selectedLat = normalizeCoord(selectedAddress.value?.lat)
+  if (selectedLat != null) return selectedLat
+  return null
+})
+
+const mapClientLon = computed(() => {
+  if (lastDeliveryCoords.value?.lon != null) return lastDeliveryCoords.value.lon
+  const byAddressLine = getSavedAddressCoordsByLine(addressLine.value)
+  if (byAddressLine) return byAddressLine.lon
+  const selectedLon = normalizeCoord(selectedAddress.value?.lon)
+  if (selectedLon != null) return selectedLon
+  return null
+})
+
+const mapClientAddress = computed(() => {
+  const line = addressLine.value.trim()
+  if (line) return line
+  return selectedAddress.value?.address ?? null
+})
 
 const canGoToAddress = computed(
   () => cartStore.items.length > 0,
@@ -1230,9 +1414,15 @@ const canGoToSummary = computed(() => {
       hasAllRequiredParameterSelections.value
     )
   }
+  const deliveryZone = cartStore.deliveryZone
+  const hasResolvedZone = !!deliveryZone && !cartStore.deliveryError
+  const meetsMinOrder = !!deliveryZone && cartStore.total >= deliveryZone.minOrderAmount
+  const hasDeliveryAddress = addressLine.value.trim().length >= 3 || !!selectedAddress.value?.address?.trim()
   return (
     hasDeliveryOption.value &&
-    cartStore.canCheckout &&
+    hasResolvedZone &&
+    meetsMinOrder &&
+    hasDeliveryAddress &&
     hasAllRequiredParameterSelections.value
   )
 })
@@ -1584,9 +1774,12 @@ function serializeState() {
     changeFrom: changeFrom.value,
     selectedPickupPointId: selectedPickupPointId.value,
     selectedRestaurantId: selectedRestaurantId.value,
+    selectedCustomerAddressId: selectedCustomerAddressId.value,
     promoCodeInput: promoCodeInput.value,
     appliedPromoCode: appliedPromoCode.value,
     bonusToSpend: bonusToSpend.value,
+    lastDeliveryCoords: lastDeliveryCoords.value,
+    lastGeocodedAddressLine: lastGeocodedAddressLine.value,
   })
 }
 
@@ -1623,6 +1816,15 @@ function restoreFromPlainObject(obj: any) {
   if (typeof obj.selectedRestaurantId === 'string') {
     selectedRestaurantId.value = obj.selectedRestaurantId
   }
+  if (typeof obj.selectedCustomerAddressId === 'string') {
+    selectedCustomerAddressId.value = obj.selectedCustomerAddressId
+    const selected = selectSavedAddressById(obj.selectedCustomerAddressId)
+    if (selected) {
+      addressLine.value = selected.address
+      flat.value = selected.flat ?? ''
+      comment.value = selected.comment ?? ''
+    }
+  }
   if (typeof obj.promoCodeInput === 'string') {
     promoCodeInput.value = obj.promoCodeInput
   }
@@ -1631,6 +1833,20 @@ function restoreFromPlainObject(obj: any) {
   }
   if (typeof obj.bonusToSpend === 'number' && Number.isFinite(obj.bonusToSpend)) {
     bonusToSpend.value = Math.max(0, Math.floor(obj.bonusToSpend))
+  }
+  if (
+    obj.lastDeliveryCoords
+    && typeof obj.lastDeliveryCoords === 'object'
+    && Number.isFinite(obj.lastDeliveryCoords.lat)
+    && Number.isFinite(obj.lastDeliveryCoords.lon)
+  ) {
+    lastDeliveryCoords.value = {
+      lat: Number(obj.lastDeliveryCoords.lat),
+      lon: Number(obj.lastDeliveryCoords.lon),
+    }
+  }
+  if (typeof obj.lastGeocodedAddressLine === 'string') {
+    lastGeocodedAddressLine.value = obj.lastGeocodedAddressLine
   }
 }
 
@@ -1770,6 +1986,7 @@ watch(
     changeFrom: changeFrom.value,
     selectedPickupPointId: selectedPickupPointId.value,
     selectedRestaurantId: selectedRestaurantId.value,
+    selectedCustomerAddressId: selectedCustomerAddressId.value,
     promoCodeInput: promoCodeInput.value,
     appliedPromoCode: appliedPromoCode.value,
     bonusToSpend: bonusToSpend.value,
@@ -1847,12 +2064,13 @@ async function placeOrder() {
       fulfillmentType: state.fulfillmentType,
       address: state.fulfillmentType === 'delivery'
         ? {
+            customerAddressId: selectedCustomerAddressId.value || null,
             line: addressLine.value || null,
             flat: flat.value || null,
             comment: comment.value || null,
             zone: cartStore.deliveryZone ?? null,
-            lat: lastDeliveryCoords.value?.lat ?? null,
-            lon: lastDeliveryCoords.value?.lon ?? null,
+            lat: lastDeliveryCoords.value?.lat ?? selectedAddress.value?.lat ?? null,
+            lon: lastDeliveryCoords.value?.lon ?? selectedAddress.value?.lon ?? null,
           }
         : {
             line: null,

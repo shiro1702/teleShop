@@ -314,6 +314,7 @@ export default defineEventHandler(async (event) => {
     items: CartItemPayload[]
     initData?: string | null
     address?: {
+      customerAddressId?: string | null
       line?: string | null
       flat?: string | null
       comment?: string | null
@@ -365,6 +366,9 @@ export default defineEventHandler(async (event) => {
     fulfillmentType === 'delivery'
     && Number.isFinite(bodyLat)
     && Number.isFinite(bodyLon)
+  const customerAddressId = typeof body.address?.customerAddressId === 'string'
+    ? body.address.customerAddressId.trim()
+    : ''
 
   let deliveryZoneValidated: DeliveryZoneProperties | null = null
 
@@ -636,9 +640,26 @@ export default defineEventHandler(async (event) => {
     return subtotalAfterPromo >= deliveryZoneValidated.freeDeliveryThreshold ? 0 : deliveryZoneValidated.deliveryCost
   })()
 
-  const addressLine = body.address?.line?.trim() || null
-  const flat = body.address?.flat?.trim() || null
+  let addressLine = body.address?.line?.trim() || null
+  let flat = body.address?.flat?.trim() || null
   const comment = body.address?.comment?.trim() || null
+  if (fulfillmentType === 'delivery' && customerAddressId) {
+    if (!customerProfileId) {
+      throw createError({ statusCode: 401, message: 'Unauthorized' })
+    }
+    const { data: savedAddress, error: savedAddressError } = await serviceClient
+      .from('customer_delivery_addresses')
+      .select('id,address_line,flat,comment,lat,lon')
+      .eq('id', customerAddressId)
+      .eq('shop_id', tenantShopId)
+      .eq('customer_profile_id', customerProfileId)
+      .maybeSingle()
+    if (savedAddressError || !savedAddress) {
+      throw createError({ statusCode: 400, message: 'Выберите корректный адрес доставки' })
+    }
+    addressLine = savedAddress.address_line ? String(savedAddress.address_line).trim() : addressLine
+    flat = savedAddress.flat ? String(savedAddress.flat).trim() : flat
+  }
   const pickupPoint: PickupPoint | null =
     fulfillmentType === 'pickup' &&
     body.pickupPoint?.id &&

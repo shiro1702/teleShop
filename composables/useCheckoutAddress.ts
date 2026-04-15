@@ -15,6 +15,8 @@ export type SavedAddressItem = {
   address: string
   flat?: string
   comment?: string
+  lat?: number | null
+  lon?: number | null
 }
 
 function buildAddressStorageKey(scopeKey: string | null): string {
@@ -53,6 +55,16 @@ export type CheckoutAddressState = {
 export type UseCheckoutAddressOptions = {
   /** If set, called after Dadata coords are known; can run multi-branch delivery-resolve instead of local zone-only check */
   onGeocodedCoords?: (coords: { lat: number; lon: number }) => void | Promise<void>
+  /** Returns current resolved coordinates so saveCurrentAddress can persist them */
+  getCurrentCoords?: () => { lat: number; lon: number } | null
+}
+
+export type SaveAddressPayload = {
+  addressLine: string
+  flat?: string | null
+  comment?: string | null
+  lat?: number | null
+  lon?: number | null
 }
 
 export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
@@ -66,9 +78,11 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
   const suggestItems = ref<DadataSuggestItem[]>([])
   const isSuggestLoading = ref(false)
   const savedAddresses = ref<SavedAddressItem[]>([])
+  const selectedAddressId = ref<string>('')
 
   const { properties: deliveryZoneProps, reason, refresh: refreshZone, setZones } = useDeliveryZone()
   const onGeocodedCoords = options?.onGeocodedCoords
+  const getCurrentCoords = options?.getCurrentCoords
   const {
     isMessengerMiniApp,
     messengerInitData,
@@ -148,6 +162,68 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     return buildMessengerAuthHeaders(shopId.value ? { 'x-shop-id': shopId.value } : undefined)
   }
 
+  function canUseAddressApi() {
+    return !!(shopId.value && (supabaseUser.value || (isMessengerMiniApp.value && messengerInitData.value)))
+  }
+
+  function normalizeCoords(lat: unknown, lon: unknown) {
+    const nextLat = typeof lat === 'number' && Number.isFinite(lat) ? lat : null
+    const nextLon = typeof lon === 'number' && Number.isFinite(lon) ? lon : null
+    return { lat: nextLat, lon: nextLon }
+  }
+
+  function upsertAddressLocal(payload: SaveAddressPayload): SavedAddressItem {
+    const addressLine = payload.addressLine.trim()
+    const flatLine = (payload.flat || '').trim()
+    const commentLine = (payload.comment || '').trim()
+    const coords = normalizeCoords(payload.lat, payload.lon)
+    const existingIdx = savedAddresses.value.findIndex((a) => addressDedupeKey(a) === addressDedupeKey({
+      address: addressLine,
+      flat: flatLine,
+    }))
+
+    const next: SavedAddressItem = {
+      id: existingIdx >= 0 ? savedAddresses.value[existingIdx].id : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      address: addressLine,
+      flat: flatLine || undefined,
+      comment: commentLine || undefined,
+      lat: coords.lat,
+      lon: coords.lon,
+    }
+
+    if (existingIdx >= 0) {
+      savedAddresses.value.splice(existingIdx, 1)
+    }
+    savedAddresses.value.unshift(next)
+    savedAddresses.value = savedAddresses.value.slice(0, 5)
+    selectedAddressId.value = next.id
+    return next
+  }
+
+  async function saveAddressToServer(payload: SaveAddressPayload): Promise<SavedAddressItem | null> {
+    if (!canUseAddressApi()) return null
+    try {
+      await $fetch('/api/customer/addresses', {
+        method: 'POST',
+        headers: buildAuthHeaders(),
+        body: {
+          addressLine: payload.addressLine.trim(),
+          flat: payload.flat?.trim() || null,
+          comment: payload.comment?.trim() || null,
+          lat: normalizeCoords(payload.lat, payload.lon).lat,
+          lon: normalizeCoords(payload.lat, payload.lon).lon,
+        },
+      })
+      await loadSavedAddresses()
+      const dedupe = addressDedupeKey({ address: payload.addressLine, flat: payload.flat })
+      const matched = savedAddresses.value.find((a) => addressDedupeKey(a) === dedupe) ?? null
+      if (matched?.id) selectedAddressId.value = matched.id
+      return matched
+    } catch {
+      return null
+    }
+  }
+
   async function syncGuestAddressesToServer(guest: SavedAddressItem[], apiItems: SavedAddressItem[]) {
     const apiKeys = new Set(apiItems.map((a) => addressDedupeKey(a)))
     const toSync = guest.filter((g) => !apiKeys.has(addressDedupeKey(g)))
@@ -160,6 +236,8 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
             addressLine: g.address,
             flat: g.flat?.trim() || null,
             comment: g.comment?.trim() || null,
+            lat: typeof g.lat === 'number' && Number.isFinite(g.lat) ? g.lat : null,
+            lon: typeof g.lon === 'number' && Number.isFinite(g.lon) ? g.lon : null,
           },
         })
       } catch {
@@ -227,10 +305,11 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     addressLine.value = addr.address
     flat.value = addr.flat ?? ''
     comment.value = addr.comment ?? ''
+    selectedAddressId.value = addr.id
   }
 
   async function loadSavedAddresses() {
-    if (shopId.value && (supabaseUser.value || (isMessengerMiniApp.value && messengerInitData.value))) {
+    if (canUseAddressApi()) {
       try {
         const guestBefore = await readGuestAddressesForMerge()
         const res = await $fetch<{ ok: boolean; items?: SavedAddressItem[] }>('/api/customer/addresses', {
@@ -243,6 +322,11 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
         }
         const guestAfter = await readGuestAddressesForMerge()
         savedAddresses.value = mergeAddressesDedupe(apiItems, guestAfter)
+        if (!selectedAddressId.value && savedAddresses.value[0]?.id) {
+          selectedAddressId.value = savedAddresses.value[0].id
+        } else if (selectedAddressId.value && !savedAddresses.value.some((a) => a.id === selectedAddressId.value)) {
+          selectedAddressId.value = savedAddresses.value[0]?.id || ''
+        }
         return
       } catch {
         // fallback to local storage below
@@ -251,11 +335,13 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
 
     if (canUseMessengerStorage()) {
       savedAddresses.value = await readGuestAddressesForMerge()
+      if (!selectedAddressId.value && savedAddresses.value[0]?.id) selectedAddressId.value = savedAddresses.value[0].id
       return
     }
 
     if (process.client) {
       savedAddresses.value = readGuestAddressesFromLocalStorage()
+      if (!selectedAddressId.value && savedAddresses.value[0]?.id) selectedAddressId.value = savedAddresses.value[0].id
     }
   }
 
@@ -279,31 +365,19 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     const line = addressLine.value.trim()
     if (!line) return
 
-    const existing = savedAddresses.value.find((a) => a.address === line && (a.flat || '') === flat.value.trim())
-    if (existing) return
-
-    const nextAddress = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      address: line,
-      flat: flat.value.trim() || undefined,
-      comment: comment.value.trim() || undefined,
+    const currentCoords = getCurrentCoords ? getCurrentCoords() : null
+    const payload: SaveAddressPayload = {
+      addressLine: line,
+      flat: flat.value.trim() || null,
+      comment: comment.value.trim() || null,
+      lat: currentCoords?.lat ?? null,
+      lon: currentCoords?.lon ?? null,
     }
-    savedAddresses.value.unshift(nextAddress)
 
-    savedAddresses.value = savedAddresses.value.slice(0, 5)
-    if (shopId.value && (supabaseUser.value || (isMessengerMiniApp.value && messengerInitData.value))) {
-      try {
-        await $fetch('/api/customer/addresses', {
-          method: 'POST',
-          headers: buildAuthHeaders(),
-          body: {
-            addressLine: line,
-            flat: flat.value.trim() || null,
-            comment: comment.value.trim() || null,
-          },
-        })
-        await loadSavedAddresses()
-      } catch {
+    upsertAddressLocal(payload)
+    if (canUseAddressApi()) {
+      const saved = await saveAddressToServer(payload)
+      if (!saved) {
         await persistAddresses()
       }
     } else {
@@ -311,8 +385,22 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     }
   }
 
+  async function saveAddress(payload: SaveAddressPayload) {
+    if (!payload.addressLine?.trim()) return null
+    const local = upsertAddressLocal(payload)
+    if (canUseAddressApi()) {
+      const server = await saveAddressToServer(payload)
+      if (server) return server
+    }
+    await persistAddresses()
+    return local
+  }
+
   async function deleteSavedAddress(id: string) {
     savedAddresses.value = savedAddresses.value.filter((a) => a.id !== id)
+    if (selectedAddressId.value === id) {
+      selectedAddressId.value = savedAddresses.value[0]?.id || ''
+    }
     if (shopId.value && (supabaseUser.value || (isMessengerMiniApp.value && messengerInitData.value))) {
       try {
         await $fetch(`/api/customer/addresses/${encodeURIComponent(id)}`, {
@@ -358,6 +446,18 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     setZones(zones)
   }
 
+  const selectedAddress = computed(() =>
+    savedAddresses.value.find((a) => a.id === selectedAddressId.value) ?? null,
+  )
+
+  function selectSavedAddressById(id: string) {
+    const found = savedAddresses.value.find((a) => a.id === id)
+    if (!found) return null
+    applySavedAddress(found)
+    selectedAddressId.value = found.id
+    return found
+  }
+
   return {
     addressLine,
     flat,
@@ -366,14 +466,19 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     suggestItems,
     isSuggestLoading,
     savedAddresses,
+    selectedAddressId,
+    selectedAddress,
     deliveryZoneProps,
     setDeliveryZones,
     refreshDeliveryZone: refreshZone,
     onAddressInput,
     selectSuggestion,
     applySavedAddress,
+    selectSavedAddressById,
     saveCurrentAddress,
+    saveAddress,
     deleteSavedAddress,
+    loadSavedAddresses,
   }
 }
 
