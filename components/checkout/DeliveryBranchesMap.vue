@@ -43,6 +43,7 @@ const mapEl = ref<HTMLElement | null>(null)
 let L: typeof import('leaflet') | null = null
 let map: import('leaflet').Map | null = null
 let layers: import('leaflet').Layer[] = []
+let destroyed = false
 
 function normalizeCoord(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -133,7 +134,8 @@ function draw() {
 }
 
 async function init() {
-  if (!mapEl.value) return
+  const targetEl = mapEl.value
+  if (!targetEl || !targetEl.isConnected || destroyed) return
   if (!L) {
     L = (await import('leaflet')).default
     await import('leaflet/dist/leaflet.css')
@@ -144,7 +146,9 @@ async function init() {
     delete (DefaultIcon.prototype as { _getIconUrl?: unknown })._getIconUrl
     DefaultIcon.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl })
   }
-  map = L.map(mapEl.value, { scrollWheelZoom: true, attributionControl: true })
+  if (destroyed || !targetEl.isConnected || mapEl.value !== targetEl) return
+  if (map) map.remove()
+  map = L.map(targetEl, { scrollWheelZoom: true, attributionControl: true })
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19,
@@ -153,6 +157,7 @@ async function init() {
 }
 
 onMounted(() => {
+  destroyed = false
   void nextTick(() => init())
 })
 
@@ -163,6 +168,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  destroyed = true
   clearLayers()
   if (map) map.remove()
   map = null
