@@ -1,5 +1,6 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import type { H3Event } from 'h3'
+import { randomBytes } from 'node:crypto'
 
 export type NotificationEventType = 'ORDER_CREATED' | 'ORDER_STATUS_CHANGED'
 export type NotificationChannel = 'telegram' | 'max'
@@ -32,6 +33,7 @@ type Recipient = {
   targetType: NotificationTargetType
   targetId: string
   conversationId: string | null
+  maxUserId: string | null
 }
 
 type OrderDetails = {
@@ -97,21 +99,62 @@ async function sendTelegramMessage(
   }
 }
 
-async function sendMaxMessage(baseUrl: string, token: string, conversationId: string, text: string): Promise<void> {
-  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/messages`, {
+async function sendMaxMessage(
+  baseUrl: string,
+  token: string,
+  target: { conversationId?: string | null; userId?: string | null },
+  text: string,
+  attachments?: Array<Record<string, unknown>>,
+): Promise<void> {
+  const base = baseUrl.replace(/\/$/, '')
+  const hasConversation = typeof target.conversationId === 'string' && target.conversationId.trim()
+  const hasUserId = typeof target.userId === 'string' && target.userId.trim()
+  if (!hasConversation && !hasUserId) {
+    throw new Error('max_send_target_missing')
+  }
+
+  const url = hasConversation
+    ? `${base}/messages`
+    : `${base}/messages?user_id=${encodeURIComponent(String(target.userId))}`
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: token,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      conversationId,
+      ...(hasConversation ? { conversationId: String(target.conversationId) } : {}),
       text,
+      ...(attachments?.length ? { attachments } : {}),
     }),
   })
   if (!response.ok) {
     throw new Error(`max_send_failed:${response.status}`)
   }
+}
+
+function makeBridgeKey(): string {
+  return randomBytes(9).toString('base64url')
+}
+
+async function createOrderBridgeToken(event: H3Event, shopId: string, orderId: string, role: 'customer' | 'manager'): Promise<string | null> {
+  const client = await serverSupabaseServiceRole(event)
+  const bridgeKey = makeBridgeKey()
+  const { error } = await client
+    .from('auth_bridge_sessions')
+    .insert({
+      bridge_key: bridgeKey,
+      shop_id: shopId,
+      scope_key: shopId,
+      payload: {
+        type: 'order',
+        orderId,
+        shopId,
+        role,
+      },
+    })
+  if (error) return null
+  return `order_${bridgeKey}`
 }
 
 function buildManagerMessage(payload: {
@@ -270,30 +313,37 @@ async function resolveRecipients(event: H3Event, input: NotificationEvent): Prom
       ? (restaurant as any).manager_max_chat_id.trim()
       : ''
     if (tgGroupId) {
-      recipients.push({ channel: 'telegram', targetType: 'manager_group', targetId: tgGroupId, conversationId: tgGroupId })
+      recipients.push({ channel: 'telegram', targetType: 'manager_group', targetId: tgGroupId, conversationId: tgGroupId, maxUserId: null })
     }
     if (maxGroupId) {
-      recipients.push({ channel: 'max', targetType: 'manager_group', targetId: maxGroupId, conversationId: maxGroupId })
+      recipients.push({ channel: 'max', targetType: 'manager_group', targetId: maxGroupId, conversationId: maxGroupId, maxUserId: null })
     }
   } else {
     for (const manager of managerRecipients) {
       const channel = manager.channel === 'max' ? 'max' : manager.channel === 'telegram' ? 'telegram' : null
       const targetId = typeof manager.targetId === 'string' ? manager.targetId.trim() : ''
       if (!channel || !targetId) continue
-      recipients.push({ channel, targetType: 'manager_user', targetId, conversationId: targetId })
+      recipients.push({ channel, targetType: 'manager_user', targetId, conversationId: targetId, maxUserId: null })
     }
   }
 
   if (input.actorContext?.customerTelegramId) {
     const chatId = String(input.actorContext.customerTelegramId)
-    recipients.push({ channel: 'telegram', targetType: 'customer', targetId: chatId, conversationId: chatId })
+    recipients.push({ channel: 'telegram', targetType: 'customer', targetId: chatId, conversationId: chatId, maxUserId: null })
   }
-  if (input.actorContext?.customerMaxConversationId) {
+  if (input.actorContext?.customerMaxConversationId || input.actorContext?.customerMaxUserId) {
+    const maxConversationId = typeof input.actorContext?.customerMaxConversationId === 'string'
+      ? input.actorContext.customerMaxConversationId
+      : null
+    const maxUserId = typeof input.actorContext?.customerMaxUserId === 'string'
+      ? input.actorContext.customerMaxUserId
+      : null
     recipients.push({
       channel: 'max',
       targetType: 'customer',
-      targetId: input.actorContext.customerMaxConversationId,
-      conversationId: input.actorContext.customerMaxConversationId,
+      targetId: maxConversationId || maxUserId || '',
+      conversationId: maxConversationId,
+      maxUserId,
     })
   }
   return recipients
@@ -383,6 +433,12 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
 
   const maxBaseUrl = String((config as any).maxApiBaseUrl || '')
   const maxToken = String((config as any).maxApiToken || '')
+  const maxBotUrl = String((config.public as any)?.maxBotUrl || '').trim()
+  const telegramBotName = String((config.public as any)?.telegramBotName || '').trim()
+  const appUrlBase = String((config as any).appUrl || '').replace(/\/$/, '')
+  const dashboardOrderUrl = appUrlBase
+    ? `${appUrlBase}/dashboard/orders/${encodeURIComponent(input.orderContext.orderId)}`
+    : ''
   const maxBackoffMs = [30_000, 120_000, 600_000]
   const maxEnabledByRuntime = Boolean(maxBaseUrl && maxToken)
   const maxEnabledByPolicy = Boolean((shopRow as any)?.channel_policy?.maxEnabled)
@@ -409,22 +465,37 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
     try {
       if (recipient.channel === 'telegram') {
         const botToken = String((shopRow as any)?.telegram_bot_token || (config.botToken as string))
-        const managerKeyboard = input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer' && input.actorContext?.customerTelegramId
+        const customerBridgeToken = await createOrderBridgeToken(event, input.tenantContext.shopId, input.orderContext.orderId, 'customer')
+        const customerMiniAppUrl = customerBridgeToken && telegramBotName
+          ? `https://t.me/${telegramBotName}?startapp=${encodeURIComponent(customerBridgeToken)}`
+          : ''
+        const maxContactUrl = input.actorContext?.customerMaxUserId && maxBotUrl
+          ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(`user_${input.actorContext.customerMaxUserId}`)}`
+          : ''
+        const managerKeyboard = input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
           ? {
               inline_keyboard: [
                 [
-                  { text: '👨‍🍳 Принять в работу', callback_data: `work_${input.actorContext.customerTelegramId}_${input.orderContext.orderId}` },
-                  { text: '⏱ Задержка (кухня)', callback_data: `delayWork_${input.actorContext.customerTelegramId}_${input.orderContext.orderId}` },
+                  { text: '👨‍🍳 Принять в работу', callback_data: `work__${input.orderContext.orderId}` },
+                  { text: '⏱ Задержка (кухня)', callback_data: `delayWork__${input.orderContext.orderId}` },
                 ],
                 [
-                  { text: '✉️ Написать клиенту', url: `tg://user?id=${input.actorContext.customerTelegramId}` },
+                  ...(input.actorContext?.customerTelegramId
+                    ? [{ text: '✉️ Написать клиенту', url: `tg://user?id=${input.actorContext.customerTelegramId}` }]
+                    : []),
+                  ...(maxContactUrl ? [{ text: '💬 Клиент в MAX', url: maxContactUrl }] : []),
                 ],
-              ],
+                ...(dashboardOrderUrl ? [[{ text: '📋 Открыть заказ (менеджер)', url: dashboardOrderUrl }]] : []),
+                ...(customerMiniAppUrl ? [[{ text: '📱 Открыть заказ (клиент)', url: customerMiniAppUrl }]] : []),
+              ].filter((row) => Array.isArray(row) && row.length > 0),
             }
           : null
         const customerKeyboard = recipient.targetType === 'customer' && input.eventType !== 'ORDER_STATUS_CHANGED'
           ? {
-              inline_keyboard: [[{ text: '⏱ Сообщить о задержке', callback_data: `clientDelay_${input.orderContext.orderId}` }]],
+              inline_keyboard: [
+                [{ text: '⏱ Сообщить о задержке', callback_data: `clientDelay_${input.orderContext.orderId}` }],
+                ...(customerMiniAppUrl ? [[{ text: '📱 Открыть заказ', url: customerMiniAppUrl }]] : []),
+              ],
             }
           : null
         await sendTelegramMessage(
@@ -441,7 +512,36 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
         let lastError: string | null = null
         for (let attempt = 0; attempt < maxBackoffMs.length; attempt += 1) {
           try {
-            await sendMaxMessage(maxBaseUrl, maxToken, recipient.targetId, text)
+            const customerBridgeToken = await createOrderBridgeToken(event, input.tenantContext.shopId, input.orderContext.orderId, 'customer')
+            const managerBridgeToken = await createOrderBridgeToken(event, input.tenantContext.shopId, input.orderContext.orderId, 'manager')
+            const customerMaxMiniAppUrl = customerBridgeToken && maxBotUrl
+              ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(customerBridgeToken)}`
+              : ''
+            const managerMaxMiniAppUrl = managerBridgeToken && maxBotUrl
+              ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(managerBridgeToken)}`
+              : ''
+            const maxAttachments: Array<Record<string, unknown>> = []
+            const buttons: Array<Array<Record<string, string>>> = []
+            if (recipient.targetType === 'customer' && customerMaxMiniAppUrl) {
+              buttons.push([{ type: 'link', text: 'Открыть заказ', url: customerMaxMiniAppUrl }])
+            }
+            if (recipient.targetType !== 'customer') {
+              if (dashboardOrderUrl) buttons.push([{ type: 'link', text: 'Открыть заказ (менеджер)', url: dashboardOrderUrl }])
+              if (managerMaxMiniAppUrl) buttons.push([{ type: 'link', text: 'Открыть заказ (клиент)', url: managerMaxMiniAppUrl }])
+            }
+            if (buttons.length) {
+              maxAttachments.push({
+                type: 'inline_keyboard',
+                payload: { buttons },
+              })
+            }
+            await sendMaxMessage(
+              maxBaseUrl,
+              maxToken,
+              { conversationId: recipient.conversationId, userId: recipient.maxUserId },
+              text,
+              maxAttachments,
+            )
             sent = true
             break
           } catch (err: any) {

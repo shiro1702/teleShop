@@ -20,6 +20,38 @@ async function telegram(
   return res.json()
 }
 
+async function sendMaxMessage(
+  baseUrl: string,
+  token: string,
+  options: { text: string; conversationId?: string | null; userId?: string | null; attachments?: Array<Record<string, unknown>> },
+): Promise<void> {
+  const base = baseUrl.replace(/\/$/, '')
+  const hasConversation = typeof options.conversationId === 'string' && options.conversationId.trim()
+  const hasUserId = typeof options.userId === 'string' && options.userId.trim()
+  if (!hasConversation && !hasUserId) {
+    throw new Error('max_send_target_missing')
+  }
+  const url = hasConversation
+    ? `${base}/messages`
+    : `${base}/messages?user_id=${encodeURIComponent(String(options.userId))}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: token,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      text: options.text,
+      ...(hasConversation ? { conversationId: String(options.conversationId) } : {}),
+      ...(Array.isArray(options.attachments) && options.attachments.length ? { attachments: options.attachments } : {}),
+    }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`MAX sendMessage: ${res.status} ${text}`)
+  }
+}
+
 type CallbackKind = 'status' | 'delay'
 type ChatLinkTokenRow = {
   token: string
@@ -31,11 +63,12 @@ type ChatLinkTokenRow = {
 
 function parseCallbackData(
   data: string,
-): { kind: CallbackKind; status: 'work' | 'courier' | 'done'; userId: string; orderId: string } | null {
+): { kind: CallbackKind; status: 'work' | 'courier' | 'done'; userId: string | null; orderId: string } | null {
   const parts = data.split('_')
   if (parts.length !== 3) return null
-  const [rawStatus, userId, orderId] = parts
-  if (!rawStatus || !userId || !orderId) return null
+  const [rawStatus, userIdRaw, orderId] = parts
+  const userId = userIdRaw && userIdRaw.trim() ? userIdRaw.trim() : null
+  if (!rawStatus || !orderId) return null
 
   // Обычные статусы
   if (rawStatus === 'work' || rawStatus === 'courier' || rawStatus === 'done') {
@@ -112,6 +145,9 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const tenant = event.context.tenant
   const botToken = tenant?.telegramBotToken || (config.botToken as string)
+  const maxApiBaseUrl = String((config.maxApiBaseUrl as string) || '').trim()
+  const maxApiToken = String((config.maxApiToken as string) || '').trim()
+  const maxBotUrl = String((config.public as any)?.maxBotUrl || '').trim()
   const appUrlBase = ((config.appUrl as string) || '').replace(/\/$/, '')
   const defaultCitySlug = (
     typeof config.public?.defaultCitySlug === 'string' && config.public.defaultCitySlug.trim()
@@ -557,7 +593,7 @@ export default defineEventHandler(async (event) => {
     return { ok: true }
   }
 
-  const { kind, status, userId, orderId } = parsed
+  const { kind, status, userId: legacyUserId, orderId } = parsed
   const chatId = query.message.chat.id
   const messageId = query.message.message_id
   const currentText = query.message.text || ''
@@ -565,9 +601,41 @@ export default defineEventHandler(async (event) => {
   const supabase = await serverSupabaseServiceRole(event)
   const { data: orderDetails } = await supabase
     .from('orders')
-    .select('total,delivery_cost,restaurant_id')
+    .select('id,shop_id,total,delivery_cost,restaurant_id,customer_telegram_id,customer_profile_id,order_number')
     .eq('id', orderId)
     .maybeSingle()
+  if (!orderDetails) {
+    await telegram(botToken, 'answerCallbackQuery', {
+      callback_query_id: query.id,
+      text: 'Заказ не найден',
+      show_alert: false,
+    })
+    return { ok: true }
+  }
+
+  const customerProfileId = (orderDetails as any)?.customer_profile_id ? String((orderDetails as any).customer_profile_id) : ''
+  let maxUserId: string | null = null
+  let maxConversationId: string | null = null
+  if (customerProfileId) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('max_user_id,max_conversation_id,telegram_id')
+      .eq('id', customerProfileId)
+      .maybeSingle()
+    const rawMaxUserId = (profile as any)?.max_user_id
+    const rawConversationId = (profile as any)?.max_conversation_id
+    maxUserId = typeof rawMaxUserId === 'string' && rawMaxUserId.trim() ? rawMaxUserId.trim() : null
+    maxConversationId = typeof rawConversationId === 'string' && rawConversationId.trim() ? rawConversationId.trim() : null
+  }
+
+  const telegramIdFromOrder = Number((orderDetails as any)?.customer_telegram_id)
+  const telegramIdFromLegacy = Number(legacyUserId || '')
+  const customerTelegramId = Number.isFinite(telegramIdFromOrder) && telegramIdFromOrder > 0
+    ? telegramIdFromOrder
+    : Number.isFinite(telegramIdFromLegacy) && telegramIdFromLegacy > 0
+      ? telegramIdFromLegacy
+      : null
+
   const { data: branch } = (orderDetails as any)?.restaurant_id
     ? await supabase.from('restaurants').select('name,address').eq('id', (orderDetails as any).restaurant_id).maybeSingle()
     : { data: null as any }
@@ -582,10 +650,18 @@ export default defineEventHandler(async (event) => {
     const baseStatus: 'work' | 'courier' = status === 'courier' ? 'courier' : 'work'
     const clientDelayText = CLIENT_DELAY_MESSAGES[baseStatus]?.(orderId)
     if (clientDelayText) {
-      await telegram(botToken, 'sendMessage', {
-        chat_id: Number(userId),
-        text: enrichedText(clientDelayText),
-      }).catch((err) => console.error('Notify client delay error:', err))
+      if (customerTelegramId) {
+        await telegram(botToken, 'sendMessage', {
+          chat_id: customerTelegramId,
+          text: enrichedText(clientDelayText),
+        }).catch((err) => console.error('Notify client delay error:', err))
+      } else if ((maxUserId || maxConversationId) && maxApiBaseUrl && maxApiToken) {
+        await sendMaxMessage(maxApiBaseUrl, maxApiToken, {
+          userId: maxUserId,
+          conversationId: maxConversationId,
+          text: enrichedText(clientDelayText),
+        }).catch((err) => console.error('Notify MAX client delay error:', err))
+      }
     }
 
     await telegram(botToken, 'answerCallbackQuery', {
@@ -599,70 +675,82 @@ export default defineEventHandler(async (event) => {
   // kind === 'status'
   const clientText = CLIENT_MESSAGES[status]?.(orderId)
   if (clientText) {
-    await telegram(botToken, 'sendMessage', {
-      chat_id: Number(userId),
-      text: enrichedText(clientText),
-      reply_markup: status === 'done'
-        ? undefined
-        : { inline_keyboard: [[{ text: '⏱ Сообщить о задержке', callback_data: `clientDelay_${orderId}` }]] },
-    }).catch((err) => console.error('Notify client error:', err))
+    if (customerTelegramId) {
+      await telegram(botToken, 'sendMessage', {
+        chat_id: customerTelegramId,
+        text: enrichedText(clientText),
+        reply_markup: status === 'done'
+          ? undefined
+          : { inline_keyboard: [[{ text: '⏱ Сообщить о задержке', callback_data: `clientDelay_${orderId}` }]] },
+      }).catch((err) => console.error('Notify client error:', err))
+    } else if ((maxUserId || maxConversationId) && maxApiBaseUrl && maxApiToken) {
+      const maxButtons: Array<Array<Record<string, string>>> = []
+      if (status !== 'done' && maxBotUrl) {
+        const maxDelayUrl = `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(`orderdelay_${orderId}`)}`
+        maxButtons.push([{ type: 'link', text: 'Сообщить о задержке', url: maxDelayUrl }])
+      }
+      await sendMaxMessage(maxApiBaseUrl, maxApiToken, {
+        userId: maxUserId,
+        conversationId: maxConversationId,
+        text: enrichedText(clientText),
+        attachments: maxButtons.length
+          ? [{ type: 'inline_keyboard', payload: { buttons: maxButtons } }]
+          : undefined,
+      }).catch((err) => console.error('Notify MAX client error:', err))
+    }
   }
+
+  const callbackSuffix = customerTelegramId ? `${customerTelegramId}_${orderId}` : `_${orderId}`
+  const managerContactRow: Array<Record<string, string>> = customerTelegramId
+    ? [{ text: '✉️ Написать клиенту', url: `tg://user?id=${customerTelegramId}` }]
+    : maxUserId && maxBotUrl
+      ? [{ text: '💬 Клиент в MAX', url: `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(`user_${maxUserId}`)}` }]
+      : []
 
   let updatedText = currentText
   if (status === 'work') {
     updatedText = withStatusLine(currentText, '🟡 Статус заказа: принят в работу')
-    const nextData = `courier_${userId}_${orderId}`
-    const delayData = `delayWork_${userId}_${orderId}`
+    const nextData = `courier_${callbackSuffix}`
+    const delayData = `delayWork_${callbackSuffix}`
+    const keyboardRows = [
+      [
+        { text: '🚚 Передать курьеру', callback_data: nextData },
+        { text: '⏱ Задержка (кухня)', callback_data: delayData },
+      ],
+      ...(managerContactRow.length ? [managerContactRow] : []),
+    ]
     await telegram(botToken, 'editMessageText', {
       chat_id: chatId,
       message_id: messageId,
       text: updatedText,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '🚚 Передать курьеру', callback_data: nextData },
-            { text: '⏱ Задержка (кухня)', callback_data: delayData },
-          ],
-          [
-            { text: '✉️ Написать клиенту', url: `tg://user?id=${userId}` },
-          ],
-        ],
-      },
+      reply_markup: keyboardRows.length ? { inline_keyboard: keyboardRows } : undefined,
     })
   } else if (status === 'courier') {
     updatedText = withStatusLine(currentText, '🟠 Статус заказа: передан курьеру')
-    const nextData = `done_${userId}_${orderId}`
-    const delayData = `delayCourier_${userId}_${orderId}`
+    const nextData = `done_${callbackSuffix}`
+    const delayData = `delayCourier_${callbackSuffix}`
+    const keyboardRows = [
+      [
+        { text: '✅ Доставлен', callback_data: nextData },
+        { text: '⏱ Задержка (доставка)', callback_data: delayData },
+      ],
+      ...(managerContactRow.length ? [managerContactRow] : []),
+    ]
     await telegram(botToken, 'editMessageText', {
       chat_id: chatId,
       message_id: messageId,
       text: updatedText,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '✅ Доставлен', callback_data: nextData },
-            { text: '⏱ Задержка (доставка)', callback_data: delayData },
-          ],
-          [
-            { text: '✉️ Написать клиенту', url: `tg://user?id=${userId}` },
-          ],
-        ],
-      },
+      reply_markup: keyboardRows.length ? { inline_keyboard: keyboardRows } : undefined,
     })
   } else {
     // done — кнопки убираем, добавляем финальный статус
     const finalText = withStatusLine(currentText, '🟢 Статус заказа: доставлен клиенту ✅')
+    const keyboardRows = managerContactRow.length ? [managerContactRow] : []
     await telegram(botToken, 'editMessageText', {
       chat_id: chatId,
       message_id: messageId,
       text: finalText,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '✉️ Написать клиенту', url: `tg://user?id=${userId}` },
-          ],
-        ],
-      },
+      reply_markup: keyboardRows.length ? { inline_keyboard: keyboardRows } : undefined,
     })
   }
 

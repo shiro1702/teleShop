@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
 
   const { data: existing, error: loadError } = await client
     .from('orders')
-    .select('id,order_number,status,metadata,fulfillment_type,total,restaurant_id,city_id,customer_telegram_id')
+    .select('id,order_number,status,metadata,fulfillment_type,total,restaurant_id,city_id,customer_telegram_id,customer_profile_id')
     .eq('id', id)
     .eq('shop_id', access.shopId)
     .maybeSingle()
@@ -110,6 +110,21 @@ export default defineEventHandler(async (event) => {
     await accrueLoyaltyEarnForPaidOrder(client, String((existing as any).id), access.shopId)
   }
 
+  const customerProfileId = (existing as any)?.customer_profile_id ? String((existing as any).customer_profile_id) : ''
+  let customerMaxUserId: string | null = null
+  let customerMaxConversationId: string | null = null
+  if (customerProfileId) {
+    const { data: profile } = await client
+      .from('profiles')
+      .select('max_user_id,max_conversation_id')
+      .eq('id', customerProfileId)
+      .maybeSingle()
+    const rawUserId = (profile as any)?.max_user_id
+    const rawConversationId = (profile as any)?.max_conversation_id
+    customerMaxUserId = typeof rawUserId === 'string' && rawUserId.trim() ? rawUserId.trim() : null
+    customerMaxConversationId = typeof rawConversationId === 'string' && rawConversationId.trim() ? rawConversationId.trim() : null
+  }
+
   await dispatchNotificationEvent(event, {
     eventId: crypto.randomUUID(),
     eventType: 'ORDER_STATUS_CHANGED',
@@ -127,6 +142,8 @@ export default defineEventHandler(async (event) => {
     },
     actorContext: {
       customerTelegramId: (existing as any).customer_telegram_id ?? null,
+      customerMaxUserId,
+      customerMaxConversationId,
     },
   })
 
