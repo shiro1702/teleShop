@@ -278,6 +278,35 @@
             </div>
 
             <div class="flex flex-1 flex-col gap-2 sm:max-w-xs">
+              <div
+                v-if="deliveryProgress"
+                class="rounded-2xl p-4 sm:p-5"
+                :style="cardStyle"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <div class="text-2xl font-bold" :style="{ color: mainTextColor }">
+                      {{ step1DeliveryCost === 0 ? 'Доставка бесплатно' : formatPrice(step1DeliveryCost) }}
+                    </div>
+                    <p class="text-sm" :style="{ color: mutedTextColor }">
+                      {{
+                        deliveryProgress.remaining > 0
+                          ? `Добавьте ещё ${formatPrice(deliveryProgress.remaining)} до бесплатной доставки`
+                          : 'Порог бесплатной доставки достигнут'
+                      }}
+                    </p>
+                  </div>
+                  <div class="text-sm font-medium" :style="{ color: mutedTextColor }">
+                    {{ formatPrice(deliveryProgress.threshold) }}
+                  </div>
+                </div>
+                <div class="mt-3 h-3 overflow-hidden rounded-full" :style="{ backgroundColor: borderColor }">
+                  <div
+                    class="h-full rounded-full bg-amber-400 transition-all duration-300"
+                    :style="{ width: `${deliveryProgress.progress}%` }"
+                  />
+                </div>
+              </div>
               <button
                 type="button"
                 class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
@@ -294,35 +323,6 @@
               </p>
             </div>
           </div>
-          <div
-            v-if="deliveryProgress"
-            class="mt-4 rounded-2xl p-4 sm:p-5"
-            :style="cardStyle"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <div class="text-2xl font-bold" :style="{ color: mainTextColor }">
-                  {{ step1DeliveryCost === 0 ? 'Доставка бесплатно' : formatPrice(step1DeliveryCost) }}
-                </div>
-                <p class="text-sm" :style="{ color: mutedTextColor }">
-                  {{
-                    deliveryProgress.remaining > 0
-                      ? `Добавьте ещё ${formatPrice(deliveryProgress.remaining)} до бесплатной доставки`
-                      : 'Порог бесплатной доставки достигнут'
-                  }}
-                </p>
-              </div>
-              <div class="text-sm font-medium" :style="{ color: mutedTextColor }">
-                {{ formatPrice(deliveryProgress.threshold) }}
-              </div>
-            </div>
-            <div class="mt-3 h-3 overflow-hidden rounded-full" :style="{ backgroundColor: borderColor }">
-              <div
-                class="h-full rounded-full bg-amber-400 transition-all duration-300"
-                :style="{ width: `${deliveryProgress.progress}%` }"
-              />
-            </div>
-          </div>
           </section>
 
           <!-- Шаг 2: оформление (получение + адрес + оплата + подтверждение) -->
@@ -330,31 +330,6 @@
           <div class="rounded-2xl p-4 sm:p-6" :style="cardStyle">
             <div class="space-y-3">
               <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4">
-                <div class="space-y-2">
-                  <h2 class="text-sm font-semibold text-gray-900">
-                    Ресторан
-                  </h2>
-                  <select
-                    v-model="selectedRestaurantId"
-                    class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    <option v-for="r in restaurants" :key="r.id" :value="r.id">
-                      {{ r.name }} — {{ r.address }}
-                    </option>
-                  </select>
-                  <div class="rounded-lg border border-gray-200 bg-white p-2">
-                    <CheckoutDeliveryBranchesMap
-                      :branches="restaurants"
-                      :all-zones="allRestaurantZones"
-                      :selected-branch-id="selectedRestaurantId"
-                      :allow-manual-select="true"
-                      :client-lat="mapClientLat"
-                      :client-lon="mapClientLon"
-                      :client-address="mapClientAddress"
-                      @select-branch="selectedRestaurantId = $event"
-                    />
-                  </div>
-                </div>
                 <h2 class="text-sm font-semibold text-gray-900">
                   Способ получения
                 </h2>
@@ -543,6 +518,34 @@
                 <p class="text-amber-900/80">
                   Адрес доставки не требуется. Мы передадим заказ в работу и отправим подтверждение после оформления.
                 </p>
+              </section>
+
+              <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4">
+                <div class="space-y-2">
+                  <h2 class="text-sm font-semibold text-gray-900">
+                    Ресторан
+                  </h2>
+                  <select
+                    v-model="selectedRestaurantId"
+                    class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option v-for="r in restaurants" :key="r.id" :value="r.id">
+                      {{ r.name }} — {{ r.address }}
+                    </option>
+                  </select>
+                  <div class="rounded-lg border border-gray-200 bg-white p-2">
+                    <CheckoutDeliveryBranchesMap
+                      :branches="restaurants"
+                      :all-zones="allRestaurantZones"
+                      :selected-branch-id="selectedRestaurantId"
+                      :allow-manual-select="true"
+                      :client-lat="mapClientLat"
+                      :client-lon="mapClientLon"
+                      :client-address="mapClientAddress"
+                      @select-branch="selectedRestaurantId = $event"
+                    />
+                  </div>
+                </div>
               </section>
             </div>
           </div>
