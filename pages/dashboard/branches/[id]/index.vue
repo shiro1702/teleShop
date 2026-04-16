@@ -79,7 +79,37 @@
       </label>
       <label class="text-sm">
         <span class="mb-1 block text-gray-600">Адрес</span>
-        <input v-model="form.address" class="w-full rounded-lg border border-gray-300 px-2 py-2" :disabled="!canEditCritical">
+        <div class="relative">
+          <input
+            v-model="form.address"
+            class="w-full rounded-lg border border-gray-300 px-2 py-2"
+            :disabled="!canEditCritical"
+            @input="onAddressInput"
+          >
+          <div
+            v-if="isSuggestLoading"
+            class="pointer-events-none absolute inset-y-0 right-2 flex items-center"
+          >
+            <svg class="h-4 w-4 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+          </div>
+          <div
+            v-if="suggestItems.length && canEditCritical"
+            class="absolute inset-x-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg"
+          >
+            <button
+              v-for="item in suggestItems"
+              :key="item.value"
+              type="button"
+              class="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-gray-800 transition hover:bg-gray-50"
+              @click="pickSuggestion(item)"
+            >
+              <span class="truncate">{{ item.displayName }}</span>
+            </button>
+          </div>
+        </div>
       </label>
       <label class="inline-flex items-center gap-2 text-sm text-gray-700">
         <input v-model="form.supportsDelivery" type="checkbox" class="rounded border-gray-300" :disabled="!canEditCritical || !allowedModesSet.has('delivery')">
@@ -195,6 +225,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useDashboardAccess } from '../../../../composables/useDashboardAccess'
+import { dadataSuggest, type DadataSuggestItem } from '~/utils/dadataApi'
 
 declare const definePageMeta: (meta: Record<string, unknown>) => void
 declare const useRoute: () => { params: Record<string, string | string[] | undefined> }
@@ -208,6 +239,8 @@ type Branch = {
   id: string
   name: string
   address: string
+  lat: number | null
+  lon: number | null
   supportsDelivery: boolean
   supportsPickup: boolean
   supportsDineIn: boolean
@@ -222,6 +255,8 @@ const branch = ref<Branch | null>(null)
 const form = ref({
   name: '',
   address: '',
+  lat: null as number | null,
+  lon: null as number | null,
   supportsDelivery: false,
   supportsPickup: false,
   supportsDineIn: false,
@@ -255,6 +290,8 @@ const workingDayRows: Array<{ key: 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat'
 const storefrontPath = ref('')
 const qrDataUrl = ref<string | null>(null)
 const copyFeedback = ref('')
+const suggestItems = ref<DadataSuggestItem[]>([])
+const isSuggestLoading = ref(false)
 
 const branchQrUrl = computed(() => {
   if (!import.meta.client || !branch.value || !storefrontPath.value) return ''
@@ -342,6 +379,8 @@ onMounted(async () => {
     form.value = {
       name: found.name,
       address: found.address,
+      lat: found.lat,
+      lon: found.lon,
       supportsDelivery: found.supportsDelivery && allowedModesSet.value.has('delivery'),
       supportsPickup: found.supportsPickup && allowedModesSet.value.has('pickup'),
       supportsDineIn: found.supportsDineIn && allowedModesSet.value.has('dine-in'),
@@ -366,6 +405,8 @@ async function save() {
     body: JSON.stringify({
       name: form.value.name.trim(),
       address: form.value.address.trim(),
+      lat: form.value.lat,
+      lon: form.value.lon,
       supportsDelivery: allowedModesSet.value.has('delivery') && form.value.supportsDelivery,
       supportsPickup: allowedModesSet.value.has('pickup') && form.value.supportsPickup,
       supportsDineIn: allowedModesSet.value.has('dine-in') && form.value.supportsDineIn,
@@ -385,6 +426,8 @@ async function save() {
   form.value = {
     name: payload.item.name,
     address: payload.item.address,
+    lat: payload.item.lat,
+    lon: payload.item.lon,
     supportsDelivery: payload.item.supportsDelivery,
     supportsPickup: payload.item.supportsPickup,
     supportsDineIn: payload.item.supportsDineIn,
@@ -407,5 +450,40 @@ async function deactivate() {
   }
   branch.value.isActive = false
   logs.value.unshift({ action: 'Филиал деактивирован', at: now() })
+}
+
+function onAddressInput() {
+  if (!canEditCritical.value) return
+  form.value.lat = null
+  form.value.lon = null
+  const query = form.value.address.trim()
+  suggestItems.value = []
+  if (query.length < 3) {
+    isSuggestLoading.value = false
+    return
+  }
+  const fn = onAddressInput as ((...args: unknown[]) => unknown) & { _timer?: ReturnType<typeof setTimeout> }
+  if (fn._timer) clearTimeout(fn._timer)
+  fn._timer = setTimeout(async () => {
+    isSuggestLoading.value = true
+    try {
+      const currentQuery = form.value.address.trim()
+      if (currentQuery.length < 3) {
+        suggestItems.value = []
+        return
+      }
+      suggestItems.value = await dadataSuggest(currentQuery)
+    } finally {
+      isSuggestLoading.value = false
+    }
+  }, 400)
+}
+
+function pickSuggestion(item: DadataSuggestItem) {
+  form.value.address = item.displayName
+  form.value.lat = item.lat
+  form.value.lon = item.lon
+  suggestItems.value = []
+  isSuggestLoading.value = false
 }
 </script>

@@ -35,13 +35,39 @@
 
       <label class="block space-y-1">
         <span class="text-sm font-medium text-gray-700">Адрес</span>
-        <input
-          v-model="address"
-          type="text"
-          required
-          class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          placeholder="ул. Ленина, 10"
-        >
+        <div class="relative">
+          <input
+            v-model="address"
+            type="text"
+            required
+            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            placeholder="ул. Ленина, 10"
+            @input="onAddressInput"
+          >
+          <div
+            v-if="isSuggestLoading"
+            class="pointer-events-none absolute inset-y-0 right-2 flex items-center"
+          >
+            <svg class="h-4 w-4 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+          </div>
+          <div
+            v-if="suggestItems.length"
+            class="absolute inset-x-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg"
+          >
+            <button
+              v-for="item in suggestItems"
+              :key="item.value"
+              type="button"
+              class="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-gray-800 transition hover:bg-gray-50"
+              @click="pickSuggestion(item)"
+            >
+              <span class="truncate">{{ item.displayName }}</span>
+            </button>
+          </div>
+        </div>
       </label>
 
       <div class="flex gap-5 text-sm text-gray-700">
@@ -71,18 +97,58 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { dadataSuggest, type DadataSuggestItem } from '~/utils/dadataApi'
 declare const definePageMeta: (meta: Record<string, unknown>) => void
 
 definePageMeta({ layout: 'dashboard' })
 
 const name = ref('')
 const address = ref('')
+const lat = ref<number | null>(null)
+const lon = ref<number | null>(null)
+const suggestItems = ref<DadataSuggestItem[]>([])
+const isSuggestLoading = ref(false)
 const supportsDelivery = ref(true)
 const supportsPickup = ref(true)
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 const router = useRouter()
+
+function onAddressInput() {
+  lat.value = null
+  lon.value = null
+  const query = address.value.trim()
+  suggestItems.value = []
+  if (query.length < 3) {
+    isSuggestLoading.value = false
+    return
+  }
+
+  const fn = onAddressInput as ((...args: unknown[]) => unknown) & { _timer?: ReturnType<typeof setTimeout> }
+  if (fn._timer) clearTimeout(fn._timer)
+  fn._timer = setTimeout(async () => {
+    isSuggestLoading.value = true
+    try {
+      const currentQuery = address.value.trim()
+      if (currentQuery.length < 3) {
+        suggestItems.value = []
+        return
+      }
+      suggestItems.value = await dadataSuggest(currentQuery)
+    } finally {
+      isSuggestLoading.value = false
+    }
+  }, 400)
+}
+
+function pickSuggestion(item: DadataSuggestItem) {
+  address.value = item.displayName
+  lat.value = item.lat
+  lon.value = item.lon
+  suggestItems.value = []
+  isSuggestLoading.value = false
+}
 
 async function submit() {
   loading.value = true
@@ -106,6 +172,8 @@ async function submit() {
       body: JSON.stringify({
         name: name.value,
         address: address.value,
+        lat: lat.value,
+        lon: lon.value,
         supportsDelivery: supportsDelivery.value,
         supportsPickup: supportsPickup.value,
       }),

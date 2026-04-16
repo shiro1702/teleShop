@@ -9,6 +9,8 @@ type RestaurantRow = {
   id: string
   name: string
   address: string
+  lat: number | null
+  lon: number | null
   supports_delivery: boolean
   supports_pickup: boolean
   supports_dine_in: boolean
@@ -46,7 +48,7 @@ export default defineEventHandler(async (event) => {
   let error: any = null
   const primary = await client
     .from('restaurants')
-    .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,created_at')
+    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,created_at')
     .eq('shop_id', access.shopId)
     .order('created_at', { ascending: false })
   data = primary.data as RestaurantFallbackRow[] | null
@@ -54,7 +56,7 @@ export default defineEventHandler(async (event) => {
   if (isMissingColumnError(error)) {
     const fallback = await client
       .from('restaurants')
-      .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active,created_at')
+      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active,created_at')
       .eq('shop_id', access.shopId)
       .order('created_at', { ascending: false })
     data = fallback.data as RestaurantFallbackRow[] | null
@@ -63,7 +65,7 @@ export default defineEventHandler(async (event) => {
   if (isMissingColumnError(error)) {
     const fallbackLegacy = await client
       .from('restaurants')
-      .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,is_active,created_at')
+      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,is_active,created_at')
       .eq('shop_id', access.shopId)
       .order('created_at', { ascending: false })
     data = fallbackLegacy.data as RestaurantFallbackRow[] | null
@@ -84,6 +86,8 @@ export default defineEventHandler(async (event) => {
       id: row.id,
       name: row.name,
       address: row.address,
+      lat: typeof row.lat === 'number' && Number.isFinite(row.lat) ? row.lat : null,
+      lon: typeof row.lon === 'number' && Number.isFinite(row.lon) ? row.lon : null,
       supportsDelivery: row.supports_delivery === true && allowedSet.has('delivery'),
       supportsPickup: row.supports_pickup === true && allowedSet.has('pickup'),
       supportsDineIn: row.supports_dine_in === true && allowedSet.has('dine-in'),

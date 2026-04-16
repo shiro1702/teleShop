@@ -5,6 +5,8 @@ import { requireDashboardAccess } from '~/server/utils/dashboard'
 type CreateBranchBody = {
   name?: string
   address?: string
+  lat?: number | null
+  lon?: number | null
   supportsDelivery?: boolean
   supportsPickup?: boolean
   supportsDineIn?: boolean
@@ -20,6 +22,8 @@ export default defineEventHandler(async (event) => {
   if (!name || !address) {
     throw createError({ statusCode: 400, statusMessage: 'name and address are required' })
   }
+  const lat = typeof body?.lat === 'number' && Number.isFinite(body.lat) ? body.lat : null
+  const lon = typeof body?.lon === 'number' && Number.isFinite(body.lon) ? body.lon : null
 
   const client = await serverSupabaseServiceRole(event)
   const config = useRuntimeConfig(event)
@@ -40,6 +44,8 @@ export default defineEventHandler(async (event) => {
       city_id: cityData.id,
       name,
       address,
+      lat,
+      lon,
       supports_delivery: body?.supportsDelivery !== false,
       supports_pickup: body?.supportsPickup !== false,
       supports_dine_in: body?.supportsDineIn === true,
@@ -47,7 +53,7 @@ export default defineEventHandler(async (event) => {
       supports_showcase_order: body?.supportsShowcaseOrder === true,
       is_active: true,
     })
-    .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active')
+    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active')
     .single()
 
   if (error) {

@@ -270,7 +270,13 @@ type ShopFulfillment = {
   dineIn: boolean
 }
 
-type BranchPoint = { restaurantId: string, name: string, address: string }
+type BranchPoint = {
+  restaurantId: string
+  name: string
+  address: string
+  lat?: number | null
+  lon?: number | null
+}
 
 type ShopItem = {
   id: string
@@ -349,6 +355,8 @@ function flattenMarkers(
         title: p.name,
         subtitle: s.name,
         address: p.address,
+        lat: typeof p.lat === 'number' && Number.isFinite(p.lat) ? p.lat : null,
+        lon: typeof p.lon === 'number' && Number.isFinite(p.lon) ? p.lon : null,
       })
     }
   }

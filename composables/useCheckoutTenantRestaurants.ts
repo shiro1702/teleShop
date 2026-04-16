@@ -13,6 +13,8 @@ export type RestaurantItem = {
   id: string
   name: string
   address: string
+  lat?: number | null
+  lon?: number | null
   supports_delivery: boolean
   supports_pickup: boolean
   supports_qr_menu: boolean

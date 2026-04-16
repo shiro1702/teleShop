@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
   let error: any = null
   const primary = await client
     .from('restaurants')
-    .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active')
+    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active')
     .eq('shop_id', shopId)
     .eq('is_active', true)
     .order('name', { ascending: true })
@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
   if (error && error.code === '42703') {
     const fallback = await client
       .from('restaurants')
-      .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active')
+      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active')
       .eq('shop_id', shopId)
       .eq('is_active', true)
       .order('name', { ascending: true })
@@ -48,7 +48,7 @@ export default defineEventHandler(async (event) => {
   if (error && error.code === '42703') {
     const legacy = await client
       .from('restaurants')
-      .select('id,name,address,supports_delivery,supports_pickup,supports_qr_menu,supports_showcase_order,is_active')
+      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_qr_menu,supports_showcase_order,is_active')
       .eq('shop_id', shopId)
       .eq('is_active', true)
       .order('name', { ascending: true })
@@ -79,6 +79,8 @@ export default defineEventHandler(async (event) => {
     dineInHallMode: org.ops.dineInHallMode,
     items: (data ?? []).map((item: any) => ({
       ...item,
+      lat: typeof item.lat === 'number' && Number.isFinite(item.lat) ? item.lat : null,
+      lon: typeof item.lon === 'number' && Number.isFinite(item.lon) ? item.lon : null,
       ...(() => {
         const branchWorkingHours = normalizeWeeklyWorkingHours(item.working_hours, organizationWorkingHours)
         const useOrganizationHours = item.use_organization_working_hours !== false

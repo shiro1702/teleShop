@@ -5,6 +5,8 @@ export type MapPointInput = {
   title: string
   subtitle?: string
   address: string
+  lat?: number | null
+  lon?: number | null
 }
 
 export type MapPointResolved = MapPointInput & { lat: number, lon: number }
@@ -20,7 +22,22 @@ export async function geocodeMarkers(
 ): Promise<{ resolved: MapPointResolved[], failed: number }> {
   const resolved: MapPointResolved[] = []
   let failed = 0
-  const queue = [...points]
+  const queue: MapPointInput[] = []
+
+  for (const p of points) {
+    const lat = typeof p.lat === 'number' && Number.isFinite(p.lat) ? p.lat : null
+    const lon = typeof p.lon === 'number' && Number.isFinite(p.lon) ? p.lon : null
+    if (lat != null && lon != null) {
+      resolved.push({ ...p, lat, lon })
+      continue
+    }
+    queue.push(p)
+  }
+
+  if (!queue.length) {
+    return { resolved, failed }
+  }
+
   const workers = Array.from({ length: Math.min(concurrency, Math.max(1, queue.length)) }, async () => {
     while (queue.length) {
       const p = queue.shift()

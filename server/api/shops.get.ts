@@ -15,6 +15,8 @@ type ShopRestaurantRow = {
   id: string
   name: string
   address: string
+  lat: number | null
+  lon: number | null
   supports_delivery: boolean
   supports_pickup: boolean
   supports_dine_in: boolean
@@ -68,7 +70,7 @@ export default defineEventHandler(async (event) => {
 
   const primary = await client
     .from('shops')
-    .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(id,name,address,city_id,is_active,supports_delivery,supports_pickup,supports_dine_in)')
+    .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(id,name,address,lat,lon,city_id,is_active,supports_delivery,supports_pickup,supports_dine_in)')
     .eq('is_active', true)
     .eq('restaurants.city_id', cityId)
     .eq('restaurants.is_active', true)
@@ -80,7 +82,7 @@ export default defineEventHandler(async (event) => {
   if (error && error.code === '42703') {
     const fallback = await client
       .from('shops')
-      .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(id,name,address,city_id,is_active,supports_delivery,supports_pickup)')
+      .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(id,name,address,lat,lon,city_id,is_active,supports_delivery,supports_pickup)')
       .eq('is_active', true)
       .eq('restaurants.city_id', cityId)
       .eq('restaurants.is_active', true)
@@ -106,8 +108,8 @@ export default defineEventHandler(async (event) => {
     hasDineIn: boolean
     pickupRestaurantIds: Set<string>
     dineInRestaurantIds: Set<string>
-    pickupPoints: Array<{ restaurantId: string, name: string, address: string }>
-    dineInPoints: Array<{ restaurantId: string, name: string, address: string }>
+    pickupPoints: Array<{ restaurantId: string, name: string, address: string, lat: number | null, lon: number | null }>
+    dineInPoints: Array<{ restaurantId: string, name: string, address: string, lat: number | null, lon: number | null }>
   }>()
 
   for (const row of rows) {
@@ -132,12 +134,24 @@ export default defineEventHandler(async (event) => {
       if (r.supports_pickup && !agg.pickupRestaurantIds.has(r.id)) {
         agg.pickupRestaurantIds.add(r.id)
         agg.hasPickup = true
-        agg.pickupPoints.push({ restaurantId: r.id, name: r.name, address: r.address })
+        agg.pickupPoints.push({
+          restaurantId: r.id,
+          name: r.name,
+          address: r.address,
+          lat: typeof r.lat === 'number' && Number.isFinite(r.lat) ? r.lat : null,
+          lon: typeof r.lon === 'number' && Number.isFinite(r.lon) ? r.lon : null,
+        })
       }
       if (r.supports_dine_in && !agg.dineInRestaurantIds.has(r.id)) {
         agg.dineInRestaurantIds.add(r.id)
         agg.hasDineIn = true
-        agg.dineInPoints.push({ restaurantId: r.id, name: r.name, address: r.address })
+        agg.dineInPoints.push({
+          restaurantId: r.id,
+          name: r.name,
+          address: r.address,
+          lat: typeof r.lat === 'number' && Number.isFinite(r.lat) ? r.lat : null,
+          lon: typeof r.lon === 'number' && Number.isFinite(r.lon) ? r.lon : null,
+        })
       }
     }
   }
@@ -153,8 +167,8 @@ export default defineEventHandler(async (event) => {
       pickup: Boolean(agg?.hasPickup),
       dineIn: Boolean(agg?.hasDineIn),
     }
-    let pickupPoints: Array<{ restaurantId: string, name: string, address: string }> = []
-    let dineInPoints: Array<{ restaurantId: string, name: string, address: string }> = []
+    let pickupPoints: Array<{ restaurantId: string, name: string, address: string, lat: number | null, lon: number | null }> = []
+    let dineInPoints: Array<{ restaurantId: string, name: string, address: string, lat: number | null, lon: number | null }> = []
 
     try {
       const org = await getOrganizationSettings(event, row.id)

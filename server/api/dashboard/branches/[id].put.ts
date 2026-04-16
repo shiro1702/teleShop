@@ -7,6 +7,8 @@ import { normalizeWeeklyWorkingHours } from '~/utils/workingHours'
 type UpdateBranchBody = {
   name?: string
   address?: string
+  lat?: number | null
+  lon?: number | null
   supportsDelivery?: boolean
   supportsPickup?: boolean
   supportsDineIn?: boolean
@@ -28,6 +30,8 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<UpdateBranchBody>(event)
   const name = body?.name?.trim()
   const address = body?.address?.trim()
+  const lat = typeof body?.lat === 'number' && Number.isFinite(body.lat) ? body.lat : null
+  const lon = typeof body?.lon === 'number' && Number.isFinite(body.lon) ? body.lon : null
   if (!name || !address) {
     throw createError({ statusCode: 400, statusMessage: 'name and address are required' })
   }
@@ -40,6 +44,8 @@ export default defineEventHandler(async (event) => {
     .update({
       name,
       address,
+      lat,
+      lon,
       supports_delivery: body?.supportsDelivery === true,
       supports_pickup: body?.supportsPickup === true,
       supports_dine_in: body?.supportsDineIn === true,
@@ -50,7 +56,7 @@ export default defineEventHandler(async (event) => {
     })
     .eq('id', branchId)
     .eq('shop_id', access.shopId)
-    .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active')
+    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active')
     .maybeSingle()
   if (update.error && (update.error as any).code === '42703') {
     update = await client
@@ -58,6 +64,8 @@ export default defineEventHandler(async (event) => {
       .update({
         name,
         address,
+        lat,
+        lon,
         supports_delivery: body?.supportsDelivery === true,
         supports_pickup: body?.supportsPickup === true,
         supports_dine_in: body?.supportsDineIn === true,
@@ -66,7 +74,7 @@ export default defineEventHandler(async (event) => {
       })
       .eq('id', branchId)
       .eq('shop_id', access.shopId)
-      .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active')
+      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active')
       .maybeSingle()
     if (update.data) {
       ;(update.data as any).use_organization_working_hours = true
@@ -84,6 +92,8 @@ export default defineEventHandler(async (event) => {
       id: update.data.id,
       name: update.data.name,
       address: update.data.address,
+      lat: update.data.lat,
+      lon: update.data.lon,
       supportsDelivery: update.data.supports_delivery,
       supportsPickup: update.data.supports_pickup,
       supportsDineIn: update.data.supports_dine_in,
