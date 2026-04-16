@@ -79,6 +79,8 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
   const isSuggestLoading = ref(false)
   const savedAddresses = ref<SavedAddressItem[]>([])
   const selectedAddressId = ref<string>('')
+  /** True after the first client-side load of saved addresses (API or local fallback). */
+  const addressBookReady = ref(false)
 
   const { properties: deliveryZoneProps, reason, refresh: refreshZone, setZones } = useDeliveryZone()
   const onGeocodedCoords = options?.onGeocodedCoords
@@ -308,40 +310,59 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     selectedAddressId.value = addr.id
   }
 
+  /** If an address is selected but the line wasn’t filled (e.g. after API load), sync from saved list. */
+  function syncSelectedToFormIfEmpty() {
+    const sel = savedAddresses.value.find((a) => a.id === selectedAddressId.value)
+    if (!sel?.address?.trim()) return
+    if (!addressLine.value.trim()) {
+      applySavedAddress(sel)
+    }
+  }
+
   async function loadSavedAddresses() {
-    if (canUseAddressApi()) {
-      try {
-        const guestBefore = await readGuestAddressesForMerge()
-        const res = await $fetch<{ ok: boolean; items?: SavedAddressItem[] }>('/api/customer/addresses', {
-          headers: buildAuthHeaders(),
-        })
-        let apiItems = Array.isArray(res.items) ? res.items : []
-        if (guestBefore.length > 0) {
-          apiItems = await syncGuestAddressesToServer(guestBefore, apiItems)
-          await pruneGuestStorageAfterApiSync(apiItems, guestBefore)
+    addressBookReady.value = false
+    try {
+      if (canUseAddressApi()) {
+        try {
+          const guestBefore = await readGuestAddressesForMerge()
+          const res = await $fetch<{ ok: boolean; items?: SavedAddressItem[] }>('/api/customer/addresses', {
+            headers: buildAuthHeaders(),
+          })
+          let apiItems = Array.isArray(res.items) ? res.items : []
+          if (guestBefore.length > 0) {
+            apiItems = await syncGuestAddressesToServer(guestBefore, apiItems)
+            await pruneGuestStorageAfterApiSync(apiItems, guestBefore)
+          }
+          const guestAfter = await readGuestAddressesForMerge()
+          savedAddresses.value = mergeAddressesDedupe(apiItems, guestAfter)
+          if (!selectedAddressId.value && savedAddresses.value[0]?.id) {
+            selectedAddressId.value = savedAddresses.value[0].id
+          } else if (selectedAddressId.value && !savedAddresses.value.some((a) => a.id === selectedAddressId.value)) {
+            selectedAddressId.value = savedAddresses.value[0]?.id || ''
+          }
+          syncSelectedToFormIfEmpty()
+          return
+        } catch {
+          // fallback to local storage below
         }
-        const guestAfter = await readGuestAddressesForMerge()
-        savedAddresses.value = mergeAddressesDedupe(apiItems, guestAfter)
-        if (!selectedAddressId.value && savedAddresses.value[0]?.id) {
-          selectedAddressId.value = savedAddresses.value[0].id
-        } else if (selectedAddressId.value && !savedAddresses.value.some((a) => a.id === selectedAddressId.value)) {
-          selectedAddressId.value = savedAddresses.value[0]?.id || ''
-        }
-        return
-      } catch {
-        // fallback to local storage below
       }
-    }
 
-    if (canUseMessengerStorage()) {
-      savedAddresses.value = await readGuestAddressesForMerge()
-      if (!selectedAddressId.value && savedAddresses.value[0]?.id) selectedAddressId.value = savedAddresses.value[0].id
-      return
-    }
+      if (canUseMessengerStorage()) {
+        savedAddresses.value = await readGuestAddressesForMerge()
+        if (!selectedAddressId.value && savedAddresses.value[0]?.id) selectedAddressId.value = savedAddresses.value[0].id
+        syncSelectedToFormIfEmpty()
+        return
+      }
 
-    if (process.client) {
-      savedAddresses.value = readGuestAddressesFromLocalStorage()
-      if (!selectedAddressId.value && savedAddresses.value[0]?.id) selectedAddressId.value = savedAddresses.value[0].id
+      if (process.client) {
+        savedAddresses.value = readGuestAddressesFromLocalStorage()
+        if (!selectedAddressId.value && savedAddresses.value[0]?.id) selectedAddressId.value = savedAddresses.value[0].id
+        syncSelectedToFormIfEmpty()
+      }
+    } finally {
+      if (process.client) {
+        addressBookReady.value = true
+      }
     }
   }
 
@@ -467,6 +488,7 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     isSuggestLoading,
     savedAddresses,
     selectedAddressId,
+    addressBookReady,
     selectedAddress,
     deliveryZoneProps,
     setDeliveryZones,

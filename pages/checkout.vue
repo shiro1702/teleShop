@@ -1026,6 +1026,7 @@ const {
   suggestItems,
   isSuggestLoading,
   savedAddresses,
+  addressBookReady,
   selectedAddressId: selectedCustomerAddressId,
   selectedAddress,
   setDeliveryZones,
@@ -1218,8 +1219,18 @@ watch(addressLine, (next) => {
 })
 
 watch(
-  () => [state.currentStep, state.fulfillmentType, hasDeliveryOption.value, selectedCustomerAddressId.value] as const,
-  ([step, fulfillment, hasDelivery, addressId]) => {
+  () =>
+    [
+      state.currentStep,
+      state.fulfillmentType,
+      hasDeliveryOption.value,
+      addressBookReady.value,
+      savedAddresses.value.length,
+      selectedCustomerAddressId.value,
+      addressLine.value,
+      selectedAddress.value?.address,
+    ] as const,
+  ([step, fulfillment, hasDelivery, bookReady, savedCount, addressId]) => {
     if (step !== 2) {
       hasShownAddressModalOnCurrentEntry.value = false
       return
@@ -1227,6 +1238,12 @@ watch(
     if (!hasDelivery) return
     if (fulfillment !== 'delivery') return
     if (hasShownAddressModalOnCurrentEntry.value) return
+    if (!bookReady) return
+    if (savedCount > 0) {
+      hasShownAddressModalOnCurrentEntry.value = true
+      showAddressModal.value = false
+      return
+    }
     if (addressId && addressLine.value.trim().length > 0) {
       hasShownAddressModalOnCurrentEntry.value = true
       return
