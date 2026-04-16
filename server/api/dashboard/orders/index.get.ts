@@ -19,6 +19,9 @@ type OrderRow = {
   created_at: string
   customer_telegram_id: number | null
   customer_profile_id: string | null
+  external_order_id: string | null
+  external_status: string | null
+  last_sync_error: string | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -43,6 +46,9 @@ export default defineEventHandler(async (event) => {
       status,
       fulfillment_type,
       payment_method,
+      external_order_id,
+      external_status,
+      last_sync_error,
       subtotal,
       delivery_cost,
       total,
@@ -59,6 +65,9 @@ export default defineEventHandler(async (event) => {
       status,
       fulfillment_type,
       payment_method,
+      external_order_id,
+      external_status,
+      last_sync_error,
       subtotal,
       delivery_cost,
       total,
@@ -171,6 +180,9 @@ export default defineEventHandler(async (event) => {
       status: st,
       fulfillmentType: row.fulfillment_type || 'delivery',
       paymentMethod: row.payment_method || 'cash',
+      externalOrderId: row.external_order_id || null,
+      externalStatus: row.external_status || null,
+      lastSyncError: row.last_sync_error || null,
       subtotal: row.subtotal ?? 0,
       deliveryCost: row.delivery_cost ?? 0,
       total: row.total ?? 0,

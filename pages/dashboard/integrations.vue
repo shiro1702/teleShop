@@ -2,6 +2,12 @@
   <section class="space-y-4">
     <h1 class="text-2xl font-semibold">Интеграции</h1>
     <p class="text-sm text-gray-600">Статусы подключений, health-check и управление секретами.</p>
+    <div class="fixed right-4 top-4 z-[100] space-y-2">
+      <div v-for="toast in toasts" :key="toast.id" class="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm shadow-lg" :class="toast.type === 'ok' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900'">
+        <p class="max-w-xs">{{ toast.message }}</p>
+        <button class="ml-1 text-xs" @click="dismissToast(toast.id)">x</button>
+      </div>
+    </div>
 
     <div v-if="role !== 'owner'" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
       Критичные действия с интеграциями доступны только Owner.
@@ -191,6 +197,95 @@
           Ротировать ключ
         </button>
       </article>
+
+      <article class="rounded-xl border border-gray-200 bg-white p-4 md:col-span-2">
+        <h2 class="text-sm font-semibold">Quick Resto</h2>
+        <p class="mt-1 text-xs text-gray-500">Подключение, синхронизация меню/стоп-листов и ретраи заказов.</p>
+        <div class="mt-3 grid gap-2 md:grid-cols-4">
+          <select v-model="quickRestoMode" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="mock">mock</option>
+            <option value="http">http</option>
+          </select>
+          <input v-model="quickRestoBaseUrl" type="text" placeholder="https://api.quickresto.ru" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <input v-model="quickRestoApiKey" type="text" placeholder="API key" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <label class="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+            <input v-model="quickRestoStrictMode" type="checkbox">
+            strict mode
+          </label>
+        </div>
+        <div class="mt-3 grid gap-2 md:grid-cols-3">
+          <select v-model="quickRestoMappingRestaurantId" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="">Филиал для маппинга</option>
+            <option v-for="restaurant in restaurants" :key="restaurant.id" :value="restaurant.id">{{ restaurant.name }}</option>
+          </select>
+          <input v-model="quickRestoMappingPlaceId" type="text" placeholder="quickresto_place_id" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <button class="rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="saveQuickRestoConnection">Сохранить подключение</button>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runQuickRestoHealth">Проверить подключение</button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runQuickRestoMenuSync(false)">Синхронизировать меню</button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runQuickRestoMenuSync(true)">Dry-run sync</button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runQuickRestoStopListSync">Синхронизировать стоп-листы</button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runQuickRestoRetryOrders">Переотправить проблемные заказы</button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runQuickRestoPromoSync">Синхронизировать промокоды</button>
+          <button class="rounded border border-indigo-300 px-3 py-1.5 text-sm text-indigo-700 hover:bg-indigo-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runQuickRestoSmokeSeed">Smoke-seed mock demo</button>
+        </div>
+        <p class="mt-2 text-xs text-gray-600">Mode: {{ quickRestoInfo.mode }} | Health: {{ quickRestoInfo.healthMessage }}</p>
+        <div class="mt-4 grid gap-3 md:grid-cols-2">
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs font-semibold text-gray-700">Последние sync jobs</p>
+            <div class="mt-2 max-h-52 overflow-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="text-gray-500">
+                  <tr>
+                    <th class="pr-2">Тип</th>
+                    <th class="pr-2">Статус</th>
+                    <th class="pr-2">Режим</th>
+                    <th>Создан</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="job in quickRestoJobs" :key="job.id" class="border-t border-gray-100">
+                    <td class="py-1 pr-2">{{ job.job_type }}</td>
+                    <td class="py-1 pr-2">{{ job.status }}</td>
+                    <td class="py-1 pr-2">{{ job.mode }}</td>
+                    <td class="py-1">{{ formatTs(job.created_at) }}</td>
+                  </tr>
+                  <tr v-if="!quickRestoJobs.length">
+                    <td colspan="4" class="py-2 text-gray-400">Нет записей</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs font-semibold text-gray-700">Последние webhook events</p>
+            <div class="mt-2 max-h-52 overflow-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="text-gray-500">
+                  <tr>
+                    <th class="pr-2">Событие</th>
+                    <th class="pr-2">External ID</th>
+                    <th class="pr-2">Статус</th>
+                    <th>Создан</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="eventItem in quickRestoEvents" :key="eventItem.id" class="border-t border-gray-100">
+                    <td class="py-1 pr-2">{{ eventItem.event_type }}</td>
+                    <td class="py-1 pr-2">{{ eventItem.external_event_id }}</td>
+                    <td class="py-1 pr-2">{{ eventItem.error ? 'error' : eventItem.processed_at ? 'processed' : 'new' }}</td>
+                    <td class="py-1">{{ formatTs(eventItem.created_at) }}</td>
+                  </tr>
+                  <tr v-if="!quickRestoEvents.length">
+                    <td colspan="4" class="py-2 text-gray-400">Нет записей</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </article>
     </div>
   </section>
 </template>
@@ -234,6 +329,16 @@ const telegramChatBindCommand = ref('')
 const telegramChatBindExpiresAt = ref('')
 
 const apiKey = ref('live_12ab34cd56ef78gh')
+const toasts = ref<Array<{ id: string; type: 'ok' | 'error'; message: string }>>([])
+const quickRestoMode = ref<'mock' | 'http'>('mock')
+const quickRestoBaseUrl = ref('')
+const quickRestoApiKey = ref('')
+const quickRestoStrictMode = ref(false)
+const quickRestoMappingRestaurantId = ref('')
+const quickRestoMappingPlaceId = ref('')
+const quickRestoInfo = ref<{ mode: string; healthMessage: string }>({ mode: 'mock', healthMessage: '—' })
+const quickRestoJobs = ref<Array<{ id: string; job_type: string; status: string; mode: string; created_at: string }>>([])
+const quickRestoEvents = ref<Array<{ id: string; event_type: string; external_event_id: string; error: string | null; processed_at: string | null; created_at: string }>>([])
 
 const maskedApiKey = computed(() => `••••••••${apiKey.value.slice(-4)}`)
 const maskedTelegramToken = computed(() => `••••••••${telegramToken.value.slice(-4)}`)
@@ -241,6 +346,23 @@ const maskedTelegramToken = computed(() => `••••••••${telegramTo
 function rotateKey() {
   if (role.value !== 'owner') return
   apiKey.value = `live_${Math.random().toString(36).slice(2, 16)}`
+}
+
+function pushToast(type: 'ok' | 'error', message: string) {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  toasts.value.push({ id, type, message })
+  setTimeout(() => dismissToast(id), type === 'error' ? 12000 : 5000)
+}
+
+function dismissToast(id: string) {
+  toasts.value = toasts.value.filter((t: { id: string }) => t.id !== id)
+}
+
+function formatTs(raw: string | null | undefined) {
+  if (!raw) return '—'
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return raw
+  return d.toLocaleString('ru-RU')
 }
 
 function connectTelegramBot() {
@@ -306,6 +428,104 @@ async function loadNotificationSettings() {
   const payload = await response.json()
   channelPolicy.value = payload.channelPolicy ?? channelPolicy.value
   notificationRestaurants.value = Array.isArray(payload.restaurants) ? payload.restaurants : []
+}
+
+async function loadQuickRestoState() {
+  const response = await fetch('/api/dashboard/integrations/quickresto')
+  if (!response.ok) return
+  const payload = await response.json()
+  const cfg = payload?.config ?? {}
+  quickRestoMode.value = cfg.mode === 'http' ? 'http' : 'mock'
+  quickRestoBaseUrl.value = typeof cfg.baseUrl === 'string' ? cfg.baseUrl : ''
+  quickRestoStrictMode.value = cfg.strictMode === true
+  quickRestoInfo.value = {
+    mode: quickRestoMode.value,
+    healthMessage: cfg.hasApiKey ? 'api key configured' : 'api key is empty',
+  }
+  quickRestoJobs.value = Array.isArray(payload?.jobs) ? payload.jobs : []
+  quickRestoEvents.value = Array.isArray(payload?.events) ? payload.events : []
+}
+
+async function saveQuickRestoConnection() {
+  const restaurantMappings = quickRestoMappingRestaurantId.value && quickRestoMappingPlaceId.value
+    ? [{ restaurantId: quickRestoMappingRestaurantId.value, quickrestoPlaceId: quickRestoMappingPlaceId.value }]
+    : []
+  const response = await fetch('/api/dashboard/integrations/quickresto/connect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mode: quickRestoMode.value,
+      baseUrl: quickRestoBaseUrl.value,
+      apiKey: quickRestoApiKey.value,
+      strictMode: quickRestoStrictMode.value,
+      restaurantMappings,
+    }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    pushToast('error', payload?.statusMessage || 'Не удалось сохранить Quick Resto подключение')
+    return
+  }
+  const isHealthy = payload?.health?.ok === true
+  quickRestoInfo.value = { mode: payload.mode || quickRestoMode.value, healthMessage: payload?.health?.message || 'saved' }
+  if (!isHealthy) {
+    pushToast('error', payload?.health?.message || 'Quick Resto подключен, но health-check не пройден')
+    return
+  }
+  pushToast('ok', 'Quick Resto подключение сохранено и health-check пройден')
+  await loadQuickRestoState()
+}
+
+async function runQuickRestoHealth() {
+  const response = await fetch('/api/dashboard/integrations/quickresto/health-check', { method: 'POST' })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    pushToast('error', payload?.statusMessage || 'Health-check не выполнен')
+    return
+  }
+  quickRestoInfo.value = { mode: payload.mode || quickRestoMode.value, healthMessage: payload.message || 'OK' }
+  pushToast(payload.ok ? 'ok' : 'error', payload.message || 'Health-check завершен')
+}
+
+async function runQuickRestoMenuSync(dryRun: boolean) {
+  const response = await fetch('/api/dashboard/integrations/quickresto/menu-sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dryRun }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) return pushToast('error', payload?.statusMessage || 'Menu sync не выполнен')
+  pushToast('ok', dryRun ? `Dry-run: ${payload?.diff?.length || 0} изменений` : 'Синхронизация меню завершена')
+}
+
+async function runQuickRestoStopListSync() {
+  const response = await fetch('/api/dashboard/integrations/quickresto/stoplist-sync', { method: 'POST' })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) return pushToast('error', payload?.statusMessage || 'Stop-list sync не выполнен')
+  pushToast('ok', 'Стоп-листы синхронизированы')
+}
+
+async function runQuickRestoRetryOrders() {
+  const response = await fetch('/api/dashboard/integrations/quickresto/orders/retry-failed', { method: 'POST' })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) return pushToast('error', payload?.statusMessage || 'Retry failed orders не выполнен')
+  pushToast('ok', `Отправлено: ${payload.sent || 0}, ошибок: ${payload.failed || 0}`)
+}
+
+async function runQuickRestoPromoSync() {
+  const response = await fetch('/api/dashboard/integrations/quickresto/promocodes-sync', { method: 'POST' })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) return pushToast('error', payload?.statusMessage || 'Promo sync не выполнен')
+  pushToast('ok', `Промокодов синхронизировано: ${payload.synced || 0}`)
+  await loadQuickRestoState()
+}
+
+async function runQuickRestoSmokeSeed() {
+  const response = await fetch('/api/dashboard/integrations/quickresto/smoke-seed', { method: 'POST' })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) return pushToast('error', payload?.statusMessage || 'Smoke-seed не выполнен')
+  pushToast('ok', 'Mock smoke-seed успешно создан')
+  await loadQuickRestoState()
 }
 
 async function saveNotificationSettings() {
@@ -415,6 +635,7 @@ onMounted(async () => {
   }
   await loadNotificationSettings()
   await loadNotificationEvents()
+  await loadQuickRestoState()
 })
 
 watch(notificationRestaurantId, () => {

@@ -25,6 +25,7 @@ import { evaluateMenuAvailability, normalizeTimeWindows } from '~/server/utils/m
 import { isOpenNowBySchedule, normalizeWeeklyWorkingHours, resolveEffectiveWorkingHours } from '~/utils/workingHours'
 import { dispatchNotificationEvent } from '~/server/utils/notifications'
 import { resolveDeliveryForPoint } from '~/server/utils/resolveDeliveryForPoint'
+import { enqueueQuickRestoOrderOutbox, getQuickRestoClient } from '~/server/utils/quickresto'
 import {
   getMaxBotTokenForShop,
   validateWebAppInitData,
@@ -859,6 +860,37 @@ export default defineEventHandler(async (event) => {
       customerMaxConversationId: maxConversationId,
     },
   })
+
+  try {
+    const { data: shopRow } = await serviceClient
+      .from('shops')
+      .select('integration_keys')
+      .eq('id', tenantShopId)
+      .maybeSingle()
+    const integrationKeys = (shopRow as any)?.integration_keys ?? {}
+    const { config } = getQuickRestoClient(integrationKeys)
+    if (integrationKeys?.quickresto) {
+      await enqueueQuickRestoOrderOutbox(serviceClient, {
+        shopId: tenantShopId,
+        restaurantId: restaurant.id,
+        orderId,
+        orderNumber,
+        total: grandTotal,
+        items: itemsWithServerPrice.map((line) => ({
+          externalId: typeof line.id === 'string' ? line.id : null,
+          quantity: Math.max(1, Math.floor(Number(line.quantity || 1))),
+          price: Math.max(0, Math.floor(Number(line.price || 0))),
+        })),
+      })
+      await serviceClient
+        .from('orders')
+        .update({ external_status: config.strictMode ? 'queued_strict' : 'queued' })
+        .eq('id', orderId)
+        .eq('shop_id', tenantShopId)
+    }
+  } catch (error) {
+    console.error('quickresto outbox enqueue failed:', error)
+  }
 
   return { ok: true, orderId, orderNumber }
 })
