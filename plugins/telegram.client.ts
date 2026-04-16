@@ -2,7 +2,7 @@ import { setOrderContinuationHint } from '~/composables/useTelegram'
 
 export default defineNuxtPlugin(() => {
   const cartStore = useCartStore()
-  const { webApp, isTelegram, hideMainButton } = useTelegram()
+  const { webApp, isTelegram, hideMainButton, expandMessengerViewport } = useTelegram()
 
   if (!isTelegram.value || !webApp.value) return
 
@@ -51,6 +51,7 @@ export default defineNuxtPlugin(() => {
   }
 
   webApp.value.ready()
+  expandMessengerViewport()
   // По текущему ТЗ в TMA не оформляем заказ и не используем MainButton
   hideMainButton()
 })

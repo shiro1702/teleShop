@@ -192,7 +192,7 @@ const emit = defineEmits<{
   'address-input': []
   'pick-suggestion': [item: DadataSuggestItem]
 }>()
-const activeTab = ref<'saved' | 'new'>('saved')
+const activeTab = ref<'saved' | 'new'>('new')
 
 watch(
   () => props.modelValue,
@@ -202,7 +202,7 @@ watch(
       activeTab.value = props.initialTab
       return
     }
-    activeTab.value = props.addresses.length ? 'saved' : 'new'
+    activeTab.value = 'new'
   },
   { immediate: true },
 )

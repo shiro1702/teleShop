@@ -88,6 +88,16 @@ export function useTelegram() {
     return 'web'
   }
 
+  function expandMessengerViewport() {
+    const app = messengerWebApp.value as { expand?: () => void } | null
+    if (!app || typeof app.expand !== 'function') return
+    try {
+      app.expand()
+    } catch {
+      // ignore bridge-specific expand errors
+    }
+  }
+
   function showMainButton(text: string) {
     if (!webApp.value) return
     webApp.value.MainButton.text = text
@@ -134,6 +144,7 @@ export function useTelegram() {
     messengerInitData,
     buildMessengerAuthHeaders,
     messengerClientChannel,
+    expandMessengerViewport,
     showMainButton,
     hideMainButton,
     onMainButtonClick,

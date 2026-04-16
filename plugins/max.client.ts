@@ -50,6 +50,8 @@ function runMaxCartBridge() {
 }
 
 export default defineNuxtPlugin(() => {
+  const { expandMessengerViewport } = useTelegram()
+  expandMessengerViewport()
   runMaxCartBridge()
   queueMicrotask(runMaxCartBridge)
   setTimeout(runMaxCartBridge, 0)

@@ -1,6 +1,6 @@
 <template>
   <div class="relative z-0">
-    <div ref="mapEl" class="h-64 w-full rounded-lg border border-gray-200 bg-gray-100" />
+    <div ref="mapEl" class="h-64 w-full rounded-lg border border-gray-200 bg-gray-100 lg:h-[420px]" />
     <p class="pointer-events-none absolute bottom-1 right-2 z-[500] rounded bg-white/85 px-1.5 py-0.5 text-[10px] text-gray-600 shadow-sm">
       © OpenStreetMap
     </p>
@@ -44,6 +44,14 @@ let L: typeof import('leaflet') | null = null
 let map: import('leaflet').Map | null = null
 let layers: import('leaflet').Layer[] = []
 let destroyed = false
+
+function invalidateMapSize() {
+  if (!map) return
+  requestAnimationFrame(() => {
+    map?.invalidateSize()
+    setTimeout(() => map?.invalidateSize(), 120)
+  })
+}
 
 function normalizeCoord(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -154,6 +162,7 @@ async function init() {
     maxZoom: 19,
   }).addTo(map)
   draw()
+  invalidateMapSize()
 }
 
 onMounted(() => {
@@ -163,7 +172,10 @@ onMounted(() => {
 
 watch(
   () => [props.branches, props.allZones, props.selectedBranchId, props.allowManualSelect, props.clientLat, props.clientLon, props.clientAddress] as const,
-  () => draw(),
+  () => {
+    draw()
+    invalidateMapSize()
+  },
   { deep: true },
 )
 

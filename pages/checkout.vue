@@ -353,10 +353,22 @@
                   Способ получения
                 </h2>
                 <p
-                  v-if="availableFulfillmentTypes.length === 0"
+                  v-if="!restaurantsLoaded"
                   class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
                 >
-                  Для выбранного ресторана не доступно оформление через delivery/pickup.
+                  Загружаем филиалы и доступные способы получения...
+                </p>
+                <p
+                  v-else-if="restaurants.length === 0"
+                  class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+                >
+                  Для этого ресторана пока не настроены активные филиалы. Выберите другой магазин или проверьте настройки филиалов.
+                </p>
+                <p
+                  v-else-if="availableFulfillmentTypes.length === 0"
+                  class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                >
+                  Для этого магазина сейчас не настроены способы получения.
                 </p>
                 <p
                   v-else-if="availableFulfillmentTypes.length === 1"
@@ -419,7 +431,7 @@
                   </button>
                   <button
                     type="button"
-                    class="text-xs font-medium text-primary hover:underline"
+                    class="inline-flex items-center rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-on-primary transition hover:bg-primary-600"
                     @click="openNewAddressModal"
                   >
                     Ввести новый
@@ -479,8 +491,11 @@
                 v-else-if="hasPickupOption && state.fulfillmentType === 'pickup'"
                 class="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 sm:p-4"
               >
+                <p class="font-medium">
+                  {{ fulfillmentScenarioTitle }}
+                </p>
                 <p>
-                  {{ pickupIntroText }}
+                  {{ fulfillmentScenarioDescription }}
                 </p>
 
                 <div
@@ -514,17 +529,6 @@
                   </div>
                 </div>
 
-                <div v-else-if="selectedPickupPoint" class="rounded-lg border border-emerald-200 bg-white p-3 text-gray-900">
-                  <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700/80">
-                    Точка самовывоза
-                  </p>
-                  <p class="mt-1 text-sm font-medium">
-                    {{ selectedPickupPoint.name }}
-                  </p>
-                  <p class="text-xs text-gray-600">
-                    {{ selectedPickupPoint.address }}
-                  </p>
-                </div>
               </section>
 
               <section
@@ -532,10 +536,10 @@
                 class="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 sm:p-4"
               >
                 <p class="font-medium">
-                  Оформление в зале
+                  {{ fulfillmentScenarioTitle }}
                 </p>
                 <p class="text-amber-900/80">
-                  Адрес доставки не требуется. Мы передадим заказ в работу и отправим подтверждение после оформления.
+                  {{ fulfillmentScenarioDescription }}
                 </p>
               </section>
 
@@ -544,25 +548,102 @@
                   <h2 class="text-sm font-semibold text-gray-900">
                     Ресторан
                   </h2>
-                  <select
-                    v-model="selectedRestaurantId"
-                    class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  <p v-if="restaurants.length > 0" class="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    {{ currentRestaurantModeLabel }}
+                  </p>
+                  <p
+                    v-if="!restaurantsLoaded"
+                    class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
                   >
-                    <option v-for="r in restaurants" :key="r.id" :value="r.id">
-                      {{ r.name }} — {{ r.address }}
-                    </option>
-                  </select>
-                  <div class="rounded-lg border border-gray-200 bg-white p-2">
-                    <CheckoutDeliveryBranchesMap
-                      :branches="restaurants"
-                      :all-zones="allRestaurantZones"
-                      :selected-branch-id="selectedRestaurantId"
-                      :allow-manual-select="true"
-                      :client-lat="mapClientLat"
-                      :client-lon="mapClientLon"
-                      :client-address="mapClientAddress"
-                      @select-branch="selectedRestaurantId = $event"
-                    />
+                    Загружаем список филиалов...
+                  </p>
+                  <p
+                    v-else-if="restaurants.length === 0"
+                    class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+                  >
+                    Нет активных филиалов с адресом и картой для оформления заказа.
+                  </p>
+                  <div v-if="restaurants.length > 0" class="grid gap-3 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] lg:items-start">
+                    <div class="order-2 space-y-2 lg:order-1">
+                      <div
+                        v-for="branch in restaurants"
+                        :key="branch.id"
+                        class="rounded-xl border px-3 py-3 text-sm"
+                        :class="branchCardClass(branch)"
+                        @click="handleBranchCardClick(branch.id)"
+                      >
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="min-w-0">
+                            <p class="font-medium text-gray-900">
+                              {{ branch.name }}
+                            </p>
+                            <p class="text-xs text-gray-600">
+                              {{ branch.address || 'Адрес филиала пока не указан' }}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            class="shrink-0 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium transition"
+                            :class="branchSelectButtonClass(branch)"
+                            :disabled="!branchSupportsCurrentFulfillment(branch)"
+                            @click.stop="handleBranchCardClick(branch.id)"
+                            tabindex="-1"
+                          >
+                            {{
+                              branch.id === selectedRestaurantId
+                                ? 'Выбран'
+                                : branchSupportsCurrentFulfillment(branch)
+                                  ? 'Выбрать'
+                                  : 'Недоступен'
+                            }}
+                          </button>
+                        </div>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                          <span
+                            v-if="branch.supports_delivery"
+                            class="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700"
+                          >
+                            Доставка
+                          </span>
+                          <span
+                            v-if="branch.supports_pickup"
+                            class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"
+                          >
+                            Самовывоз
+                          </span>
+                          <span
+                            v-if="branch.supports_qr_menu"
+                            class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700"
+                          >
+                            В ресторане
+                          </span>
+                          <span
+                            v-if="!branch.supports_delivery && !branch.supports_pickup && !branch.supports_qr_menu"
+                            class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600"
+                          >
+                            Способы получения не настроены
+                          </span>
+                          <span
+                            v-else-if="!branchSupportsCurrentFulfillment(branch)"
+                            class="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700"
+                          >
+                            Недоступен для режима «{{ summaryDeliveryLabel }}»
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="order-1 rounded-lg border border-gray-200 bg-white p-2 lg:order-2 lg:sticky lg:top-4">
+                      <CheckoutDeliveryBranchesMap
+                        :branches="restaurants"
+                        :all-zones="allRestaurantZones"
+                        :selected-branch-id="selectedRestaurantId"
+                        :allow-manual-select="false"
+                        :client-lat="mapClientLat"
+                        :client-lon="mapClientLon"
+                        :client-address="mapClientAddress"
+                      />
+                    </div>
                   </div>
                 </div>
               </section>
@@ -980,7 +1061,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRef, w
 import { useRoute, useRouter } from 'vue-router'
 import { useCheckoutAddress } from '~/composables/useCheckoutAddress'
 import { useCheckoutTenantRestaurants } from '~/composables/useCheckoutTenantRestaurants'
-import type { FulfillmentType } from '~/composables/useCheckoutTenantRestaurants'
+import type { DineInHallMode, FulfillmentType } from '~/composables/useCheckoutTenantRestaurants'
 import { useMessengerStorage } from '~/composables/useMessengerStorage'
 import {
   clearOrderContinuationHint,
@@ -999,6 +1080,7 @@ const {
   messengerInitData,
   messengerClientChannel,
   buildMessengerAuthHeaders,
+  expandMessengerViewport,
 } = useTelegram()
 const { canUseMessengerStorage, setItem, getItem } = useMessengerStorage()
 const supabaseUser = useSupabaseUser()
@@ -1106,7 +1188,7 @@ let promoPreviewTimer: ReturnType<typeof setTimeout> | null = null
 const changeFrom = ref<string>('')
 const showClearCartModal = ref(false)
 const showAddressModal = ref(false)
-const addressModalInitialTab = ref<'saved' | 'new'>('saved')
+const addressModalInitialTab = ref<'saved' | 'new'>('new')
 const hasShownAddressModalOnCurrentEntry = ref(false)
 const step1InlineNavRef = ref<HTMLElement | null>(null)
 const step2ActionsRef = ref<HTMLElement | null>(null)
@@ -1188,6 +1270,7 @@ const {
   selectedRestaurantId,
   selectedPickupPoint,
   restaurants,
+  restaurantsLoaded,
   restaurantZones,
   allRestaurantZones,
   pickupPoints,
@@ -1197,7 +1280,9 @@ const {
   hasQrMenuOption,
   pickupIntroText,
   organizationTimezone,
+  dineInHallMode,
   selectedRestaurantWorkingHours,
+  getRestaurantFulfillmentTypes,
   loadRestaurants,
 } = useCheckoutTenantRestaurants({
   shopIdFromRoute,
@@ -1484,9 +1569,49 @@ async function saveAddressFromModal() {
 }
 
 function handleBranchPickFromMap(branchId: string) {
-  if (state.fulfillmentType === 'delivery') return
   if (!restaurants.value.some((r) => r.id === branchId)) return
+  const branch = restaurants.value.find((r) => r.id === branchId) ?? null
+  if (!branchSupportsCurrentFulfillment(branch)) return
   selectedRestaurantId.value = branchId
+}
+
+function branchSupportsFulfillment(
+  branch: (typeof restaurants.value)[number] | null | undefined,
+  fulfillment: FulfillmentType,
+) {
+  return getRestaurantFulfillmentTypes(branch ?? null).includes(fulfillment)
+}
+
+function branchSupportsCurrentFulfillment(branch: (typeof restaurants.value)[number] | null | undefined) {
+  return branchSupportsFulfillment(branch, state.fulfillmentType)
+}
+
+function handleBranchCardClick(branchId: string) {
+  handleBranchPickFromMap(branchId)
+}
+
+function branchCardClass(branch: (typeof restaurants.value)[number]) {
+  const isSelected = branch.id === selectedRestaurantId.value
+  const isEnabled = branchSupportsCurrentFulfillment(branch)
+  if (!isEnabled) {
+    return 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
+  }
+  if (isSelected) {
+    return 'border-primary bg-primary-50 cursor-pointer'
+  }
+  return 'border-gray-200 bg-white cursor-pointer hover:border-primary hover:bg-primary-50'
+}
+
+function branchSelectButtonClass(branch: (typeof restaurants.value)[number]) {
+  const isSelected = branch.id === selectedRestaurantId.value
+  const isEnabled = branchSupportsCurrentFulfillment(branch)
+  if (!isEnabled) {
+    return 'border-gray-200 text-gray-400 cursor-not-allowed'
+  }
+  if (isSelected) {
+    return 'border-primary bg-white text-primary'
+  }
+  return 'text-gray-700 hover:border-primary hover:text-primary'
 }
 
 function onModalAddressLineInput(value: string) {
@@ -1597,6 +1722,14 @@ const canPlaceOrder = computed(() =>
   !isPlacing.value && !!cartStore.items.length && !!canGoToSummary.value && isRestaurantOpenNow.value,
 )
 
+const currentRestaurantModeLabel = computed(() =>
+  state.fulfillmentType === 'pickup'
+    ? 'заберу тут'
+    : state.fulfillmentType === 'qr-menu'
+      ? 'буду есть тут'
+      : 'доставим отсюда',
+)
+
 const summaryDeliveryLabel = computed(() =>
   state.fulfillmentType === 'pickup'
     ? 'Самовывоз'
@@ -1604,6 +1737,30 @@ const summaryDeliveryLabel = computed(() =>
       ? 'В\u00A0ресторане'
       : 'Доставка',
 )
+
+const fulfillmentScenarioTitle = computed(() =>
+  state.fulfillmentType === 'pickup'
+    ? 'Как пройдёт самовывоз'
+    : state.fulfillmentType === 'qr-menu'
+      ? 'Как пройдёт заказ в ресторане'
+      : 'Как пройдёт доставка',
+)
+
+const fulfillmentScenarioDescription = computed(() => {
+  if (state.fulfillmentType === 'pickup') {
+    return 'Сделайте заказ и заберите его в выбранном филиале. Мы подготовим заказ и отправим подтверждение, когда можно будет подходить.'
+  }
+  if (state.fulfillmentType === 'qr-menu') {
+    if (dineInHallMode.value === 'pickup-point') {
+      return 'Сделайте заказ для этого филиала, а дальше мы передадим его в работу в ресторан. Когда заказ будет готов, вы сможете забрать его в зоне выдачи.'
+    }
+    if (dineInHallMode.value === 'to-table') {
+      return 'Сделайте заказ для этого филиала, а дальше мы передадим его в работу в ресторан. Когда заказ будет готов, его принесут к вашему столику.'
+    }
+    return 'Сделайте заказ для этого филиала, а дальше мы передадим его в работу в ресторан.'
+  }
+  return 'Укажите адрес доставки, а мы определим подходящий филиал и рассчитаем условия доставки для вашего заказа.'
+})
 
 const displayGoodsTotal = computed(() =>
   promoPreview.value?.ok && typeof promoPreview.value.payableGoods === 'number'
@@ -2320,6 +2477,9 @@ watch(
 )
 
 onMounted(async () => {
+  if (isMessengerMiniApp.value) {
+    expandMessengerViewport()
+  }
   if (!hasTenantRouteContext.value && shopIdFromRoute.value) {
     try {
       const canonical = await $fetch<{ ok: boolean; cartPath: string }>('/api/tenant/resolve-canonical', {
@@ -2348,6 +2508,16 @@ onMounted(async () => {
 
   await loadRestaurants()
 })
+
+watch(
+  () => [showAddressModal.value, state.currentStep, restaurants.value.length] as const,
+  async ([opened, step]) => {
+    if (!isMessengerMiniApp.value) return
+    if (!opened || step !== 2) return
+    await nextTick()
+    expandMessengerViewport()
+  },
+)
 
 watch(shopIdFromRoute, async () => {
   applyCartScope()

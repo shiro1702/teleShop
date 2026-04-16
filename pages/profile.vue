@@ -2,67 +2,142 @@
   <div class="profile-page">
     <h1>Профиль</h1>
 
-    <div v-if="!user" class="card">
-      <p>Вы ещё не вошли на сайт.</p>
-      <p class="hint">
-        Выберите способ входа: Telegram или MAX.
-      </p>
+    <div class="card">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2>Данные пользователя</h2>
+          <p class="hint">
+            В mini app показываем всё, что уже знаем о пользователе из мессенджера, аккаунта и сохранённой анкеты.
+          </p>
+        </div>
+        <span v-if="isMessengerMiniApp" class="badge badge-messenger">
+          Mini App
+        </span>
+      </div>
+
+      <dl class="info mt-4">
+        <div>
+          <dt>Имя</dt>
+          <dd>{{ resolvedProfileName || 'Пока не указано' }}</dd>
+        </div>
+        <div>
+          <dt>Телефон</dt>
+          <dd>{{ profileForm.phone || 'Пока не указан' }}</dd>
+        </div>
+        <div>
+          <dt>Email</dt>
+          <dd>{{ resolvedEmail || 'Пока не указан' }}</dd>
+        </div>
+        <div>
+          <dt>Telegram</dt>
+          <dd>{{ telegramDisplay }}</dd>
+        </div>
+        <div>
+          <dt>MAX</dt>
+          <dd>{{ maxDisplay }}</dd>
+        </div>
+        <div v-if="messengerDebugLabel">
+          <dt>Источник</dt>
+          <dd>{{ messengerDebugLabel }}</dd>
+        </div>
+      </dl>
+
+      <div v-if="!hasAnyProfileData" class="empty-state">
+        <p class="font-medium text-gray-900">
+          Пока о пользователе нет данных.
+        </p>
+        <p class="hint">
+          Можно заполнить анкету ниже или запросить авторизацию через бота в один клик.
+        </p>
+      </div>
+
       <div class="mt-4 flex flex-col gap-2 sm:flex-row">
-        <button type="button" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white" @click="showAuthModal = true">
-          Войти
+        <button
+          v-if="telegramBotUrl"
+          type="button"
+          class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white"
+          @click="openTelegramAuth"
+        >
+          {{ isMessengerMiniApp ? 'Запросить данные через Telegram' : (telegramId !== null ? 'Перепривязать Telegram' : 'Войти через Telegram') }}
+        </button>
+        <button
+          v-if="maxBotUrl"
+          type="button"
+          class="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary"
+          @click="openMaxAuth"
+        >
+          {{ isMessengerMiniApp ? 'Запросить данные через MAX' : (maxUserId ? 'Перепривязать MAX' : 'Войти через MAX') }}
+        </button>
+        <button
+          v-if="!isMessengerMiniApp && !user"
+          type="button"
+          class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
+          @click="showAuthModal = true"
+        >
+          Выбрать способ входа
         </button>
       </div>
     </div>
 
-    <template v-else>
-      <div class="card">
-        <h2>Текущий пользователь</h2>
-        <dl class="info">
-          <div>
-            <dt>User ID</dt>
-            <dd>{{ userId }}</dd>
-          </div>
-          <div v-if="telegramId !== null">
-            <dt>Telegram ID</dt>
-            <dd>{{ telegramId }}</dd>
-          </div>
-          <div v-else>
-            <dt>Telegram</dt>
-            <dd>Ещё не привязан</dd>
-          </div>
-          <div v-if="maxUserId">
-            <dt>MAX ID</dt>
-            <dd>{{ maxUserId }}</dd>
-          </div>
-          <div v-else>
-            <dt>MAX</dt>
-            <dd>Ещё не привязан</dd>
-          </div>
-        </dl>
-        <p class="hint">
-          Telegram‑аккаунт привязывается через бота и страницу привязки, после чего заказы с сайта будут
-          уведомлять вас в Telegram.
-        </p>
-        <div class="mt-4 flex flex-col gap-2 sm:flex-row">
-          <button
-            v-if="telegramBotUrl"
-            type="button"
-            class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white"
-            @click="openTelegramAuth"
-          >
-            {{ telegramId !== null ? 'Перепривязать Telegram' : 'Привязать Telegram' }}
-          </button>
-          <button
-            v-if="maxBotUrl"
-            type="button"
-            class="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary"
-            @click="openMaxAuth"
-          >
-            {{ maxUserId ? 'Перепривязать MAX' : 'Привязать MAX' }}
-          </button>
+    <div class="card">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2>Анкета для заказа</h2>
+          <p class="hint">
+            Эти данные можно заранее заполнить в mini app, чтобы оформление заказа было быстрее.
+          </p>
         </div>
+        <span v-if="saveStatus" class="text-xs text-gray-500">{{ saveStatus }}</span>
       </div>
 
+      <div class="mt-4 grid gap-3">
+        <label class="field">
+          <span>Имя</span>
+          <input
+            v-model="profileForm.name"
+            type="text"
+            placeholder="Как к вам обращаться"
+          >
+        </label>
+        <label class="field">
+          <span>Телефон</span>
+          <input
+            v-model="profileForm.phone"
+            type="tel"
+            placeholder="+7 900 000-00-00"
+          >
+        </label>
+        <label class="field">
+          <span>Комментарий</span>
+          <textarea
+            v-model="profileForm.notes"
+            rows="3"
+            placeholder="Например: домофон, этаж, удобный способ связи"
+          ></textarea>
+        </label>
+      </div>
+
+      <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="isSaving"
+          @click="saveProfileDraft"
+        >
+          {{ isSaving ? 'Сохраняем...' : 'Сохранить данные' }}
+        </button>
+        <button
+          v-if="telegramBotUrl || maxBotUrl"
+          type="button"
+          class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
+          @click="showAuthModal = true"
+        >
+          Заполнить через бота
+        </button>
+      </div>
+    </div>
+
+    <template v-if="user">
       <div class="card">
         <h2>Бонусы по ресторанам</h2>
         <p class="hint mb-4">
@@ -169,10 +244,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useSupabaseUser } from '#imports'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useSupabaseClient, useSupabaseUser } from '#imports'
 import { useRoute } from 'vue-router'
 import { useTenant } from '../composables/useTenant'
+import { useTelegram } from '../composables/useTelegram'
+import { useMessengerStorage } from '../composables/useMessengerStorage'
 
 declare const useRuntimeConfig: any
 declare const navigateTo: (to: any) => Promise<void> | void
@@ -186,9 +263,12 @@ type BalanceRow = {
 }
 
 const user = useSupabaseUser()
+const supabase = useSupabaseClient()
 const route = useRoute()
 const { tenantPath, tenantKey } = useTenant()
 const config = useRuntimeConfig()
+const { isMessengerMiniApp, isTelegram, isMaxMiniApp, messengerWebApp } = useTelegram()
+const { canUseMessengerStorage, getItem, setItem } = useMessengerStorage()
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() => (telegramBotName ? `https://t.me/${telegramBotName}` : null))
 const maxBotUrl = computed(() => {
@@ -197,6 +277,21 @@ const maxBotUrl = computed(() => {
   return trimmed || null
 })
 const showAuthModal = ref(false)
+const isSaving = ref(false)
+const saveStatus = ref('')
+
+type ProfileDraft = {
+  name: string
+  phone: string
+  notes: string
+}
+
+const PROFILE_DRAFT_STORAGE_KEY = 'teleshop_profile_draft'
+const profileForm = reactive<ProfileDraft>({
+  name: '',
+  phone: '',
+  notes: '',
+})
 
 const userId = computed<string | null>(() => {
   const raw = (user.value as any)?.sub
@@ -218,6 +313,170 @@ const maxUserId = computed<string | null>(() => {
   return null
 })
 
+const authMetadata = computed<Record<string, any>>(() => ((user.value as any)?.user_metadata ?? {}) as Record<string, any>)
+
+const messengerUser = computed<Record<string, any> | null>(() => {
+  const raw = messengerWebApp.value?.initDataUnsafe?.user
+  return raw && typeof raw === 'object' ? (raw as Record<string, any>) : null
+})
+
+const resolvedEmail = computed<string | null>(() => {
+  const raw = (user.value as any)?.email
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : null
+})
+
+const resolvedProfileName = computed<string>(() => {
+  const candidates = [
+    profileForm.name,
+    authMetadata.value.full_name,
+    authMetadata.value.name,
+    authMetadata.value.first_name,
+    [messengerUser.value?.first_name, messengerUser.value?.last_name].filter(Boolean).join(' '),
+    messengerUser.value?.username ? `@${messengerUser.value.username}` : '',
+  ]
+  for (const item of candidates) {
+    if (typeof item === 'string' && item.trim()) return item.trim()
+  }
+  return ''
+})
+
+const telegramDisplay = computed(() => {
+  if (telegramId.value !== null) return `Привязан, ID ${telegramId.value}`
+  if (isTelegram.value && messengerUser.value?.id) {
+    const username = typeof messengerUser.value.username === 'string' && messengerUser.value.username.trim()
+      ? ` (@${messengerUser.value.username.trim()})`
+      : ''
+    return `Mini App user ID ${messengerUser.value.id}${username}`
+  }
+  return 'Не подключён'
+})
+
+const maxDisplay = computed(() => {
+  if (maxUserId.value) return `Привязан, ID ${maxUserId.value}`
+  if (isMaxMiniApp.value && messengerUser.value?.id) {
+    return `Mini App user ID ${messengerUser.value.id}`
+  }
+  return 'Не подключён'
+})
+
+const messengerDebugLabel = computed(() => {
+  if (isTelegram.value) return 'Telegram Mini App'
+  if (isMaxMiniApp.value) return 'MAX Mini App'
+  if (user.value) return 'Аккаунт сайта'
+  return ''
+})
+
+const hasAnyProfileData = computed(() => {
+  return Boolean(
+    resolvedProfileName.value
+    || profileForm.phone.trim()
+    || resolvedEmail.value
+    || telegramId.value !== null
+    || maxUserId.value
+    || messengerUser.value?.id,
+  )
+})
+
+function profileDraftStorageKey() {
+  const shopRef =
+    (typeof route.query.shop_id === 'string' && route.query.shop_id.trim())
+    || tenantKey.value?.trim()
+    || 'default'
+  return `${PROFILE_DRAFT_STORAGE_KEY}:${shopRef}`
+}
+
+function applyDraft(draft: Partial<ProfileDraft> | null | undefined) {
+  if (!draft || typeof draft !== 'object') return
+  if (typeof draft.name === 'string') profileForm.name = draft.name
+  if (typeof draft.phone === 'string') profileForm.phone = draft.phone
+  if (typeof draft.notes === 'string') profileForm.notes = draft.notes
+}
+
+function hydrateProfileFormFromKnownSources() {
+  if (!profileForm.name.trim()) {
+    const fallbackName = [
+      authMetadata.value.full_name,
+      authMetadata.value.name,
+      [messengerUser.value?.first_name, messengerUser.value?.last_name].filter(Boolean).join(' '),
+    ].find((value) => typeof value === 'string' && value.trim())
+    if (typeof fallbackName === 'string') profileForm.name = fallbackName.trim()
+  }
+  if (!profileForm.phone.trim() && typeof authMetadata.value.phone === 'string') {
+    profileForm.phone = authMetadata.value.phone.trim()
+  }
+  if (!profileForm.notes.trim() && typeof authMetadata.value.order_notes === 'string') {
+    profileForm.notes = authMetadata.value.order_notes.trim()
+  }
+}
+
+async function loadProfileDraft() {
+  let parsed: Partial<ProfileDraft> | null = null
+  if (canUseMessengerStorage()) {
+    try {
+      const raw = await getItem(profileDraftStorageKey())
+      parsed = raw ? JSON.parse(raw) : null
+    } catch {
+      parsed = null
+    }
+  }
+  if (!parsed && process.client) {
+    try {
+      const raw = localStorage.getItem(profileDraftStorageKey())
+      parsed = raw ? JSON.parse(raw) : null
+    } catch {
+      parsed = null
+    }
+  }
+  applyDraft(parsed)
+  hydrateProfileFormFromKnownSources()
+}
+
+async function persistProfileDraft(draft: ProfileDraft) {
+  const data = JSON.stringify(draft)
+  if (process.client) {
+    try {
+      localStorage.setItem(profileDraftStorageKey(), data)
+    } catch {
+      // ignore
+    }
+  }
+  if (canUseMessengerStorage()) {
+    await setItem(profileDraftStorageKey(), data)
+  }
+}
+
+async function saveProfileDraft() {
+  isSaving.value = true
+  saveStatus.value = ''
+  const payload: ProfileDraft = {
+    name: profileForm.name.trim(),
+    phone: profileForm.phone.trim(),
+    notes: profileForm.notes.trim(),
+  }
+  try {
+    await persistProfileDraft(payload)
+    if (user.value) {
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          ...authMetadata.value,
+          full_name: payload.name || null,
+          phone: payload.phone || null,
+          order_notes: payload.notes || null,
+        },
+      })
+      if (error) throw error
+    }
+    saveStatus.value = 'Сохранено'
+  } catch {
+    saveStatus.value = 'Не удалось сохранить'
+  } finally {
+    isSaving.value = false
+    setTimeout(() => {
+      if (saveStatus.value === 'Сохранено') saveStatus.value = ''
+    }, 2200)
+  }
+}
+
 const searchInput = ref('')
 const debouncedSearch = ref('')
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -233,6 +492,14 @@ watch(searchInput, (v: string) => {
 onBeforeUnmount(() => {
   if (debounceTimer) clearTimeout(debounceTimer)
 })
+
+onMounted(() => {
+  void loadProfileDraft()
+})
+
+watch([user, messengerUser], () => {
+  hydrateProfileFormFromKnownSources()
+}, { immediate: true })
 
 const page = ref(1)
 const pageSize = 10
@@ -385,6 +652,8 @@ async function openMaxAuth() {
   max-width: 640px;
   margin: 0 auto;
   padding: 2.5rem 1.5rem;
+  display: grid;
+  gap: 1rem;
 }
 
 h1 {
@@ -414,6 +683,21 @@ h1 {
   margin-bottom: 0.75rem;
 }
 
+.badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-messenger {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .info dt {
   font-weight: 500;
   color: #4b5563;
@@ -427,5 +711,38 @@ h1 {
 .hint {
   font-size: 0.85rem;
   color: #6b7280;
+}
+
+.field {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: #374151;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid #d1d5db;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.95rem;
+  color: #111827;
+  background: #ffffff;
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--color-primary, #2563eb);
+  box-shadow: 0 0 0 1px var(--color-primary, #2563eb);
+}
+
+.empty-state {
+  margin-top: 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  padding: 0.9rem 1rem;
 }
 </style>
