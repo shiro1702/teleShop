@@ -334,7 +334,7 @@ function paymentLabel(method: string) {
 
 function fulfillmentLabel(type: string) {
   if (type === 'pickup') return 'Самовывоз'
-  if (type === 'qr-menu') return 'В ресторане'
+  if (type === 'qr-menu') return 'В\u00A0ресторане'
   return 'Доставка'
 }
 

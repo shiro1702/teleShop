@@ -120,7 +120,7 @@
       >
         <div class="border-b border-gray-100 px-4 py-3 sm:px-6">
           <h2 class="text-sm font-semibold text-gray-900">
-            Карта: в ресторане
+            Карта: в&nbsp;ресторане
           </h2>
           <p class="mt-0.5 text-xs text-gray-500">
             Заведения, где можно заказать в зале (отдельно от пунктов выдачи самовывоза).

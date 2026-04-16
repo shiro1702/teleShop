@@ -223,3 +223,23 @@ function onCommentInput(event: Event) {
   emit('update:comment', value)
 }
 </script>
+
+<style scoped>
+.cart-enter-active,
+.cart-leave-active {
+  transition: opacity 0.22s ease;
+}
+.cart-enter-from,
+.cart-leave-to {
+  opacity: 0;
+}
+.cart-enter-active > div:last-child,
+.cart-leave-active > div:last-child {
+  transition: transform 0.24s ease, opacity 0.24s ease;
+}
+.cart-enter-from > div:last-child,
+.cart-leave-to > div:last-child {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+}
+</style>

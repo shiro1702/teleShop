@@ -1,5 +1,17 @@
 <template>
   <div class="min-h-screen" :style="pageStyle">
+    <div class="pointer-events-none fixed inset-x-0 top-20 z-[95] mx-auto flex w-full max-w-md flex-col gap-2 px-4">
+      <TransitionGroup name="toast">
+        <div
+          v-for="toast in promoToasts"
+          :key="toast.id"
+          class="pointer-events-auto rounded-lg border px-3 py-2 text-sm shadow-lg"
+          :class="toast.kind === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'"
+        >
+          {{ toast.message }}
+        </div>
+      </TransitionGroup>
+    </div>
     <!-- Модалка подтверждения очистки корзины -->
     <Teleport to="body">
       <Transition name="cart">
@@ -142,11 +154,14 @@
             </div>
             <template v-else>
               <ul class="space-y-4">
+                <TransitionGroup name="cart-item" tag="div" class="space-y-4">
                 <CartItem
                   v-for="item in cartStore.items"
                   :key="item.cartItemId"
                   :item="item"
+                  @edit="openEditItemModal"
                 />
+                </TransitionGroup>
                 <button
                   type="button"
                   class="w-full rounded-lg border border-red-200 bg-white px-4 py-3 text-base font-medium text-red-600 transition hover:bg-red-50 active:bg-red-100"
@@ -159,7 +174,7 @@
               <div v-if="cartStore.items.length > 0" class="mt-4 space-y-3 border-t pt-4" :style="{ borderColor }">
                 <label class="block text-sm">
                   <span :style="{ color: mutedTextColor }">Промокод</span>
-                  <div class="mt-1 flex flex-col gap-2 sm:flex-row">
+                  <div class="mt-1 flex gap-2 flex-row">
                     <input
                       v-model="promoCodeInput"
                       class="themed-input flex-1 rounded-lg border px-3 py-2"
@@ -182,12 +197,16 @@
                     </button>
                   </div>
                 </label>
-                <p v-if="promoError" class="text-sm text-red-600">
-                  {{ promoError }}
-                </p>
-                <p v-else-if="promoSuccess" class="text-sm text-emerald-700">
-                  {{ promoSuccess }}
-                </p>
+                <Transition name="collapse-fade" mode="out-in">
+                  <p
+                    v-if="promoError || promoSuccess"
+                    :key="promoError ? `promo-error-${promoError}` : `promo-success-${promoSuccess}`"
+                    class="text-sm"
+                    :class="promoError ? 'text-red-600' : 'text-emerald-700'"
+                  >
+                    {{ promoError || promoSuccess }}
+                  </p>
+                </Transition>
                 <div v-if="isAuthorizedForOrder && loyaltyBalance !== null" class="text-sm">
                   <div v-if="promoPreview?.bonusesEnabled === false" class="text-xs" :style="{ color: mutedTextColor }">
                     Бонусная программа временно отключена в настройках ресторана.
@@ -380,7 +399,7 @@
                       : 'text-gray-600 hover:bg-gray-100'"
                     @click="state.fulfillmentType = 'qr-menu'"
                   >
-                    В ресторане
+                    В&nbsp;ресторане
                   </button>
                 </div>
               </section>
@@ -574,26 +593,28 @@
                     </div>
                   </div>
                 </label>
-                <div
-                  v-if="state.paymentMethod === 'cash'"
-                  class="mt-1 space-y-1 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700"
-                >
-                  <label class="flex flex-col gap-1">
-                    <span>С какой суммы подготовить сдачу (необязательно)</span>
-                    <div class="flex items-center gap-2">
-                      <input
-                        v-model="changeFrom"
-                        type="number"
-                        min="0"
-                        step="1"
-                        inputmode="numeric"
-                        class="w-32 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                        placeholder="2000"
-                      >
-                      <span class="text-gray-500">₽</span>
-                    </div>
-                  </label>
-                </div>
+                <Transition name="collapse-fade">
+                  <div
+                    v-if="state.paymentMethod === 'cash'"
+                    class="mt-1 space-y-1 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700"
+                  >
+                    <label class="flex flex-col gap-1">
+                      <span>С какой суммы подготовить сдачу (необязательно)</span>
+                      <div class="flex items-center gap-2">
+                        <input
+                          v-model="changeFrom"
+                          type="number"
+                          min="0"
+                          step="1"
+                          inputmode="numeric"
+                          class="w-32 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                          placeholder="2000"
+                        >
+                        <span class="text-gray-500">₽</span>
+                      </div>
+                    </label>
+                  </div>
+                </Transition>
                 <label class="flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm">
                   <div class="flex items-center gap-2">
                     <input
@@ -801,23 +822,25 @@
     </Transition>
 
     <Teleport to="body">
-      <div v-if="showAuthModal" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/40" @click="closeAuthModal" />
-        <div class="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
-          <h3 class="text-base font-semibold text-gray-900">Выберите способ входа</h3>
-          <p class="mt-1 text-sm text-gray-600">
-            {{ authModalMode === 'auth' ? 'Авторизация для оформления заказа.' : 'Продолжение в выбранном боте.' }}
-          </p>
-          <div class="mt-4 space-y-2">
-            <button v-if="telegramBotUrl" type="button" class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white" @click="runAuthAction('telegram')">
-              {{ authModalMode === 'auth' ? 'Войти через Telegram' : 'Продолжить в Telegram' }}
-            </button>
-            <button v-if="maxBotUrl" type="button" class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary" @click="runAuthAction('max')">
-              {{ authModalMode === 'auth' ? 'Войти через MAX' : 'Продолжить в MAX' }}
-            </button>
+      <Transition name="modal-fade">
+        <div v-if="showAuthModal" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/40" @click="closeAuthModal" />
+          <div class="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl modal-panel">
+            <h3 class="text-base font-semibold text-gray-900">Выберите способ входа</h3>
+            <p class="mt-1 text-sm text-gray-600">
+              {{ authModalMode === 'auth' ? 'Авторизация для оформления заказа.' : 'Продолжение в выбранном боте.' }}
+            </p>
+            <div class="mt-4 space-y-2">
+              <button v-if="telegramBotUrl" type="button" class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white" @click="runAuthAction('telegram')">
+                {{ authModalMode === 'auth' ? 'Войти через Telegram' : 'Продолжить в Telegram' }}
+              </button>
+              <button v-if="maxBotUrl" type="button" class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary" @click="runAuthAction('max')">
+                {{ authModalMode === 'auth' ? 'Войти через MAX' : 'Продолжить в MAX' }}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </Transition>
     </Teleport>
     <CheckoutDeliveryAddressModal
       v-model="showAddressModal"
@@ -845,6 +868,110 @@
       @update:comment="comment = $event"
       @select-branch="handleBranchPickFromMap"
     />
+    <Teleport to="body">
+      <Transition name="product">
+        <div
+          v-if="editingItemProduct"
+          class="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div class="absolute inset-0" @click="closeEditItemModal" />
+          <div
+            class="relative max-h-[90vh] w-full max-w-md overflow-hidden rounded-t-2xl shadow-xl sm:rounded-2xl flex flex-col"
+            :style="cardStyle"
+          >
+            <button
+              type="button"
+              class="absolute right-3 top-3 z-10 rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+              aria-label="Закрыть"
+              @click="closeEditItemModal"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div class="h-48 w-full shrink-0 overflow-hidden sm:h-56" :style="{ backgroundColor: cardBgColor }">
+              <img :src="editingItemProduct.image" :alt="editingItemProduct.name" class="h-full w-full object-cover">
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+              <div>
+                <h2 class="text-lg font-semibold sm:text-xl" :style="{ color: mainTextColor }">{{ editingItemProduct.name }}</h2>
+                <p v-if="editingItemProduct.description" class="mt-1 text-sm" :style="{ color: mutedTextColor }">
+                  {{ editingItemProduct.description }}
+                </p>
+              </div>
+              <div v-if="editingItemProduct.parameters?.length" class="space-y-4 pt-2">
+                <div v-for="group in editingItemProduct.parameters" :key="group.id" class="space-y-2">
+                  <div class="flex items-center justify-between">
+                    <h3 class="font-medium text-sm" :style="{ color: mainTextColor }">{{ group.name }}</h3>
+                    <span v-if="group.isRequired" class="text-[10px] uppercase tracking-wider text-red-500 font-semibold bg-red-50 px-2 py-0.5 rounded">Обязательно</span>
+                  </div>
+                  <div class="flex flex-wrap gap-2 w-full">
+                    <label
+                      v-for="opt in group.options"
+                      :key="opt.id"
+                      class="relative flex-1 min-w-[80px] flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition-colors text-center"
+                      :style="{
+                        borderColor: isEditParameterSelected(group.id, opt.id) ? 'var(--color-primary)' : borderColor,
+                        backgroundColor: isEditParameterSelected(group.id, opt.id) ? 'var(--color-primary)' : 'transparent',
+                        color: isEditParameterSelected(group.id, opt.id) ? '#ffffff' : mainTextColor
+                      }"
+                    >
+                      <input type="radio" :name="`edit-param-${group.id}`" :checked="isEditParameterSelected(group.id, opt.id)" class="sr-only" @change="toggleEditParameter(group.id, opt.id)">
+                      <div class="flex flex-col items-center">
+                        <span class="text-sm font-medium">{{ opt.name }}</span>
+                        <span class="text-xs opacity-80">{{ formatPrice(opt.price || 0) }}</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div v-if="editingItemProduct.modifiers?.length" class="space-y-4 pt-2">
+                <div v-for="group in editingItemProduct.modifiers" :key="group.id" class="space-y-2">
+                  <div class="flex items-center justify-between">
+                    <h3 class="font-medium text-sm" :style="{ color: mainTextColor }">{{ group.name }}</h3>
+                    <span v-if="group.isRequired" class="text-[10px] uppercase tracking-wider text-red-500 font-semibold bg-red-50 px-2 py-0.5 rounded">Обязательно</span>
+                  </div>
+                  <div class="flex flex-wrap gap-2 w-full">
+                    <label
+                      v-for="opt in group.options"
+                      :key="opt.id"
+                      class="relative flex-1 min-w-[80px] flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition-colors text-center"
+                      :style="{
+                        borderColor: isEditOptionSelected(group.id, opt.id) ? 'var(--color-primary)' : borderColor,
+                        backgroundColor: isEditOptionSelected(group.id, opt.id) ? 'var(--color-primary)' : 'transparent',
+                        color: isEditOptionSelected(group.id, opt.id) ? '#ffffff' : mainTextColor
+                      }"
+                    >
+                      <input
+                        :type="group.selectionType === 'multi' ? 'checkbox' : 'radio'"
+                        :name="`edit-group-${group.id}`"
+                        :checked="isEditOptionSelected(group.id, opt.id)"
+                        class="sr-only"
+                        @change="toggleEditOption(group, opt)"
+                      >
+                      <span class="text-sm font-medium">{{ opt.name }}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="shrink-0 border-t p-4 sm:p-5" :style="{ borderColor, backgroundColor: cardBgColor }">
+              <button
+                type="button"
+                class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
+                :disabled="!isEditModifiersValid"
+                @click="saveEditedItem"
+              >
+                <span>{{ isEditModifiersValid ? 'Сохранить' : 'Выберите опции' }}</span>
+                <span v-if="isEditModifiersValid" class="font-bold">{{ formatPrice(editingItemPrice) }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -861,6 +988,8 @@ import {
 } from '~/composables/useTelegram'
 import { resolveCartScopeKey } from '~/utils/cartScope'
 import { useWorkingHoursStatus } from '~/composables/useWorkingHoursStatus'
+import type { Product, ModifierGroup, ModifierOption } from '~/data/products'
+import type { CartItem, SelectedModifier, SelectedParameter } from '~/stores/cart'
 
 const cartStore = useCartStore()
 const route = useRoute()
@@ -966,6 +1095,8 @@ const promoPreview = ref<{
 } | null>(null)
 const promoError = ref('')
 const promoSuccess = ref('')
+const promoToasts = ref<Array<{ id: number; kind: 'success' | 'error'; message: string }>>([])
+let promoToastSeq = 0
 const loyaltyBalance = ref<number | null>(null)
 const isPromoApplyLoading = ref(false)
 const isPromoPreviewLoading = ref(false)
@@ -990,6 +1121,11 @@ const lastDeliveryCoords = ref<{ lat: number; lon: number } | null>(null)
 const lastGeocodedAddressLine = ref('')
 const isResolvingDeliveryFromServer = ref(false)
 const deliveryResolveRequestSeq = ref(0)
+const editingCartItemId = ref<string | null>(null)
+const editingItemQuantity = ref(1)
+const editingItemProduct = ref<Product | null>(null)
+const editingModifiers = ref<Record<string, Set<string>>>({})
+const editingParameters = ref<Record<string, string>>({})
 
 const stepTransitionName = computed(() =>
   stepDirection.value === 'forward' ? 'step-forward' : 'step-backward',
@@ -1465,7 +1601,7 @@ const summaryDeliveryLabel = computed(() =>
   state.fulfillmentType === 'pickup'
     ? 'Самовывоз'
     : state.fulfillmentType === 'qr-menu'
-      ? 'В ресторане'
+      ? 'В\u00A0ресторане'
       : 'Доставка',
 )
 
@@ -1590,6 +1726,7 @@ async function runPromoApply() {
       appliedPromoCode.value = ''
       promoPreview.value = null
       promoError.value = res?.error || 'Промокод не применён'
+      pushPromoToast('error', promoError.value)
       return
     }
 
@@ -1598,11 +1735,13 @@ async function runPromoApply() {
     promoSuccess.value = typeof res.discountAmount === 'number' && res.discountAmount > 0
       ? `Скидка применена: вы экономите ${formatPrice(res.discountAmount)}`
       : 'Промокод применён'
+    pushPromoToast('success', promoSuccess.value)
     await runPromoPreview()
   } catch (e: any) {
     appliedPromoCode.value = ''
     promoPreview.value = null
     promoError.value = e?.data?.message || e?.message || 'Ошибка применения промокода'
+    pushPromoToast('error', promoError.value)
   } finally {
     isPromoApplyLoading.value = false
   }
@@ -1730,6 +1869,53 @@ const step1NextButtonLabel = computed(() =>
         : 'Далее: адрес доставки',
 )
 
+const isEditModifiersValid = computed(() => {
+  if (!editingItemProduct.value) return false
+  if (editingItemProduct.value.parameters) {
+    for (const group of editingItemProduct.value.parameters) {
+      if (group.isRequired && !editingParameters.value[group.id]) return false
+    }
+  }
+  if (editingItemProduct.value.modifiers) {
+    for (const group of editingItemProduct.value.modifiers) {
+      const selectedCount = editingModifiers.value[group.id]?.size || 0
+      if (group.isRequired && selectedCount === 0) return false
+      if (group.minSelect > 0 && selectedCount < group.minSelect) return false
+    }
+  }
+  return true
+})
+
+const editingItemPrice = computed(() => {
+  if (!editingItemProduct.value) return 0
+  let basePrice = editingItemProduct.value.price
+  if (editingItemProduct.value.parameters) {
+    for (const group of editingItemProduct.value.parameters) {
+      const selectedId = editingParameters.value[group.id]
+      if (!selectedId) continue
+      const opt = group.options.find((o) => o.id === selectedId)
+      if (opt?.price != null) {
+        basePrice = opt.price
+        break
+      }
+    }
+  }
+  let multiplier = 1
+  let delta = 0
+  if (editingItemProduct.value.modifiers) {
+    editingItemProduct.value.modifiers.forEach((group) => {
+      const selectedIds = editingModifiers.value[group.id]
+      if (!selectedIds) return
+      group.options.forEach((opt) => {
+        if (!selectedIds.has(opt.id)) return
+        if (opt.pricingType === 'multiplier') multiplier *= (opt.priceMultiplier ?? 1)
+        else delta += (opt.priceDelta || 0)
+      })
+    })
+  }
+  return Math.round(basePrice * multiplier + delta)
+})
+
 const isAuthorizedForOrder = computed(() => {
   // В мини-приложении (Telegram / MAX) авторизацию обеспечивает initData, в вебе — Supabase-сессия
   return isMessengerMiniApp.value || !!supabaseUser.value
@@ -1739,6 +1925,9 @@ const isCheckoutRoute = computed(() => route.path.endsWith('/checkout'))
 const isCartRoute = computed(() => route.path.endsWith('/cart'))
 
 function goToStep(step: 1 | 2) {
+  if (step === 2) {
+    cartStore.flushPendingRemovals()
+  }
   const targetPath = step === 2 ? tenantPath('/checkout') : tenantPath('/cart')
   if (route.path !== targetPath) {
     void router.push({ path: targetPath })
@@ -1746,6 +1935,118 @@ function goToStep(step: 1 | 2) {
   if (step === state.currentStep) return
   stepDirection.value = step > state.currentStep ? 'forward' : 'backward'
   state.currentStep = step
+}
+
+function openEditItemModal(item: CartItem) {
+  editingCartItemId.value = item.cartItemId
+  editingItemQuantity.value = item.quantity
+  editingItemProduct.value = item
+  const nextMods: Record<string, Set<string>> = {}
+  const nextParams: Record<string, string> = {}
+  ;(item.selectedParameters || []).forEach((param) => {
+    nextParams[param.productParameterId] = param.optionId
+  })
+  ;(item.selectedModifiers || []).forEach((mod) => {
+    if (!nextMods[mod.groupId]) nextMods[mod.groupId] = new Set<string>()
+    nextMods[mod.groupId].add(mod.optionId)
+  })
+  editingModifiers.value = nextMods
+  editingParameters.value = nextParams
+}
+
+function closeEditItemModal() {
+  editingCartItemId.value = null
+  editingItemQuantity.value = 1
+  editingItemProduct.value = null
+  editingModifiers.value = {}
+  editingParameters.value = {}
+}
+
+function isEditParameterSelected(groupId: string, optionId: string) {
+  return editingParameters.value[groupId] === optionId
+}
+
+function toggleEditParameter(groupId: string, optionId: string) {
+  editingParameters.value = {
+    ...editingParameters.value,
+    [groupId]: optionId,
+  }
+}
+
+function isEditOptionSelected(groupId: string, optionId: string) {
+  return editingModifiers.value[groupId]?.has(optionId) || false
+}
+
+function toggleEditOption(group: ModifierGroup, option: ModifierOption) {
+  const prev = editingModifiers.value[group.id] ?? new Set<string>()
+  let next = new Set(prev)
+  if (group.selectionType === 'single' || group.selectionType === 'boolean') {
+    next = new Set([option.id])
+  } else if (next.has(option.id)) {
+    next.delete(option.id)
+  } else {
+    const max = group.maxSelect
+    if (typeof max === 'number' && max > 0 && next.size >= max) {
+      const ordered = Array.from(next)
+      const lastId = ordered[ordered.length - 1]
+      if (lastId) next.delete(lastId)
+    }
+    next.add(option.id)
+  }
+  editingModifiers.value = {
+    ...editingModifiers.value,
+    [group.id]: next,
+  }
+}
+
+function saveEditedItem() {
+  if (!editingItemProduct.value || !editingCartItemId.value || !isEditModifiersValid.value) return
+  const modifiers: SelectedModifier[] = []
+  const parameters: SelectedParameter[] = []
+  if (editingItemProduct.value.parameters) {
+    editingItemProduct.value.parameters.forEach((group) => {
+      const selectedId = editingParameters.value[group.id]
+      if (!selectedId) return
+      const opt = group.options.find((o) => o.id === selectedId)
+      if (!opt) return
+      parameters.push({
+        parameterKindId: group.parameterKindId,
+        productParameterId: group.id,
+        optionId: opt.id,
+        optionName: opt.name,
+        price: opt.price || 0,
+        weightG: opt.weightG,
+        volumeMl: opt.volumeMl,
+        pieces: opt.pieces,
+      })
+    })
+  }
+  if (editingItemProduct.value.modifiers) {
+    editingItemProduct.value.modifiers.forEach((group) => {
+      const selectedIds = editingModifiers.value[group.id]
+      if (!selectedIds) return
+      group.options.forEach((opt) => {
+        if (!selectedIds.has(opt.id)) return
+        modifiers.push({
+          groupId: group.id,
+          groupName: group.name,
+          optionId: opt.id,
+          optionName: opt.name,
+          pricingType: opt.pricingType || 'delta',
+          priceDelta: opt.priceDelta,
+          priceMultiplier: opt.priceMultiplier ?? null,
+        })
+      })
+    })
+  }
+  cartStore.replaceItemConfig(
+    editingCartItemId.value,
+    editingItemProduct.value,
+    editingItemQuantity.value,
+    modifiers,
+    parameters,
+  )
+  closeEditItemModal()
 }
 
 function goBackStep() {
@@ -2366,9 +2667,37 @@ async function continueInMiniAppFromCheckout(channel: 'telegram' | 'max') {
     window.alert(`Ошибка при подготовке корзины для ${channel === 'max' ? 'MAX' : 'Telegram'}. Попробуйте ещё раз.`)
   }
 }
+
+function pushPromoToast(kind: 'success' | 'error', message: string, durationMs = 2600) {
+  const text = (message || '').trim()
+  if (!text) return
+  const id = ++promoToastSeq
+  promoToasts.value = [...promoToasts.value, { id, kind, message: text }]
+  setTimeout(() => {
+    promoToasts.value = promoToasts.value.filter((item) => item.id !== id)
+  }, durationMs)
+}
 </script>
 
 <style scoped>
+.cart-enter-active,
+.cart-leave-active {
+  transition: opacity 0.2s ease;
+}
+.cart-enter-from,
+.cart-leave-to {
+  opacity: 0;
+}
+.cart-enter-active > div:last-child,
+.cart-leave-active > div:last-child {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.cart-enter-from > div:last-child,
+.cart-leave-to > div:last-child {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+
 .bottom-bar-enter-active,
 .bottom-bar-leave-active {
   transition: opacity 0.22s ease, transform 0.22s ease;
@@ -2401,6 +2730,86 @@ async function continueInMiniAppFromCheckout(channel: 'telegram' | 'max') {
 
 .themed-input::placeholder {
   color: var(--input-placeholder-color);
+}
+
+.collapse-fade-enter-active,
+.collapse-fade-leave-active {
+  transition: max-height 0.22s ease, opacity 0.22s ease, transform 0.22s ease, margin 0.22s ease;
+  overflow: hidden;
+  max-height: 120px;
+}
+.collapse-fade-enter-from,
+.collapse-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+  max-height: 0;
+}
+
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.22s ease;
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+.modal-fade-enter-active .modal-panel,
+.modal-fade-leave-active .modal-panel {
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+.modal-fade-enter-from .modal-panel,
+.modal-fade-leave-to .modal-panel {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+
+.cart-item-enter-active,
+.cart-item-leave-active {
+  transition: opacity 0.24s ease, transform 0.24s ease, max-height 0.24s ease, margin 0.24s ease;
+  overflow: hidden;
+  max-height: 180px;
+}
+.cart-item-enter-from,
+.cart-item-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+  max-height: 0;
+}
+.cart-item-move {
+  transition: transform 0.24s ease;
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.product-enter-active,
+.product-leave-active {
+  transition: opacity 0.25s ease;
+}
+.product-enter-active .max-w-md,
+.product-leave-active .max-w-md {
+  transition: transform 0.25s ease;
+}
+.product-enter-from,
+.product-leave-to {
+  opacity: 0;
+}
+.product-enter-from .max-w-md,
+.product-leave-to .max-w-md {
+  transform: translateY(100%);
+}
+@media (min-width: 640px) {
+  .product-enter-from .max-w-md,
+  .product-leave-to .max-w-md {
+    transform: scale(0.95);
+  }
 }
 </style>
 

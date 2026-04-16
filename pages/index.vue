@@ -57,7 +57,7 @@
               : 'text-gray-600 hover:bg-gray-100'"
             @click="setFulfillmentType('qr-menu')"
           >
-            В ресторане
+            В&nbsp;ресторане
           </button>
         </div>
 
@@ -67,12 +67,6 @@
           @click="goToCheckout"
         >
           <span>Корзина</span>
-          <span
-            v-if="isRestaurantModesLoaded && showFulfillmentSelector"
-            class="text-xs font-semibold"
-          >
-            {{ fulfillmentTypeLabel }}
-          </span>
           <template v-if="cartStore.count > 0">
             <span class="">
               {{ cartStore.count }} шт.
@@ -263,7 +257,7 @@
             : 'text-gray-600 hover:bg-gray-100'"
           @click="setFulfillmentType('qr-menu')"
         >
-          В ресторане
+          В&nbsp;ресторане
         </button>
       </div>
 
@@ -277,12 +271,6 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
           <span>Корзина</span>
-          <span
-            v-if="isRestaurantModesLoaded && showFulfillmentSelector"
-            class="text-xs font-semibold"
-          >
-            {{ fulfillmentTypeLabel }}
-          </span>
         </div>
         <div v-if="cartStore.count > 0" class="flex items-center gap-2">
           <span class="text-sm text-orange-100">
@@ -667,14 +655,6 @@ const checkoutStorageKey = computed(() => buildCheckoutStorageKey(tenantKey.valu
 const restaurantOps = ref<RestaurantOps[]>([])
 const isRestaurantModesLoaded = ref(false)
 const selectedFulfillmentType = ref<FulfillmentType>('delivery')
-
-const fulfillmentTypeLabel = computed(() =>
-  selectedFulfillmentType.value === 'pickup'
-    ? 'Самовывоз'
-    : selectedFulfillmentType.value === 'qr-menu'
-      ? 'В ресторане'
-      : 'Доставка',
-)
 
 function restaurantHasInHallMode(r: RestaurantOps) {
   return r.supports_qr_menu === true || r.supports_in_restaurant === true

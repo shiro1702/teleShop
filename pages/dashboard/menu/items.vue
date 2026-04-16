@@ -225,7 +225,7 @@
             <p class="text-sm font-medium text-gray-900">Ограничение на доставку</p>
             <select v-model="form.deliveryRestrictedOverride" class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
               <option :value="null">Наследовать от категории</option>
-              <option :value="true">Только в ресторане/самовывоз/QR</option>
+              <option :value="true">Только в&nbsp;ресторане/самовывоз/QR</option>
               <option :value="false">Разрешить доставку (снять ограничение категории)</option>
             </select>
           </div>

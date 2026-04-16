@@ -44,6 +44,14 @@ export interface BridgeCartPayload {
   items?: CartItem[]
 }
 
+export interface PendingRemovalMeta {
+  startedAt: number
+  expiresAt: number
+  durationMs: number
+}
+
+const pendingRemovalTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
 function getStoredCartItems(scopeKey: string | null): CartItem[] {
   if (typeof localStorage === 'undefined') return []
   try {
@@ -157,6 +165,7 @@ export const useCartStore = defineStore('cart', {
     // Базовая стоимость доставки по городу до уточнения зоны
     deliveryCost: 200,
     deliveryError: null as string | null,
+    pendingRemovals: {} as Record<string, PendingRemovalMeta>,
   }),
   getters: {
     total: (state) =>
@@ -219,8 +228,64 @@ export const useCartStore = defineStore('cart', {
         products
       }))
     },
+    pendingRemovalById: (state) => (cartItemId: string) => state.pendingRemovals[cartItemId] ?? null,
   },
   actions: {
+    timerKey(cartItemId: string) {
+      return `${this.scopeKey ?? 'global'}::${cartItemId}`
+    },
+    clearPendingRemovalTimer(cartItemId: string) {
+      const key = this.timerKey(cartItemId)
+      const timer = pendingRemovalTimers.get(key)
+      if (timer) {
+        clearTimeout(timer)
+        pendingRemovalTimers.delete(key)
+      }
+    },
+    clearPendingRemoval(cartItemId: string) {
+      this.clearPendingRemovalTimer(cartItemId)
+      if (this.pendingRemovals[cartItemId]) {
+        const next = { ...this.pendingRemovals }
+        delete next[cartItemId]
+        this.pendingRemovals = next
+      }
+    },
+    scheduleItemRemoval(cartItemId: string, durationMs = 5000) {
+      const item = this.items.find((i) => i.cartItemId === cartItemId)
+      if (!item) return
+      this.clearPendingRemovalTimer(cartItemId)
+      const now = Date.now()
+      const expiresAt = now + durationMs
+      this.pendingRemovals = {
+        ...this.pendingRemovals,
+        [cartItemId]: {
+          startedAt: now,
+          expiresAt,
+          durationMs,
+        },
+      }
+      const key = this.timerKey(cartItemId)
+      const timeout = setTimeout(() => {
+        this.removeItemNow(cartItemId)
+      }, durationMs)
+      pendingRemovalTimers.set(key, timeout)
+    },
+    cancelPendingRemoval(cartItemId: string) {
+      this.clearPendingRemoval(cartItemId)
+    },
+    flushPendingRemovals() {
+      const ids = Object.keys(this.pendingRemovals)
+      if (!ids.length) return
+      ids.forEach((id) => this.removeItemNow(id))
+    },
+    removeItemNow(cartItemId: string) {
+      this.clearPendingRemoval(cartItemId)
+      this.items = this.items.filter((i) => i.cartItemId !== cartItemId)
+      persistCart(this.scopeKey, this.items)
+      if (this.deliveryZone) {
+        this.setDeliveryZone(this.deliveryZone)
+      }
+    },
     setScope(nextScopeKey: string | null) {
       const normalized = typeof nextScopeKey === 'string' && nextScopeKey.trim()
         ? nextScopeKey.trim()
@@ -228,11 +293,13 @@ export const useCartStore = defineStore('cart', {
 
       if (this.scopeKey === normalized) return
 
+      this.flushPendingRemovals()
       this.scopeKey = normalized
       this.items = getStoredCartItems(this.scopeKey)
       this.deliveryZone = null
       this.deliveryError = null
       this.deliveryCost = this.items.length ? 200 : 0
+      this.pendingRemovals = {}
       // Каталог товаров должен загружаться заново для нового ресторана
       this.products = []
     },
@@ -241,6 +308,7 @@ export const useCartStore = defineStore('cart', {
     },
     addItem(product: Product, quantity = 1, modifiers: SelectedModifier[] = [], parameters: SelectedParameter[] = []) {
       const cartItemId = generateCartItemId(product.id, modifiers, parameters)
+      this.clearPendingRemoval(cartItemId)
       const existing = this.items.find((i) => i.cartItemId === cartItemId)
       
       if (existing) {
@@ -263,17 +331,14 @@ export const useCartStore = defineStore('cart', {
       }
     },
     removeItem(cartItemId: string) {
-      this.items = this.items.filter((i) => i.cartItemId !== cartItemId)
-      persistCart(this.scopeKey, this.items)
-      if (this.deliveryZone) {
-        this.setDeliveryZone(this.deliveryZone)
-      }
+      this.removeItemNow(cartItemId)
     },
     updateQuantity(cartItemId: string, quantity: number) {
       const item = this.items.find((i) => i.cartItemId === cartItemId)
       if (item) {
         if (quantity <= 0) this.removeItem(cartItemId)
         else {
+          this.clearPendingRemoval(cartItemId)
           item.quantity = quantity
           persistCart(this.scopeKey, this.items)
           if (this.deliveryZone) {
@@ -288,7 +353,9 @@ export const useCartStore = defineStore('cart', {
       this.updateQuantity(item.cartItemId, item.quantity - 1)
     },
     clear() {
+      this.flushPendingRemovals()
       this.items = []
+      this.pendingRemovals = {}
       persistCart(this.scopeKey, this.items)
       this.deliveryZone = null
       this.deliveryError = null
@@ -298,7 +365,9 @@ export const useCartStore = defineStore('cart', {
     hydrateFromStorage(scopeKey: string | null = null) {
       if (typeof localStorage === 'undefined') return
       this.scopeKey = typeof scopeKey === 'string' && scopeKey.trim() ? scopeKey.trim() : null
+      this.flushPendingRemovals()
       this.items = getStoredCartItems(this.scopeKey)
+      this.pendingRemovals = {}
       this.deliveryZone = null
       this.deliveryError = null
       this.deliveryCost = this.items.length ? 200 : 0
@@ -362,6 +431,17 @@ export const useCartStore = defineStore('cart', {
           this.setDeliveryZone(this.deliveryZone)
         }
       }
+    },
+    replaceItemConfig(
+      oldCartItemId: string,
+      product: Product,
+      quantity: number,
+      modifiers: SelectedModifier[] = [],
+      parameters: SelectedParameter[] = [],
+    ) {
+      const qty = Math.max(1, Math.floor(quantity || 1))
+      this.removeItemNow(oldCartItemId)
+      this.addItem(product, qty, modifiers, parameters)
     },
   },
 })

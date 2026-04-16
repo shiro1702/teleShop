@@ -53,7 +53,7 @@
             </label>
             <label class="flex items-center gap-2">
               <input v-model="form.deliveryRestricted" type="checkbox" class="rounded border-gray-300 text-primary focus:ring-primary" />
-              <span class="text-sm text-gray-700">Только в ресторане/самовывоз/QR (без доставки)</span>
+              <span class="text-sm text-gray-700">Только в&nbsp;ресторане/самовывоз/QR (без доставки)</span>
             </label>
           </div>
 

@@ -52,37 +52,39 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
           </svg>
         </button>
-        <div
-          v-if="showMiniappMenu"
-          class="absolute right-0 mt-2 w-52 rounded-lg py-1 text-sm shadow-lg"
-          :style="menuStyle"
-        >
-          <NuxtLink
-            :to="ordersLink"
-            class="block px-3 py-2"
-            :style="{ color: mainTextColor }"
-            @click="showMiniappMenu = false"
+        <Transition name="dropdown">
+          <div
+            v-if="showMiniappMenu"
+            class="absolute right-0 mt-2 w-52 rounded-lg py-1 text-sm shadow-lg dropdown-panel"
+            :style="menuStyle"
           >
-            История заказов
-          </NuxtLink>
-          <NuxtLink
-            v-if="bonusesMenuVisible"
-            :to="bonusesLink"
-            class="block px-3 py-2"
-            :style="{ color: mainTextColor }"
-            @click="showMiniappMenu = false"
-          >
-            Бонусы
-          </NuxtLink>
-          <NuxtLink
-            to="/profile"
-            class="block px-3 py-2"
-            :style="{ color: mainTextColor }"
-            @click="showMiniappMenu = false"
-          >
-            Профиль
-          </NuxtLink>
-        </div>
+            <NuxtLink
+              :to="ordersLink"
+              class="block px-3 py-2"
+              :style="{ color: mainTextColor }"
+              @click="showMiniappMenu = false"
+            >
+              История заказов
+            </NuxtLink>
+            <NuxtLink
+              v-if="bonusesMenuVisible"
+              :to="bonusesLink"
+              class="block px-3 py-2"
+              :style="{ color: mainTextColor }"
+              @click="showMiniappMenu = false"
+            >
+              Бонусы
+            </NuxtLink>
+            <NuxtLink
+              to="/profile"
+              class="block px-3 py-2"
+              :style="{ color: mainTextColor }"
+              @click="showMiniappMenu = false"
+            >
+              Профиль
+            </NuxtLink>
+          </div>
+        </Transition>
       </div>
 
       <div
@@ -129,44 +131,46 @@
             </svg>
           </button>
 
-          <div
-            v-if="showUserMenu"
-            class="absolute right-0 mt-2 w-48 rounded-lg py-1 text-sm shadow-lg"
-            :style="menuStyle"
-          >
-            <NuxtLink
-              :to="ordersLink"
-              class="block px-3 py-2"
-              :style="{ color: mainTextColor }"
-              @click="showUserMenu = false"
+          <Transition name="dropdown">
+            <div
+              v-if="showUserMenu"
+              class="absolute right-0 mt-2 w-48 rounded-lg py-1 text-sm shadow-lg dropdown-panel"
+              :style="menuStyle"
             >
-              История заказов
-            </NuxtLink>
-            <NuxtLink
-              v-if="bonusesMenuVisible"
-              :to="bonusesLink"
-              class="block px-3 py-2"
-              :style="{ color: mainTextColor }"
-              @click="showUserMenu = false"
-            >
-              Бонусы
-            </NuxtLink>
-            <NuxtLink
-              to="/profile"
-              class="block px-3 py-2"
-              :style="{ color: mainTextColor }"
-              @click="showUserMenu = false"
-            >
-              Профиль
-            </NuxtLink>
-            <button
-              type="button"
-              class="block w-full px-3 py-2 text-left text-red-600 hover:bg-red-50"
-              @click="logout"
-            >
-              Выйти
-            </button>
-          </div>
+              <NuxtLink
+                :to="ordersLink"
+                class="block px-3 py-2"
+                :style="{ color: mainTextColor }"
+                @click="showUserMenu = false"
+              >
+                История заказов
+              </NuxtLink>
+              <NuxtLink
+                v-if="bonusesMenuVisible"
+                :to="bonusesLink"
+                class="block px-3 py-2"
+                :style="{ color: mainTextColor }"
+                @click="showUserMenu = false"
+              >
+                Бонусы
+              </NuxtLink>
+              <NuxtLink
+                to="/profile"
+                class="block px-3 py-2"
+                :style="{ color: mainTextColor }"
+                @click="showUserMenu = false"
+              >
+                Профиль
+              </NuxtLink>
+              <button
+                type="button"
+                class="block w-full px-3 py-2 text-left text-red-600 hover:bg-red-50"
+                @click="logout"
+              >
+                Выйти
+              </button>
+            </div>
+          </Transition>
         </div>
 
         <!-- Не авторизован: на мобилке — компактно, на десктопе — текст -->
@@ -183,31 +187,33 @@
     </div>
 
     <Teleport to="body">
-      <div v-if="showAuthModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/40" @click="closeAuthModal" />
-        <div class="relative w-full max-w-sm rounded-2xl p-5 shadow-xl" :style="menuStyle">
-          <h3 class="text-base font-semibold" :style="{ color: mainTextColor }">Выберите способ входа</h3>
-          <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">Доступна авторизация через Telegram или MAX.</p>
-          <div class="mt-4 space-y-2">
-            <button
-              v-if="telegramBotUrl"
-              type="button"
-              class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-600"
-              @click="openTelegramAuth"
-            >
-              Войти через Telegram
-            </button>
-            <button
-              v-if="maxBotUrl"
-              type="button"
-              class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50"
-              @click="openMaxAuth"
-            >
-              Войти через MAX
-            </button>
+      <Transition name="modal-fade">
+        <div v-if="showAuthModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/40" @click="closeAuthModal" />
+          <div class="relative w-full max-w-sm rounded-2xl p-5 shadow-xl modal-panel" :style="menuStyle">
+            <h3 class="text-base font-semibold" :style="{ color: mainTextColor }">Выберите способ входа</h3>
+            <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">Доступна авторизация через Telegram или MAX.</p>
+            <div class="mt-4 space-y-2">
+              <button
+                v-if="telegramBotUrl"
+                type="button"
+                class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-600"
+                @click="openTelegramAuth"
+              >
+                Войти через Telegram
+              </button>
+              <button
+                v-if="maxBotUrl"
+                type="button"
+                class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50"
+                @click="openMaxAuth"
+              >
+                Войти через MAX
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </Transition>
     </Teleport>
   </header>
 </template>
@@ -513,4 +519,34 @@ function onCityChange() {
   router.push(`/${selectedCitySlug.value}/${tenantSlug}`)
 }
 </script>
+
+<style scoped>
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+}
+
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.22s ease;
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+.modal-fade-enter-active .modal-panel,
+.modal-fade-leave-active .modal-panel {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.modal-fade-enter-from .modal-panel,
+.modal-fade-leave-to .modal-panel {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+</style>
 
