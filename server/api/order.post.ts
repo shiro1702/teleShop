@@ -419,6 +419,8 @@ export default defineEventHandler(async (event) => {
   let customerTelegramIdForInsert: number | null = null
   let miniChannel: MiniChannel | null = null
   let maxConversationId: string | null = null
+  /** Веб-заказ с профилем, привязанным только к MAX (для actorContext уведомлений). */
+  let webMaxUserIdForActor: string | null = null
 
   if (body.initData && typeof body.initData === 'string') {
     const requested: MiniChannel = body.orderClientChannel === 'max_mini' ? 'max_mini' : 'telegram_mini'
@@ -480,18 +482,39 @@ export default defineEventHandler(async (event) => {
     customerProfileId = userId
     const { data: profile, error: profileError } = await serviceClient
       .from('profiles')
-      .select('telegram_id')
+      .select('telegram_id, max_user_id, max_conversation_id')
       .eq('id', userId)
       .maybeSingle()
     if (profileError) {
       console.error('Error querying profile for order (WEB):', profileError)
       throw createError({ statusCode: 500, message: 'Failed to read profile' })
     }
-    if (!profile || profile.telegram_id == null) {
-      throw createError({ statusCode: 409, message: 'Telegram not linked' })
+    const tgRaw = profile?.telegram_id
+    const hasTelegram =
+      tgRaw !== null && tgRaw !== undefined && String(tgRaw).trim() !== ''
+    const maxRaw = (profile as { max_user_id?: string | null } | null)?.max_user_id
+    const maxIdStr = typeof maxRaw === 'string' ? maxRaw.trim() : ''
+    const convRaw = (profile as { max_conversation_id?: string | null } | null)?.max_conversation_id
+    if (hasTelegram) {
+      const tid = typeof tgRaw === 'number' ? tgRaw : Number(tgRaw)
+      if (!Number.isFinite(tid)) {
+        throw createError({ statusCode: 500, message: 'Invalid telegram_id on profile' })
+      }
+      user = { id: tid }
+      customerTelegramIdForInsert = user.id
+    } else if (maxIdStr) {
+      webMaxUserIdForActor = maxIdStr
+      maxConversationId =
+        typeof convRaw === 'string' && convRaw.trim() ? convRaw.trim() : null
+      customerTelegramIdForInsert = null
+      const numericMax = Number(maxIdStr)
+      user = { id: Number.isFinite(numericMax) ? numericMax : 0 }
+    } else {
+      throw createError({
+        statusCode: 409,
+        message: 'Messenger not linked',
+      })
     }
-    user = { id: profile.telegram_id as number }
-    customerTelegramIdForInsert = user.id
   }
 
   const orderClientStored: 'web' | 'telegram_mini' | 'max_mini' =
@@ -831,7 +854,8 @@ export default defineEventHandler(async (event) => {
     },
     actorContext: {
       customerTelegramId: customerTelegramIdForInsert,
-      customerMaxUserId: miniChannel === 'max_mini' ? String(user.id) : null,
+      customerMaxUserId:
+        miniChannel === 'max_mini' ? String(user.id) : webMaxUserIdForActor,
       customerMaxConversationId: maxConversationId,
     },
   })
