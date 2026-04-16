@@ -174,3 +174,9 @@ onBeforeUnmount(() => {
   map = null
 })
 </script>
+
+<style scoped>
+:deep(.leaflet-control-attribution .leaflet-attribution-flag) {
+  display: none !important;
+}
+</style>
