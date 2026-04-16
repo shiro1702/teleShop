@@ -371,7 +371,7 @@
                   <button
                     v-if="hasDeliveryOption"
                     type="button"
-                    class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition"
+                    class="flex-1 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-medium leading-tight transition sm:px-3 sm:py-2 sm:text-sm"
                     :class="state.fulfillmentType === 'delivery'
                       ? 'bg-primary text-on-primary shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'"
@@ -382,7 +382,7 @@
                   <button
                     v-if="hasPickupOption"
                     type="button"
-                    class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition"
+                    class="flex-1 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-medium leading-tight transition sm:px-3 sm:py-2 sm:text-sm"
                     :class="state.fulfillmentType === 'pickup'
                       ? 'bg-primary text-on-primary shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'"
@@ -393,7 +393,7 @@
                   <button
                     v-if="hasQrMenuOption"
                     type="button"
-                    class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition"
+                    class="flex-1 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-medium leading-tight transition sm:px-3 sm:py-2 sm:text-sm"
                     :class="state.fulfillmentType === 'qr-menu'
                       ? 'bg-primary text-on-primary shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'"
