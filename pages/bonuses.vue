@@ -37,9 +37,14 @@
 
       <template v-else>
         <div class="rounded-2xl border p-6 sm:p-8" :style="cardStyle">
-          <p v-if="tenantLoading" class="text-sm" :style="{ color: mutedTextColor }">
-            Загрузка…
-          </p>
+          <div v-if="tenantLoading || balanceLoading" class="animate-pulse space-y-4" aria-hidden="true">
+            <div class="h-4 w-40 rounded" :style="skeletonBlockStyle" />
+            <div class="h-9 w-52 rounded-lg" :style="skeletonBlockStyle" />
+            <div class="space-y-2">
+              <div class="h-3 w-full rounded" :style="skeletonBlockStyle" />
+              <div class="h-3 w-5/6 rounded" :style="skeletonBlockStyle" />
+            </div>
+          </div>
           <template v-else-if="shopId">
             <p class="text-sm" :style="{ color: mutedTextColor }">
               {{ shopDisplayName }}
@@ -106,6 +111,11 @@ const cardStyle = computed(() => ({
   border: `1px solid ${borderColor.value}`,
   backgroundColor: cardBgColor.value,
   color: mainTextColor.value,
+}))
+
+const skeletonBlockStyle = computed(() => ({
+  backgroundColor: borderColor.value,
+  opacity: 0.7,
 }))
 
 const tenantLoading = computed(() => tenant.value.loading && !tenant.value.loaded)
