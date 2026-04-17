@@ -1358,7 +1358,7 @@ async function waitForRestaurantZonesLoaded(timeoutMs = 5000) {
 
 async function resolveDeliveryBranch(lat: number, lon: number) {
   branchResolveInfo.value = null
-  if (!shopIdFromRoute.value && !(isMessengerMiniApp.value && messengerInitData.value)) return
+  if (!shopIdFromRoute.value && !messengerInitData.value) return
   const requestSeq = ++deliveryResolveRequestSeq.value
 
   isResolvingDeliveryFromServer.value = true
@@ -2527,13 +2527,12 @@ watch(shopIdFromRoute, async () => {
 })
 
 watch(
-  () => [isMessengerMiniApp.value, messengerInitData.value] as const,
-  async ([miniApp, initData], [prevMiniApp, prevInitData]) => {
-    if (!miniApp) return
+  () => messengerInitData.value,
+  async (initData, prevInitData) => {
     if (!initData) return
     // В Telegram/MAX initData может появляться после первого mount.
     // Если первая загрузка филиалов прошла без auth-заголовков, повторяем.
-    if (initData === prevInitData && miniApp === prevMiniApp) return
+    if (initData === prevInitData) return
     await loadRestaurants()
   },
 )
@@ -2594,7 +2593,7 @@ async function placeOrder() {
       bonusPointsToSpend: bonusToSpend.value || 0,
     }
 
-    if (isMessengerMiniApp.value && messengerInitData.value) {
+    if (messengerInitData.value) {
       body.initData = messengerInitData.value
     }
 

@@ -2,7 +2,7 @@ import { createError, getHeader, type H3Event } from 'h3'
 import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
 import { getMaxBotTokenForShop, validateWebAppInitData } from '~/server/utils/messengerInitData'
 
-export async function resolveCustomerProfileId(event: H3Event, botToken: string): Promise<string> {
+export async function resolveCustomerProfileId(event: H3Event, botToken: string | null | undefined): Promise<string> {
   const supabaseUser = await serverSupabaseUser(event)
   if (supabaseUser) {
     const rawUser = supabaseUser as any

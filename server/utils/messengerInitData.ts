@@ -19,7 +19,13 @@ export function getMessengerInitDataFromEvent(event: H3Event): string {
 }
 
 /** Подпись WebAppData (Telegram и MAX используют тот же алгоритм). */
-export function validateWebAppInitData(initData: string, botToken: string): WebAppInitUser | null {
+export function validateWebAppInitData(
+  initData: string | null | undefined,
+  botToken: string | null | undefined,
+): WebAppInitUser | null {
+  if (typeof initData !== 'string' || !initData.trim()) return null
+  if (typeof botToken !== 'string' || !botToken.trim()) return null
+
   const params = new URLSearchParams(initData)
   const hash = params.get('hash')
   if (!hash) return null
