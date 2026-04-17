@@ -361,21 +361,40 @@ export default defineEventHandler(async (event) => {
 
   const bodyLatRaw = body.address?.lat
   const bodyLonRaw = body.address?.lon
-  const bodyLat = typeof bodyLatRaw === 'number' ? bodyLatRaw : Number(bodyLatRaw)
-  const bodyLon = typeof bodyLonRaw === 'number' ? bodyLonRaw : Number(bodyLonRaw)
-  const hasDeliveryCoords =
+  let deliveryLat = typeof bodyLatRaw === 'number' ? bodyLatRaw : Number(bodyLatRaw)
+  let deliveryLon = typeof bodyLonRaw === 'number' ? bodyLonRaw : Number(bodyLonRaw)
+  let hasDeliveryCoords =
     fulfillmentType === 'delivery'
-    && Number.isFinite(bodyLat)
-    && Number.isFinite(bodyLon)
+    && Number.isFinite(deliveryLat)
+    && Number.isFinite(deliveryLon)
   const customerAddressId = typeof body.address?.customerAddressId === 'string'
     ? body.address.customerAddressId.trim()
     : ''
+  const serviceClient = await serverSupabaseServiceRole(event)
+
+  // In mini apps, saved address can be selected while body lat/lon are temporarily absent.
+  // Fallback to persisted address coordinates to avoid false 400 "zone required".
+  if (fulfillmentType === 'delivery' && !hasDeliveryCoords && customerAddressId) {
+    const { data: savedAddressCoords } = await serviceClient
+      .from('customer_delivery_addresses')
+      .select('lat,lon')
+      .eq('shop_id', tenantShopId)
+      .eq('id', customerAddressId)
+      .maybeSingle()
+    const savedLat = typeof savedAddressCoords?.lat === 'number' ? savedAddressCoords.lat : Number(savedAddressCoords?.lat)
+    const savedLon = typeof savedAddressCoords?.lon === 'number' ? savedAddressCoords.lon : Number(savedAddressCoords?.lon)
+    if (Number.isFinite(savedLat) && Number.isFinite(savedLon)) {
+      deliveryLat = savedLat
+      deliveryLon = savedLon
+      hasDeliveryCoords = true
+    }
+  }
 
   let deliveryZoneValidated: DeliveryZoneProperties | null = null
 
   let restaurant: TenantRestaurant
   if (hasDeliveryCoords) {
-    const resolved = await resolveDeliveryForPoint(event, tenantShopId, bodyLat, bodyLon)
+    const resolved = await resolveDeliveryForPoint(event, tenantShopId, deliveryLat, deliveryLon)
     if (!resolved.selected) {
       const msg =
         resolved.reason === 'all_closed'
@@ -411,8 +430,6 @@ export default defineEventHandler(async (event) => {
       message: `Restaurant is closed now (${openStatus.nowHHMM}, ${orgSettings.locale.timezone})`,
     })
   }
-
-  const serviceClient = await serverSupabaseServiceRole(event)
 
   type MiniChannel = 'telegram_mini' | 'max_mini'
   let user: WebAppInitUser
