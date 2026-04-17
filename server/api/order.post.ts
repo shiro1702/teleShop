@@ -695,11 +695,30 @@ export default defineEventHandler(async (event) => {
       .eq('shop_id', tenantShopId)
       .eq('customer_profile_id', customerProfileId)
       .maybeSingle()
-    if (savedAddressError || !savedAddress) {
+    if (savedAddressError) {
       throw createError({ statusCode: 400, message: 'Выберите корректный адрес доставки' })
     }
-    addressLine = savedAddress.address_line ? String(savedAddress.address_line).trim() : addressLine
-    flat = savedAddress.flat ? String(savedAddress.flat).trim() : flat
+    // MAX/Telegram mini app can pass a local temporary address id before server sync.
+    // Keep request address fallback instead of hard-failing the whole order.
+    if (!savedAddress) {
+      if (!addressLine?.trim()) {
+        throw createError({ statusCode: 400, message: 'Выберите корректный адрес доставки' })
+      }
+    } else {
+      addressLine = savedAddress.address_line ? String(savedAddress.address_line).trim() : addressLine
+      flat = savedAddress.flat ? String(savedAddress.flat).trim() : flat
+      const savedLat = typeof savedAddress.lat === 'number' ? savedAddress.lat : Number(savedAddress.lat)
+      const savedLon = typeof savedAddress.lon === 'number' ? savedAddress.lon : Number(savedAddress.lon)
+      if (
+        !hasDeliveryCoords
+        && Number.isFinite(savedLat)
+        && Number.isFinite(savedLon)
+      ) {
+        deliveryLat = savedLat
+        deliveryLon = savedLon
+        hasDeliveryCoords = true
+      }
+    }
   }
   const pickupPoint: PickupPoint | null =
     fulfillmentType === 'pickup' &&
