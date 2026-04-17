@@ -2434,25 +2434,60 @@ function loadCheckoutStateLocal() {
   }
 }
 
+function getCheckoutStorageKeysForRecovery(): string[] {
+  const keys = [
+    checkoutStorageKey.value,
+    buildCheckoutStorageKey(resolveCartScopeKey(route, shopIdFromRoute.value)),
+    buildCheckoutStorageKey(resolveCartScopeKey(route, tenantKey.value || shopIdFromRoute.value)),
+    buildCheckoutStorageKey(shopIdFromRoute.value),
+    CHECKOUT_STORAGE_KEY,
+  ].filter((key): key is string => typeof key === 'string' && key.trim().length > 0)
+  return Array.from(new Set(keys))
+}
+
 async function persistCheckoutStateCloud(data: string) {
-  persistCheckoutStateLocal(data)
+  const keys = getCheckoutStorageKeysForRecovery()
+  if (isClient()) {
+    for (const key of keys) {
+      try {
+        localStorage.setItem(key, data)
+      } catch {
+        // ignore
+      }
+    }
+  }
   if (canUseMessengerStorage()) {
-    await setItem(checkoutStorageKey.value, data)
+    for (const key of keys) {
+      await setItem(key, data)
+    }
   }
 }
 
 async function loadCheckoutStateCloud(): Promise<any | null> {
+  const keys = getCheckoutStorageKeysForRecovery()
   if (canUseMessengerStorage()) {
-    const raw = await getItem(checkoutStorageKey.value)
-    if (raw) {
-      try {
-        return JSON.parse(raw)
-      } catch {
-        // fall through to local
+    for (const key of keys) {
+      const raw = await getItem(key)
+      if (raw) {
+        try {
+          return JSON.parse(raw)
+        } catch {
+          // continue to next key
+        }
       }
     }
   }
-  return loadCheckoutStateLocal()
+  if (!isClient()) return null
+  for (const key of keys) {
+    try {
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      return JSON.parse(raw)
+    } catch {
+      // continue to next key
+    }
+  }
+  return null
 }
 
 watch(
@@ -2553,6 +2588,12 @@ async function placeOrder() {
       await saveCurrentAddress()
     }
 
+    const selectedAddressIdForOrder =
+      typeof selectedCustomerAddressId.value === 'string'
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(selectedCustomerAddressId.value)
+        ? selectedCustomerAddressId.value
+        : null
+
     const body: any = {
       shopId: shopIdFromRoute.value,
       restaurantId: selectedRestaurantId.value || null,
@@ -2568,7 +2609,7 @@ async function placeOrder() {
       fulfillmentType: state.fulfillmentType,
       address: state.fulfillmentType === 'delivery'
         ? {
-            customerAddressId: selectedCustomerAddressId.value || null,
+            customerAddressId: selectedAddressIdForOrder,
             line: addressLine.value || null,
             flat: flat.value || null,
             comment: comment.value || null,
@@ -2670,12 +2711,16 @@ async function placeOrder() {
     }
   } catch (error: any) {
     const status = error?.statusCode || error?.status
+    const apiMessage =
+      typeof error?.data?.message === 'string' && error.data.message.trim().length > 0
+        ? error.data.message.trim()
+        : null
     if (isClient() && !isMessengerMiniApp.value && (status === 401 || status === 409)) {
       await openTelegramAuth()
       return
     }
     if (isClient()) {
-      window.alert('Ошибка при отправке заказа. Попробуйте ещё раз.')
+      window.alert(apiMessage ? `Ошибка при отправке заказа: ${apiMessage}` : 'Ошибка при отправке заказа. Попробуйте ещё раз.')
     }
   } finally {
     isPlacing.value = false
@@ -2697,6 +2742,8 @@ function closeAuthModal() {
 
 async function openMaxAuthFlow() {
   if (!maxBotUrl.value || !isClient()) return
+  await saveCurrentAddress()
+  await persistCheckoutStateCloud(serializeState())
   const shopRef = shopIdFromRoute.value || ''
   if (!shopRef) {
     window.alert('Не удалось определить ресторан. Обновите страницу.')
@@ -2761,6 +2808,8 @@ function openMaxAuth() {
 
 async function openTelegramAuth() {
   if (!telegramBotUrl.value || !isClient()) return
+  await saveCurrentAddress()
+  await persistCheckoutStateCloud(serializeState())
   const shopRef = shopIdFromRoute.value || ''
   if (!shopRef) {
     window.alert('Не удалось определить ресторан. Обновите страницу.')
