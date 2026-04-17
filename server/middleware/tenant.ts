@@ -1,6 +1,7 @@
 import { createError, defineEventHandler, getHeader, sendRedirect } from 'h3'
 import {
   extractBotIdFromInitData,
+  extractShopIdFromInitData,
   getShopByBotId,
   getShopByCustomDomain,
   getShopById,
@@ -114,9 +115,21 @@ export default defineEventHandler(async (event) => {
 
   if (!shop) {
     const initData = getMessengerInitDataFromEvent(event)
-    const botId = initData ? extractBotIdFromInitData(initData) : null
-    if (botId) {
-      shop = await getShopByBotId(event, botId)
+    if (initData) {
+      const botId = extractBotIdFromInitData(initData)
+      if (botId) {
+        shop = await getShopByBotId(event, botId)
+      }
+      /**
+       * Telegram Mini App initData часто не содержит bot_id, но может содержать start_param
+       * (shop slug/ID). Используем его как fallback, чтобы required API не падали с 404.
+       */
+      if (!shop) {
+        const shopRef = extractShopIdFromInitData(initData)
+        if (shopRef) {
+          shop = await getShopById(event, shopRef)
+        }
+      }
     }
   }
 
