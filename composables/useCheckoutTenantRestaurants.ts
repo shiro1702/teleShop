@@ -1,5 +1,6 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import type { DeliveryZoneFeature } from '~/utils/deliveryZones'
+import { useTelegram } from '~/composables/useTelegram'
 
 export type FulfillmentType = 'delivery' | 'pickup' | 'qr-menu'
 export type DineInHallMode = 'qr-menu-browse' | 'to-table' | 'pickup-point'
@@ -48,7 +49,14 @@ type UseCheckoutTenantRestaurantsParams = {
 
 export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurantsParams) {
   const cartStore = useCartStore()
+  const { buildMessengerAuthHeaders } = useTelegram()
   const selectedPickupPointId = ref<string>('')
+  function buildTenantHeaders(shopId: string | null): Record<string, string> | undefined {
+    const base: Record<string, string> = shopId ? { 'x-shop-id': shopId } : {}
+    const headers = buildMessengerAuthHeaders(base)
+    return Object.keys(headers).length ? headers : undefined
+  }
+
   const selectedRestaurantId = ref<string>('')
   const restaurants = ref<RestaurantItem[]>([])
   const restaurantsLoaded = ref(false)
@@ -176,7 +184,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
       }
 
       try {
-        const headers = params.shopIdFromRoute.value ? { 'x-shop-id': params.shopIdFromRoute.value } : undefined
+        const headers = buildTenantHeaders(params.shopIdFromRoute.value)
         const query: Record<string, string> = { restaurant_id: restaurantId }
         if (params.shopIdFromRoute.value) query.shop_id = params.shopIdFromRoute.value
         const res = await $fetch<{ ok: boolean; items: RestaurantZoneApiItem[] }>('/api/restaurant-zones', {
@@ -276,7 +284,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
 
   async function loadRestaurants() {
     try {
-      const headers = params.shopIdFromRoute.value ? { 'x-shop-id': params.shopIdFromRoute.value } : undefined
+      const headers = buildTenantHeaders(params.shopIdFromRoute.value)
       const query = params.shopIdFromRoute.value ? { shop_id: params.shopIdFromRoute.value } : undefined
       const res = await $fetch<{
         ok: boolean
@@ -310,7 +318,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
   }
 
   async function loadAllRestaurantZones(items: RestaurantItem[]) {
-    const headers = params.shopIdFromRoute.value ? { 'x-shop-id': params.shopIdFromRoute.value } : undefined
+    const headers = buildTenantHeaders(params.shopIdFromRoute.value)
     const result: Record<string, DeliveryZoneFeature[]> = {}
     await Promise.all(items.map(async (restaurant) => {
       if (!restaurant.supports_delivery) {
