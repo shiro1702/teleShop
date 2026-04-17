@@ -686,8 +686,10 @@ export default defineEventHandler(async (event) => {
   const comment = body.address?.comment?.trim() || null
   if (fulfillmentType === 'delivery' && customerAddressId) {
     if (!customerProfileId) {
-      throw createError({ statusCode: 401, message: 'Unauthorized' })
-    }
+      // Mini app user can select a previously synced UUID address before profile binding is restored.
+      // In this case rely on request payload address fields instead of failing the whole order.
+      customerProfileId = null
+    } else {
     const { data: savedAddress, error: savedAddressError } = await serviceClient
       .from('customer_delivery_addresses')
       .select('id,address_line,flat,comment,lat,lon')
@@ -695,28 +697,29 @@ export default defineEventHandler(async (event) => {
       .eq('shop_id', tenantShopId)
       .eq('customer_profile_id', customerProfileId)
       .maybeSingle()
-    if (savedAddressError) {
-      throw createError({ statusCode: 400, message: 'Выберите корректный адрес доставки' })
-    }
-    // MAX/Telegram mini app can pass a local temporary address id before server sync.
-    // Keep request address fallback instead of hard-failing the whole order.
-    if (!savedAddress) {
-      if (!addressLine?.trim()) {
+      if (savedAddressError) {
         throw createError({ statusCode: 400, message: 'Выберите корректный адрес доставки' })
       }
-    } else {
-      addressLine = savedAddress.address_line ? String(savedAddress.address_line).trim() : addressLine
-      flat = savedAddress.flat ? String(savedAddress.flat).trim() : flat
-      const savedLat = typeof savedAddress.lat === 'number' ? savedAddress.lat : Number(savedAddress.lat)
-      const savedLon = typeof savedAddress.lon === 'number' ? savedAddress.lon : Number(savedAddress.lon)
-      if (
-        !hasDeliveryCoords
-        && Number.isFinite(savedLat)
-        && Number.isFinite(savedLon)
-      ) {
-        deliveryLat = savedLat
-        deliveryLon = savedLon
-        hasDeliveryCoords = true
+      // MAX/Telegram mini app can pass a local temporary address id before server sync.
+      // Keep request address fallback instead of hard-failing the whole order.
+      if (!savedAddress) {
+        if (!addressLine?.trim()) {
+          throw createError({ statusCode: 400, message: 'Выберите корректный адрес доставки' })
+        }
+      } else {
+        addressLine = savedAddress.address_line ? String(savedAddress.address_line).trim() : addressLine
+        flat = savedAddress.flat ? String(savedAddress.flat).trim() : flat
+        const savedLat = typeof savedAddress.lat === 'number' ? savedAddress.lat : Number(savedAddress.lat)
+        const savedLon = typeof savedAddress.lon === 'number' ? savedAddress.lon : Number(savedAddress.lon)
+        if (
+          !hasDeliveryCoords
+          && Number.isFinite(savedLat)
+          && Number.isFinite(savedLon)
+        ) {
+          deliveryLat = savedLat
+          deliveryLon = savedLon
+          hasDeliveryCoords = true
+        }
       }
     }
   }
