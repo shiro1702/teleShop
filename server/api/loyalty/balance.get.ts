@@ -11,7 +11,11 @@ import {
 
 export default defineEventHandler(async (event) => {
   const { shopId, shop } = await requireTenantShop(event)
-  const botToken = typeof shop.telegram_bot_token === 'string' ? shop.telegram_bot_token.trim() : ''
+  const config = useRuntimeConfig(event)
+  const botTokenFromShop = typeof shop.telegram_bot_token === 'string' ? shop.telegram_bot_token.trim() : ''
+  const botToken =
+    botTokenFromShop
+    || (typeof config.botToken === 'string' ? config.botToken.trim() : '')
 
   let customerProfileId: string
   try {
@@ -20,7 +24,6 @@ export default defineEventHandler(async (event) => {
     // Mini app user can be valid by initData but still not linked to profiles.id yet.
     // For bonuses page return zero balance instead of hard 401.
     const initData = getMessengerInitDataFromEvent(event)
-    const config = useRuntimeConfig(event)
     const integrationKeys =
       shop.integration_keys && typeof shop.integration_keys === 'object'
         ? (shop.integration_keys as Record<string, unknown>)
