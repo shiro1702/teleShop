@@ -703,9 +703,7 @@ export default defineEventHandler(async (event) => {
   const callbackSuffix = customerTelegramId ? `${customerTelegramId}_${orderId}` : `_${orderId}`
   const managerContactRow: Array<Record<string, string>> = customerTelegramId
     ? [{ text: '✉️ Написать клиенту', url: `tg://user?id=${customerTelegramId}` }]
-    : maxUserId && maxBotUrl
-      ? [{ text: '💬 Клиент в MAX', url: `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(`user_${maxUserId}`)}` }]
-      : []
+    : []
 
   let updatedText = currentText
   if (status === 'work') {

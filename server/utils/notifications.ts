@@ -440,8 +440,8 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
     ? `${appUrlBase}/dashboard/orders/${encodeURIComponent(input.orderContext.orderId)}`
     : ''
   const maxBackoffMs = [30_000, 120_000, 600_000]
+  /** Достаточно NUXT_MAX_* в рантайме; маршрут TG↔MAX задаётся получателями (ресторан / клиент), не флагом магазина. */
   const maxEnabledByRuntime = Boolean(maxBaseUrl && maxToken)
-  const maxEnabledByPolicy = Boolean((shopRow as any)?.channel_policy?.maxEnabled)
   const defaultManagerTelegramChatId =
     typeof (branchRow as any)?.manager_group_chat_id === 'string' && (branchRow as any).manager_group_chat_id.trim()
       ? String((branchRow as any).manager_group_chat_id).trim()
@@ -469,9 +469,6 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
         const customerMiniAppUrl = customerBridgeToken && telegramBotName
           ? `https://t.me/${telegramBotName}?startapp=${encodeURIComponent(customerBridgeToken)}`
           : ''
-        const maxContactUrl = input.actorContext?.customerMaxUserId && maxBotUrl
-          ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(`user_${input.actorContext.customerMaxUserId}`)}`
-          : ''
         const managerKeyboard = input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
           ? {
               inline_keyboard: [
@@ -483,21 +480,21 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
                   ...(input.actorContext?.customerTelegramId
                     ? [{ text: '✉️ Написать клиенту', url: `tg://user?id=${input.actorContext.customerTelegramId}` }]
                     : []),
-                  ...(maxContactUrl ? [{ text: '💬 Клиент в MAX', url: maxContactUrl }] : []),
                 ],
                 ...(dashboardOrderUrl ? [[{ text: '📋 Открыть заказ (менеджер)', url: dashboardOrderUrl }]] : []),
-                ...(customerMiniAppUrl ? [[{ text: '📱 Открыть заказ (клиент)', url: customerMiniAppUrl }]] : []),
               ].filter((row) => Array.isArray(row) && row.length > 0),
             }
           : null
-        const customerKeyboard = recipient.targetType === 'customer' && input.eventType !== 'ORDER_STATUS_CHANGED'
-          ? {
-              inline_keyboard: [
-                [{ text: '⏱ Сообщить о задержке', callback_data: `clientDelay_${input.orderContext.orderId}` }],
-                ...(customerMiniAppUrl ? [[{ text: '📱 Открыть заказ', url: customerMiniAppUrl }]] : []),
-              ],
-            }
-          : null
+        const customerKeyboardRows: Array<Array<Record<string, string>>> = []
+        if (recipient.targetType === 'customer') {
+          if (input.eventType === 'ORDER_CREATED') {
+            customerKeyboardRows.push([{ text: '⏱ Сообщить о задержке', callback_data: `clientDelay_${input.orderContext.orderId}` }])
+          }
+          if (customerMiniAppUrl) {
+            customerKeyboardRows.push([{ text: '📱 Открыть заказ', url: customerMiniAppUrl }])
+          }
+        }
+        const customerKeyboard = customerKeyboardRows.length ? { inline_keyboard: customerKeyboardRows } : null
         await sendTelegramMessage(
           botToken,
           recipient.targetId,
@@ -505,20 +502,24 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
           { replyMarkup: managerKeyboard || customerKeyboard || undefined },
         )
       } else {
-        if (!maxEnabledByRuntime || !maxEnabledByPolicy) {
-          throw new Error('max_channel_disabled')
+        if (!maxEnabledByRuntime) {
+          await upsertNotificationEvent(event, {
+            key,
+            input,
+            channel: recipient.channel,
+            conversationId: recipient.conversationId,
+            status: 'failed',
+            lastError: 'max_api_not_configured',
+          })
+          continue
         }
         let sent = false
         let lastError: string | null = null
         for (let attempt = 0; attempt < maxBackoffMs.length; attempt += 1) {
           try {
             const customerBridgeToken = await createOrderBridgeToken(event, input.tenantContext.shopId, input.orderContext.orderId, 'customer')
-            const managerBridgeToken = await createOrderBridgeToken(event, input.tenantContext.shopId, input.orderContext.orderId, 'manager')
             const customerMaxMiniAppUrl = customerBridgeToken && maxBotUrl
               ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(customerBridgeToken)}`
-              : ''
-            const managerMaxMiniAppUrl = managerBridgeToken && maxBotUrl
-              ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(managerBridgeToken)}`
               : ''
             const maxAttachments: Array<Record<string, unknown>> = []
             const buttons: Array<Array<Record<string, string>>> = []
@@ -527,7 +528,6 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
             }
             if (recipient.targetType !== 'customer') {
               if (dashboardOrderUrl) buttons.push([{ type: 'link', text: 'Открыть заказ (менеджер)', url: dashboardOrderUrl }])
-              if (managerMaxMiniAppUrl) buttons.push([{ type: 'link', text: 'Открыть заказ (клиент)', url: managerMaxMiniAppUrl }])
             }
             if (buttons.length) {
               maxAttachments.push({
