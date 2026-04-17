@@ -31,23 +31,36 @@ async function sendMaxMessage(
   if (!hasConversation && !hasUserId) {
     throw new Error('max_send_target_missing')
   }
-  const url = hasConversation
-    ? `${base}/messages`
-    : `${base}/messages?user_id=${encodeURIComponent(String(options.userId))}`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: token,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      text: options.text,
-      ...(hasConversation ? { conversationId: String(options.conversationId) } : {}),
-      ...(Array.isArray(options.attachments) && options.attachments.length ? { attachments: options.attachments } : {}),
-    }),
-  })
+  const send = async (mode: 'conversation' | 'user'): Promise<Response> => {
+    const url = mode === 'conversation'
+      ? `${base}/messages`
+      : `${base}/messages?user_id=${encodeURIComponent(String(options.userId))}`
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: options.text,
+        ...(mode === 'conversation' ? { conversationId: String(options.conversationId) } : {}),
+        ...(Array.isArray(options.attachments) && options.attachments.length ? { attachments: options.attachments } : {}),
+      }),
+    })
+  }
+
+  let res = await send(hasConversation ? 'conversation' : 'user')
   if (!res.ok) {
     const text = await res.text()
+    const isUnknownRecipient = res.status === 400 && /unknown recipient|proto\.payload/i.test(text)
+    if (hasConversation && hasUserId && isUnknownRecipient) {
+      res = await send('user')
+      if (!res.ok) {
+        const fallbackText = await res.text()
+        throw new Error(`MAX sendMessage: ${res.status} ${fallbackText}`)
+      }
+      return
+    }
     throw new Error(`MAX sendMessage: ${res.status} ${text}`)
   }
 }

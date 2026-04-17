@@ -113,24 +113,40 @@ async function sendMaxMessage(
     throw new Error('max_send_target_missing')
   }
 
-  const url = hasConversation
-    ? `${base}/messages`
-    : `${base}/messages?user_id=${encodeURIComponent(String(target.userId))}`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: token,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      ...(hasConversation ? { conversationId: String(target.conversationId) } : {}),
-      text,
-      ...(attachments?.length ? { attachments } : {}),
-    }),
-  })
-  if (!response.ok) {
-    throw new Error(`max_send_failed:${response.status}`)
+  const send = async (mode: 'conversation' | 'user'): Promise<Response> => {
+    const url = mode === 'conversation'
+      ? `${base}/messages`
+      : `${base}/messages?user_id=${encodeURIComponent(String(target.userId))}`
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...(mode === 'conversation' ? { conversationId: String(target.conversationId) } : {}),
+        text,
+        ...(attachments?.length ? { attachments } : {}),
+      }),
+    })
   }
+
+  let response = await send(hasConversation ? 'conversation' : 'user')
+  if (!response.ok) {
+    const bodyText = await response.text()
+    const isUnknownRecipient = response.status === 400 && /unknown recipient|proto\.payload/i.test(bodyText)
+    if (hasConversation && hasUserId && isUnknownRecipient) {
+      response = await send('user')
+      if (!response.ok) {
+        const fallbackBody = await response.text()
+        throw new Error(`max_send_failed:${response.status}:${fallbackBody}`)
+      }
+      return
+    }
+    throw new Error(`max_send_failed:${response.status}:${bodyText}`)
+  }
+
+  return
 }
 
 function makeBridgeKey(): string {

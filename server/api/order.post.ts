@@ -838,7 +838,8 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  await dispatchNotificationEvent(event, {
+  // Notifications should not delay API response and client redirect.
+  void dispatchNotificationEvent(event, {
     eventId: crypto.randomUUID(),
     eventType: 'ORDER_CREATED',
     occurredAt: orderCreatedAtIso,
@@ -859,6 +860,8 @@ export default defineEventHandler(async (event) => {
         miniChannel === 'max_mini' ? String(user.id) : webMaxUserIdForActor,
       customerMaxConversationId: maxConversationId,
     },
+  }).catch((notifyError) => {
+    console.error('dispatchNotificationEvent (ORDER_CREATED) failed:', notifyError)
   })
 
   try {
