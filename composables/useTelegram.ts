@@ -37,6 +37,42 @@ export function setOrderContinuationHint(hint: OrderContinuationHint) {
 export function useTelegram() {
   const isClient = process.client
 
+  function readInitDataFromUrl(): string {
+    if (!isClient) return ''
+    try {
+      const candidates: string[] = []
+      const search = new URLSearchParams(window.location.search)
+      candidates.push(
+        search.get('tgWebAppData') || '',
+        search.get('initData') || '',
+      )
+
+      const hashRaw = window.location.hash.startsWith('#')
+        ? window.location.hash.slice(1)
+        : window.location.hash
+      if (hashRaw) {
+        const hashParams = new URLSearchParams(hashRaw)
+        candidates.push(
+          hashParams.get('tgWebAppData') || '',
+          hashParams.get('initData') || '',
+        )
+      }
+
+      for (const raw of candidates) {
+        const trimmed = raw.trim()
+        if (!trimmed) continue
+        try {
+          return decodeURIComponent(trimmed)
+        } catch {
+          return trimmed
+        }
+      }
+      return ''
+    } catch {
+      return ''
+    }
+  }
+
   const isTelegram = computed(() => {
     if (!isClient) return false
     // @ts-ignore: Telegram WebApp может быть не объявлен
@@ -69,7 +105,11 @@ export function useTelegram() {
     return null
   })
 
-  const messengerInitData = computed(() => messengerWebApp.value?.initData ?? '')
+  const messengerInitData = computed(() => {
+    const fromBridge = messengerWebApp.value?.initData ?? ''
+    if (fromBridge) return fromBridge
+    return readInitDataFromUrl()
+  })
 
   /** Заголовки для API: тот же initData, legacy-имя + явный алиас. */
   function buildMessengerAuthHeaders(extra?: Record<string, string>): Record<string, string> {

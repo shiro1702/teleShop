@@ -655,7 +655,8 @@ export default defineEventHandler(async (event) => {
           chat_id: customerTelegramId,
           text: enrichedText(clientDelayText),
         }).catch((err) => console.error('Notify client delay error:', err))
-      } else if ((maxUserId || maxConversationId) && maxApiBaseUrl && maxApiToken) {
+      }
+      if ((maxUserId || maxConversationId) && maxApiBaseUrl && maxApiToken) {
         await sendMaxMessage(maxApiBaseUrl, maxApiToken, {
           userId: maxUserId,
           conversationId: maxConversationId,
@@ -683,7 +684,8 @@ export default defineEventHandler(async (event) => {
           ? undefined
           : { inline_keyboard: [[{ text: '⏱ Сообщить о задержке', callback_data: `clientDelay_${orderId}` }]] },
       }).catch((err) => console.error('Notify client error:', err))
-    } else if ((maxUserId || maxConversationId) && maxApiBaseUrl && maxApiToken) {
+    }
+    if ((maxUserId || maxConversationId) && maxApiBaseUrl && maxApiToken) {
       const maxButtons: Array<Array<Record<string, string>>> = []
       if (status !== 'done' && maxBotUrl) {
         const maxDelayUrl = `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(`orderdelay_${orderId}`)}`

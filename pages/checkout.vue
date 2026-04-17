@@ -1358,14 +1358,16 @@ async function waitForRestaurantZonesLoaded(timeoutMs = 5000) {
 
 async function resolveDeliveryBranch(lat: number, lon: number) {
   branchResolveInfo.value = null
-  if (!shopIdFromRoute.value) return
+  if (!shopIdFromRoute.value && !(isMessengerMiniApp.value && messengerInitData.value)) return
   const requestSeq = ++deliveryResolveRequestSeq.value
 
   isResolvingDeliveryFromServer.value = true
   try {
     const res = await $fetch<DeliveryResolveApi>('/api/delivery-resolve', {
       method: 'POST',
-      headers: { 'x-shop-id': shopIdFromRoute.value },
+      headers: buildMessengerAuthHeaders(
+        shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+      ),
       body: { lat, lon },
     })
 
@@ -2524,6 +2526,18 @@ watch(shopIdFromRoute, async () => {
   await loadRestaurants()
 })
 
+watch(
+  () => [isMessengerMiniApp.value, messengerInitData.value] as const,
+  async ([miniApp, initData], [prevMiniApp, prevInitData]) => {
+    if (!miniApp) return
+    if (!initData) return
+    // В Telegram/MAX initData может появляться после первого mount.
+    // Если первая загрузка филиалов прошла без auth-заголовков, повторяем.
+    if (initData === prevInitData && miniApp === prevMiniApp) return
+    await loadRestaurants()
+  },
+)
+
 watch(checkoutStorageKey, async (nextKey: string, prevKey: string) => {
   if (nextKey === prevKey) return
   resetScopedCheckoutFields()
@@ -2631,13 +2645,27 @@ async function placeOrder() {
       if (isClient()) {
         localStorage.removeItem(checkoutStorageKey.value)
       }
-      await navigateTo({
+      const ordersTarget = {
         path: tenantPath('/orders'),
         query: {
           orderId: res.orderId ?? undefined,
           shop_id: shopIdFromRoute.value || undefined,
         },
-      })
+      }
+      await navigateTo(ordersTarget)
+      // MAX mini app иногда не выполняет SPA-переход после mutate+clear.
+      // Делаем мягкий fallback на hard navigation, если маршрут не сменился.
+      if (isClient() && isMessengerMiniApp.value && messengerClientChannel() === 'max_mini') {
+        await nextTick()
+        const currentPath = window.location.pathname
+        if (currentPath.includes('/checkout') || currentPath.endsWith('/cart')) {
+          const search = new URLSearchParams()
+          if (res.orderId) search.set('orderId', res.orderId)
+          if (shopIdFromRoute.value) search.set('shop_id', shopIdFromRoute.value)
+          const nextUrl = `${tenantPath('/orders')}${search.toString() ? `?${search.toString()}` : ''}`
+          window.location.assign(nextUrl)
+        }
+      }
     } else if (isClient()) {
       window.alert('Не удалось оформить заказ. Попробуйте ещё раз.')
     }
