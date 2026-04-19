@@ -1,5 +1,6 @@
 import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import type { LocationQueryValue } from 'vue-router'
 
 type TenantTheme = Record<string, string>
 type TenantState = {
@@ -85,6 +86,15 @@ function buildCssVars(theme: TenantTheme): Record<string, string> {
   }
 
   return vars
+}
+
+function normalizeRouteQueryParam(value: LocationQueryValue | LocationQueryValue[] | undefined): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (Array.isArray(value)) {
+    const found = value.find((x): x is string => typeof x === 'string' && !!x.trim())
+    if (found) return found.trim()
+  }
+  return null
 }
 
 const GLOBAL_THEME_VAR_KEYS = [
@@ -216,11 +226,11 @@ export function useTenant() {
     state.value.isCustomDomain
       ? (state.value.shopId
           || state.value.tenantSlug
-          || (typeof route.query.shop_id === 'string' ? route.query.shop_id : null))
+          || normalizeRouteQueryParam(route.query.shop_id))
       : (routeTenantSlug.value
           || state.value.shopId
           || state.value.tenantSlug
-          || (typeof route.query.shop_id === 'string' ? route.query.shop_id : null)),
+          || normalizeRouteQueryParam(route.query.shop_id)),
   )
 
   const routePrefix = computed(() => {
@@ -231,6 +241,14 @@ export function useTenant() {
     if (routeCitySlug.value) return `/${routeCitySlug.value}/${slug}`
     return `/${slug}`
   })
+
+  /** Стабильный примитив для watch: без нового массива на каждый запуск геттера */
+  const branchScopeSignature = computed(() =>
+    JSON.stringify([
+      normalizeRouteQueryParam(route.query.branch_id),
+      normalizeRouteQueryParam(route.query.restaurant_id),
+    ]),
+  )
 
   const cssVars = computed<Record<string, string>>(() => {
     return buildCssVars(state.value.theme)
@@ -264,31 +282,45 @@ export function useTenant() {
 
   async function loadTenantSettings() {
     if (state.value.loading || state.value.loaded) return
-    const explicitTenantFromQuery = typeof route.query.shop_id === 'string' && route.query.shop_id.trim()
-      ? route.query.shop_id.trim()
-      : ''
+    const explicitTenantFromQuery = normalizeRouteQueryParam(route.query.shop_id)
     if ((isDashboardRoute.value || isNonTenantRoute.value) && !explicitTenantFromQuery) {
+      state.value.loaded = true
+      state.value.loading = false
+      return
+    }
+    const tenantRef = tenantKey.value || undefined
+    // Клиентский $fetch на /api/tenant без shop_id / x-shop-id не резолвит витрину по пути страницы
+    // (middleware не парсит tenant из document URL для /api). Тогда middleware отвечает 404.
+    if (!tenantRef && !state.value.isCustomDomain) {
       state.value.loaded = true
       state.value.loading = false
       return
     }
     state.value.loading = true
     try {
-      const tenantRef = tenantKey.value || undefined
-      const query = tenantRef ? { shop_id: tenantRef } : undefined
-      const res = await $fetch<{
-        ok: boolean
-        shopId: string
-        tenantSlug?: string
-        isCustomDomain?: boolean
-        shop?: { name?: string; legalName?: string | null; inn?: string | null; ogrn?: string | null }
-        uiSettings?: Record<string, unknown>
-      }>('/api/tenant', {
-        query,
-        headers: tenantRef ? { 'x-shop-id': tenantRef } : undefined,
-      })
-      if (res?.ok) {
-        applyTenant(res)
+      const branchFromQuery = normalizeRouteQueryParam(route.query.branch_id)
+      const restaurantFromQuery = normalizeRouteQueryParam(route.query.restaurant_id)
+      const query: Record<string, string> = {}
+      if (tenantRef) query.shop_id = tenantRef
+      if (branchFromQuery) query.branch_id = branchFromQuery
+      else if (restaurantFromQuery) query.restaurant_id = restaurantFromQuery
+      try {
+        const res = await $fetch<{
+          ok: boolean
+          shopId: string
+          tenantSlug?: string
+          isCustomDomain?: boolean
+          shop?: { name?: string; legalName?: string | null; inn?: string | null; ogrn?: string | null }
+          uiSettings?: Record<string, unknown>
+        }>('/api/tenant', {
+          query: Object.keys(query).length ? query : undefined,
+          headers: tenantRef ? { 'x-shop-id': tenantRef } : undefined,
+        })
+        if (res?.ok) {
+          applyTenant(res)
+        }
+      } catch {
+        // Нет контекста магазина, 404 из middleware и т.п. — не рвём навигацию.
       }
     } finally {
       if (!state.value.loaded) {
@@ -329,12 +361,14 @@ export function useTenant() {
     { immediate: false },
   )
   watch(
-    () => [route.query.branch_id, route.query.restaurant_id] as const,
-    async () => {
+    branchScopeSignature,
+    async (next, prev) => {
+      if (next === prev) return
       if (isDashboardRoute.value || isNonTenantRoute.value) return
       state.value.loaded = false
       await loadTenantSettings()
     },
+    { immediate: false },
   )
 
   return {

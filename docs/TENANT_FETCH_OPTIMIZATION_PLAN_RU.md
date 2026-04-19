@@ -13,7 +13,7 @@
 
 ## Этапы работы
 
-### Этап 1 — watcher по `branch_id` / `restaurant_id`
+### (выполено!) Этап 1 — watcher по `branch_id` / `restaurant_id`
 
 **Проблема:** геттер `() => [route.query.branch_id, route.query.restaurant_id]` возвращает новый массив при каждом запуске; при смене маршрута возможны ложные срабатывания и сброс `loaded`, из-за чего снова вызывается `/api/tenant`.
 
