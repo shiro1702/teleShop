@@ -1225,6 +1225,15 @@ const shopIdFromRoute = computed(() => {
   const fromQuery = typeof route.query.shop_id === 'string' ? route.query.shop_id.trim() : ''
   return fromTenantState || fromRouteSlug || fromQuery || null
 })
+/** Канонический идентификатор витрины для API: UUID из тенанта, иначе slug/query из маршрута. */
+const checkoutXShopId = computed(() => {
+  const fromTenant = typeof tenant.value.shopId === 'string' ? tenant.value.shopId.trim() : ''
+  return fromTenant || shopIdFromRoute.value
+})
+function checkoutXShopIdHeaders(): { 'x-shop-id': string } | undefined {
+  const id = checkoutXShopId.value
+  return id ? { 'x-shop-id': id } : undefined
+}
 const hasTenantRouteContext = computed(() => {
   const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
   return !!tenantSlug
@@ -1366,7 +1375,7 @@ async function resolveDeliveryBranch(lat: number, lon: number) {
     const res = await $fetch<DeliveryResolveApi>('/api/delivery-resolve', {
       method: 'POST',
       headers: buildMessengerAuthHeaders(
-        shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+        checkoutXShopIdHeaders(),
       ),
       body: { lat, lon },
     })
@@ -1866,7 +1875,7 @@ async function runPromoApply() {
       discountAmount?: number
     }>('/api/promo/apply', {
       method: 'POST',
-      headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+      headers: checkoutXShopIdHeaders(),
       body: {
         items: cartStore.items.map((item) => ({
           id: item.id,
@@ -1933,7 +1942,7 @@ async function runPromoPreview() {
       balance?: number
     }>('/api/promo/preview', {
       method: 'POST',
-      headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+      headers: checkoutXShopIdHeaders(),
       body: {
         items: cartStore.items.map((item) => ({
           id: item.id,
@@ -1978,22 +1987,66 @@ watch(maxBonusAvailable, (nextMax: number) => {
   }
 })
 
-async function loadLoyaltyBalance() {
-  if (!supabaseUser.value || !shopIdFromRoute.value) {
+const loyaltyBalanceContextKey = computed(() => {
+  const uid = supabaseUser.value?.id
+  const shop = checkoutXShopId.value
+  if (!uid || !shop) return null
+  return `${uid}\t${shop}`
+})
+
+let loyaltyBalanceLastFetchedKey: string | null = null
+let loyaltyBalanceInFlightKey: string | null = null
+let loyaltyBalanceInFlightPromise: Promise<void> | null = null
+
+async function loadLoyaltyBalance(options?: { force?: boolean }) {
+  const key = loyaltyBalanceContextKey.value
+  const headerShop = checkoutXShopId.value
+  if (!key || !headerShop) {
     loyaltyBalance.value = null
+    loyaltyBalanceLastFetchedKey = null
+    loyaltyBalanceInFlightKey = null
+    loyaltyBalanceInFlightPromise = null
     return
   }
-  try {
-    const res = await $fetch<{ ok: boolean; balance: number }>('/api/loyalty/balance', {
-      headers: { 'x-shop-id': shopIdFromRoute.value },
-    })
-    loyaltyBalance.value = res.balance
-  } catch {
-    loyaltyBalance.value = null
+  if (!options?.force && key === loyaltyBalanceLastFetchedKey) return
+  if (!options?.force && loyaltyBalanceInFlightPromise && loyaltyBalanceInFlightKey === key) {
+    await loyaltyBalanceInFlightPromise
+    return
   }
+
+  const p = (async () => {
+    try {
+      const res = await $fetch<{ ok: boolean; balance: number }>('/api/loyalty/balance', {
+        headers: { 'x-shop-id': headerShop },
+      })
+      if (loyaltyBalanceContextKey.value !== key) return
+      loyaltyBalance.value = res.balance
+      loyaltyBalanceLastFetchedKey = key
+    } catch {
+      if (loyaltyBalanceContextKey.value === key) {
+        loyaltyBalance.value = null
+      }
+    }
+  })()
+
+  loyaltyBalanceInFlightKey = key
+  loyaltyBalanceInFlightPromise = p
+  void p.finally(() => {
+    if (loyaltyBalanceInFlightKey === key) {
+      loyaltyBalanceInFlightKey = null
+      loyaltyBalanceInFlightPromise = null
+    }
+  })
 }
 
-watch([supabaseUser, shopIdFromRoute], () => {
+watch(loyaltyBalanceContextKey, (nextKey: string | null) => {
+  if (!nextKey) {
+    loyaltyBalance.value = null
+    loyaltyBalanceLastFetchedKey = null
+    loyaltyBalanceInFlightKey = null
+    loyaltyBalanceInFlightPromise = null
+    return
+  }
   void loadLoyaltyBalance()
 }, { immediate: true })
 
@@ -2008,7 +2061,7 @@ const promoPreviewWatchSignature = computed(() => JSON.stringify({
   })),
   promoCode: appliedPromoCode.value.trim(),
   bonusToSpend: bonusToSpend.value || 0,
-  shopId: shopIdFromRoute.value || '',
+  shopId: checkoutXShopId.value || '',
 }))
 
 watch(promoPreviewWatchSignature, () => {
@@ -2639,7 +2692,7 @@ async function placeOrder() {
         : null
 
     const body: any = {
-      shopId: shopIdFromRoute.value,
+      shopId: checkoutXShopId.value,
       restaurantId: selectedRestaurantId.value || null,
       items: cartStore.items.map((item) => ({
         id: item.id,
@@ -2687,7 +2740,7 @@ async function placeOrder() {
     body.orderContinuation = continuation
 
     const orderHeaders = buildMessengerAuthHeaders(
-      shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+      checkoutXShopIdHeaders(),
     )
 
     const res = await $fetch<{ ok: boolean; orderId?: string }>('/api/order', {
@@ -2704,7 +2757,7 @@ async function placeOrder() {
           : undefined
         const paymentRes = await $fetch<{ ok: boolean; confirmationUrl?: string }>('/api/checkout/create', {
           method: 'POST',
-          headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+          headers: checkoutXShopIdHeaders(),
           body: {
             orderId: res.orderId,
             returnUrl,
@@ -2733,7 +2786,7 @@ async function placeOrder() {
         path: tenantPath('/orders'),
         query: {
           orderId: res.orderId ?? undefined,
-          shop_id: shopIdFromRoute.value || undefined,
+          shop_id: checkoutXShopId.value || undefined,
         },
       }
       await navigateTo(ordersTarget)
@@ -2745,7 +2798,7 @@ async function placeOrder() {
         if (currentPath.includes('/checkout') || currentPath.endsWith('/cart')) {
           const search = new URLSearchParams()
           if (res.orderId) search.set('orderId', res.orderId)
-          if (shopIdFromRoute.value) search.set('shop_id', shopIdFromRoute.value)
+          if (checkoutXShopId.value) search.set('shop_id', checkoutXShopId.value)
           const nextUrl = `${tenantPath('/orders')}${search.toString() ? `?${search.toString()}` : ''}`
           window.location.assign(nextUrl)
         }
@@ -2788,7 +2841,7 @@ async function openMaxAuthFlow() {
   if (!maxBotUrl.value || !isClient()) return
   await saveCurrentAddress()
   await persistCheckoutStateCloud(serializeState())
-  const shopRef = shopIdFromRoute.value || ''
+  const shopRef = checkoutXShopId.value || ''
   if (!shopRef) {
     window.alert('Не удалось определить ресторан. Обновите страницу.')
     return
@@ -2854,7 +2907,7 @@ async function openTelegramAuth() {
   if (!telegramBotUrl.value || !isClient()) return
   await saveCurrentAddress()
   await persistCheckoutStateCloud(serializeState())
-  const shopRef = shopIdFromRoute.value || ''
+  const shopRef = checkoutXShopId.value || ''
   if (!shopRef) {
     window.alert('Не удалось определить ресторан. Обновите страницу.')
     return
@@ -2941,7 +2994,7 @@ async function continueInMiniAppFromCheckout(channel: 'telegram' | 'max') {
   try {
     const res = await $fetch<{ ok: boolean; deepLink: string }>('/api/cart-bridge', {
       method: 'POST',
-      headers: shopIdFromRoute.value ? { 'x-shop-id': shopIdFromRoute.value } : undefined,
+      headers: checkoutXShopIdHeaders(),
       body: {
         channel,
         scopeKey: resolveCartScopeKey(route),
