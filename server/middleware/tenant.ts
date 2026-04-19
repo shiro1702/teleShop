@@ -153,9 +153,21 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 403, message: 'Shop is inactive' })
   }
 
+  // Старый URL корзины /{city}/{tenant}/cart → канонический /checkout?step=1
+  if (!path.startsWith('/api/')) {
+    const pathnameOnly = (path.split('?')[0] || '').replace(/\/+$/, '') || '/'
+    const segments = pathnameOnly.split('/').filter(Boolean)
+    if (segments.length >= 3 && segments[segments.length - 1] === 'cart') {
+      const url = new URL(path, 'http://internal.local')
+      url.pathname = pathnameOnly.replace(/\/cart$/, '/checkout')
+      if (!url.searchParams.has('step')) url.searchParams.set('step', '1')
+      return sendRedirect(event, `${url.pathname}${url.search}`, 302)
+    }
+  }
+
   if (!path.startsWith('/api/') && isLegacyFlatCheckout) {
     const canonical = await resolveCanonicalTenantCartPath(event, shop)
-    return sendRedirect(event, canonical.cartPath, 302)
+    return sendRedirect(event, canonical.checkoutPath, 302)
   }
 
   let uiSettings = shop.ui_settings ?? {}
@@ -205,7 +217,12 @@ export default defineEventHandler(async (event) => {
   if (!path.startsWith('/api/') && isCustomDomain && shouldRewriteCustomDomainPath(path)) {
     const url = new URL(event.node.req.url || path, 'http://internal.local')
     const normalizedPath = (url.pathname.replace(/\/+$/, '') || '/') === '/' ? '' : url.pathname.replace(/\/+$/, '')
-    url.pathname = `/${shop.slug}${normalizedPath}`
+    let suffix = normalizedPath
+    if (suffix === '/cart' || suffix.endsWith('/cart')) {
+      suffix = suffix.replace(/\/cart$/, '/checkout')
+      if (!url.searchParams.has('step')) url.searchParams.set('step', '1')
+    }
+    url.pathname = `/${shop.slug}${suffix}`
     event.node.req.url = `${url.pathname}${url.search}`
   }
 })

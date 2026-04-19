@@ -2080,21 +2080,66 @@ const isAuthorizedForOrder = computed(() => {
   return isMessengerMiniApp.value || !!supabaseUser.value
 })
 
-const isCheckoutRoute = computed(() => route.path.endsWith('/checkout'))
-const isCartRoute = computed(() => route.path.endsWith('/cart'))
+/** Один канонический путь оформления; шаг задаётся только через ?step=1|2 (см. docs/CART_CHECKOUT_FETCH_OPTIMIZATION_PLAN_RU.md). */
+const checkoutFlowPath = computed(() => tenantPath('/checkout'))
+
+function readStepQuery(): number | null {
+  const raw = route.query.step
+  const s = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw[0] : ''
+  if (s === '1') return 1
+  if (s === '2') return 2
+  return null
+}
+
+/** Эффективный шаг из URL и корзины (без учёта сохранённого в storage — его применяют отдельно). */
+function deriveEffectiveStep(): 1 | 2 {
+  if (route.query.payment === 'return') return 2
+  if (route.path.endsWith('/cart')) return 1
+  const explicit = readStepQuery()
+  if (explicit === 1) return 1
+  if (explicit === 2) return cartStore.items.length > 0 ? 2 : 1
+  if (route.path.endsWith('/checkout')) {
+    // Без query step: как раньше для прямого захода на /checkout
+    return cartStore.items.length > 0 ? 2 : 1
+  }
+  return 1
+}
 
 function goToStep(step: 1 | 2) {
   if (step === 2) {
     cartStore.flushPendingRemovals()
   }
-  const targetPath = step === 2 ? tenantPath('/checkout') : tenantPath('/cart')
-  if (route.path !== targetPath) {
-    void router.push({ path: targetPath })
+  if (step === 2 && cartStore.items.length === 0) return
+
+  const path = checkoutFlowPath.value
+  const nextQuery = { ...route.query, step: String(step) as string }
+
+  const urlMatches = route.path === path && String(route.query.step ?? '') === String(step)
+  if (step === state.currentStep && urlMatches) return
+
+  if (step !== state.currentStep) {
+    stepDirection.value = step > state.currentStep ? 'forward' : 'backward'
   }
-  if (step === state.currentStep) return
-  stepDirection.value = step > state.currentStep ? 'forward' : 'backward'
   state.currentStep = step
+
+  if (!urlMatches) {
+    void router.replace({ path, query: nextQuery })
+  }
 }
+
+watch(
+  () => [route.fullPath, cartStore.items.length] as const,
+  () => {
+    const next = deriveEffectiveStep()
+    if (next !== state.currentStep) {
+      stepDirection.value = next > state.currentStep ? 'forward' : 'backward'
+      state.currentStep = next
+    }
+    if (next === 1 && route.path === checkoutFlowPath.value && String(route.query.step) === '2') {
+      void router.replace({ path: checkoutFlowPath.value, query: { ...route.query, step: '1' } })
+    }
+  },
+)
 
 function openEditItemModal(item: CartItem) {
   editingCartItemId.value = item.cartItemId
@@ -2519,11 +2564,17 @@ onMounted(async () => {
   }
   if (!hasTenantRouteContext.value && shopIdFromRoute.value) {
     try {
-      const canonical = await $fetch<{ ok: boolean; cartPath: string }>('/api/tenant/resolve-canonical', {
-        query: { shop_id: shopIdFromRoute.value },
-      })
-      if (canonical?.ok && typeof canonical.cartPath === 'string') {
-        await navigateTo(canonical.cartPath, { replace: true })
+      const canonical = await $fetch<{ ok: boolean; cartPath: string; checkoutPath: string }>(
+        '/api/tenant/resolve-canonical',
+        {
+          query: { shop_id: shopIdFromRoute.value },
+        },
+      )
+      if (canonical?.ok && typeof canonical.checkoutPath === 'string') {
+        await navigateTo(
+          { path: canonical.checkoutPath, query: { ...route.query, step: '1' } },
+          { replace: true },
+        )
         return
       }
     } catch {
@@ -2534,14 +2585,7 @@ onMounted(async () => {
   const saved = await loadCheckoutStateCloud()
   if (saved) restoreFromPlainObject(saved)
 
-  const stepParam = Number(route.query.step || 0)
-  if (isCheckoutRoute.value && cartStore.items.length > 0) {
-    state.currentStep = 2
-  } else if (isCartRoute.value) {
-    state.currentStep = 1
-  } else if (stepParam === 2 && cartStore.items.length > 0) {
-    state.currentStep = 2
-  }
+  state.currentStep = deriveEffectiveStep()
 
   await loadRestaurants()
 })
@@ -2656,7 +2700,7 @@ async function placeOrder() {
       clearOrderContinuationHint()
       if (state.paymentMethod === 'online' && res.orderId) {
         const returnUrl = isClient()
-          ? `${window.location.origin}${tenantPath('/checkout')}?payment=return&orderId=${encodeURIComponent(res.orderId)}`
+          ? `${window.location.origin}${tenantPath('/checkout')}?payment=return&orderId=${encodeURIComponent(res.orderId)}&step=2`
           : undefined
         const paymentRes = await $fetch<{ ok: boolean; confirmationUrl?: string }>('/api/checkout/create', {
           method: 'POST',
@@ -2757,7 +2801,7 @@ async function openMaxAuthFlow() {
         body: {
           shopId: shopRef,
           scopeKey: resolveCartScopeKey(route),
-          redirectPath: tenantPath('/cart'),
+          redirectPath: `${tenantPath('/checkout')}?step=1`,
           items: cartStore.items,
         },
       })
@@ -2823,7 +2867,7 @@ async function openTelegramAuth() {
         body: {
           shopId: shopRef,
           scopeKey: resolveCartScopeKey(route),
-          redirectPath: tenantPath('/cart'),
+          redirectPath: `${tenantPath('/checkout')}?step=1`,
           items: cartStore.items,
         },
       })

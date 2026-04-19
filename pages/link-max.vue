@@ -107,32 +107,48 @@ async function copyManualAuthText(): Promise<void> {
   }, 1500)
 }
 
-function resolveTenantCartTarget() {
-  const fallbackPath = shopId.value ? `/${shopId.value}/cart` : '/cart'
-  const raw = redirectPath.value || fallbackPath
-  if (!raw.startsWith('/')) return fallbackPath
+function resolveTenantCartTarget(): string {
+  const fallbackFull = shopId.value ? `/${shopId.value}/checkout?step=1` : '/checkout?step=1'
+  const raw = redirectPath.value || fallbackFull
+  if (!raw.startsWith('/')) return fallbackFull
+
   const [pathPart, queryPart = ''] = raw.split('?')
   const query = new URLSearchParams(queryPart)
-  const safePath = pathPart.endsWith('/cart')
-    ? pathPart
-    : pathPart.endsWith('/checkout')
-      ? pathPart.replace(/\/checkout$/, '/cart')
-      : fallbackPath
+
+  let pathOnly = pathPart
+  if (pathOnly.endsWith('/cart')) {
+    pathOnly = pathOnly.replace(/\/cart$/, '/checkout')
+  }
+  if (!pathOnly.endsWith('/checkout')) {
+    return fallbackFull
+  }
+
   if (!query.get('shop_id') && shopId.value) {
     query.set('shop_id', shopId.value)
   }
+  if (!query.has('step')) {
+    query.set('step', '1')
+  }
+
   const serialized = query.toString()
-  return serialized ? `${safePath}?${serialized}` : safePath
+  return serialized ? `${pathOnly}?${serialized}` : `${pathOnly}?step=1`
 }
 
-async function resolveCanonicalCartTarget() {
+async function resolveCanonicalCartTarget(): Promise<string> {
   if (!shopId.value) return resolveTenantCartTarget()
   try {
-    const canonical = await $fetch<{ ok: boolean; cartPath?: string }>('/api/tenant/resolve-canonical', {
-      query: { shop_id: shopId.value },
-    })
-    if (canonical?.ok && typeof canonical.cartPath === 'string' && canonical.cartPath.startsWith('/')) {
-      return canonical.cartPath
+    const canonical = await $fetch<{ ok: boolean; checkoutPath?: string }>(
+      '/api/tenant/resolve-canonical',
+      {
+        query: { shop_id: shopId.value },
+      },
+    )
+    if (
+      canonical?.ok
+      && typeof canonical.checkoutPath === 'string'
+      && canonical.checkoutPath.startsWith('/')
+    ) {
+      return `${canonical.checkoutPath}?step=1`
     }
   } catch {
     // fall back to local target resolution
@@ -145,7 +161,7 @@ async function resolveAfterLogin() {
   if (raw.includes('/cart')) {
     return resolveCanonicalCartTarget()
   }
-  const fallbackPath = shopId.value ? `/${shopId.value}/cart` : '/cart'
+  const fallbackPath = shopId.value ? `/${shopId.value}/checkout?step=1` : '/checkout?step=1'
   const pathToUse = raw.startsWith('/') ? raw : fallbackPath
   const [pathPart, queryPart = ''] = pathToUse.split('?')
   const query = new URLSearchParams(queryPart)

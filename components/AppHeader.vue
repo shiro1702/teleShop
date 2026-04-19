@@ -381,7 +381,7 @@ async function openTelegramAuth() {
         body: {
           shopId: shopRef,
           citySlug: citySlug || undefined,
-          redirectPath: tenantPath('/cart'),
+          redirectPath: `${tenantPath('/checkout')}?step=1`,
         },
       },
     )
@@ -394,7 +394,7 @@ async function openTelegramAuth() {
       path: '/link-telegram',
       query: {
         token: res.token,
-        redirect: tenantPath('/cart'),
+        redirect: `${tenantPath('/checkout')}?step=1`,
         shop_id: shopRef,
       },
     })
@@ -421,7 +421,7 @@ async function openMaxAuth() {
         body: {
           shopId: shopRef,
           citySlug: citySlug || undefined,
-          redirectPath: tenantPath('/cart'),
+          redirectPath: `${tenantPath('/checkout')}?step=1`,
         },
       },
     )
@@ -435,7 +435,7 @@ async function openMaxAuth() {
       path: '/link-max',
       query: {
         token: res.token,
-        redirect: tenantPath('/cart'),
+        redirect: `${tenantPath('/checkout')}?step=1`,
         shop_id: shopRef,
       },
     })

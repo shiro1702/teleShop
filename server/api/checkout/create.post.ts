@@ -11,7 +11,7 @@ type Body = {
 
 function buildFallbackReturnUrl(appUrl: string, shopSlug: string): string {
   const trimmed = (appUrl || '').replace(/\/+$/, '')
-  return `${trimmed}/${encodeURIComponent(shopSlug)}/checkout`
+  return `${trimmed}/${encodeURIComponent(shopSlug)}/checkout?step=2`
 }
 
 export default defineEventHandler(async (event) => {

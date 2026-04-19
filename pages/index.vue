@@ -1090,8 +1090,8 @@ function goToCheckout() {
   // вручную выбирать филиал/ресторан.
   const branchId = readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
   void router.push({
-    path: tenantPath('/cart'),
-    query: branchId ? { branch_id: branchId } : undefined,
+    path: tenantPath('/checkout'),
+    query: branchId ? { branch_id: branchId, step: '1' } : { step: '1' },
   })
 }
 

@@ -14,9 +14,9 @@ function makeBridgeKey(): string {
 }
 
 function sanitizeInternalPath(path: unknown): string {
-  if (typeof path !== 'string' || !path.startsWith('/')) return '/cart'
+  if (typeof path !== 'string' || !path.startsWith('/')) return '/checkout?step=1'
   // Reject absolute/protocol-relative URLs to avoid open redirects.
-  if (path.startsWith('//')) return '/cart'
+  if (path.startsWith('//')) return '/checkout?step=1'
   return path
 }
 

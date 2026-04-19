@@ -1,7 +1,16 @@
 <template>
-  <CartPage />
+  <div class="min-h-[20vh]" />
 </template>
 
 <script setup lang="ts">
-import CartPage from '../../cart.vue'
+const route = useRoute()
+const { tenantPath } = useTenant()
+
+await navigateTo(
+  {
+    path: tenantPath('/checkout'),
+    query: { ...route.query, step: '1' },
+  },
+  { replace: true },
+)
 </script>

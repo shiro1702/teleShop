@@ -50,7 +50,7 @@ export function buildAuthSiteLinkUrl(options: {
   const redirectPath =
     typeof raw.redirect_path === 'string' && raw.redirect_path.startsWith('/') && !raw.redirect_path.startsWith('//')
       ? raw.redirect_path
-      : '/cart'
+      : '/checkout?step=1'
   const shopId =
     (raw.shop_slug && String(raw.shop_slug).trim()) ||
     (options.tenantShop?.slug && String(options.tenantShop.slug).trim()) ||
