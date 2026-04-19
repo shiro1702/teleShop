@@ -12,7 +12,7 @@
 
 ## Контекст
 
-Страницы **`/{city}/{tenant}/cart`** и **`/{city}/{tenant}/checkout`** оба монтируют один и тот же [`pages/checkout.vue`](../pages/checkout.vue) через разные обёртки ([`pages/cart.vue`](../pages/cart.vue), [`pages/[city_slug]/[tenant_slug]/checkout.vue`](../pages/[city_slug]/[tenant_slug]/checkout.vue)). При SPA-переходе между ними выполняется **повторный mount** большого экрана оформления → снова срабатывают `onMounted`, watchers с `immediate`, повторный `loadRestaurants()` и т.д.
+Страницы **`/{city}/{tenant}/cart`** и **`/{city}/{tenant}/checkout`** оба монтируют один и тот же [`pages/checkout.vue`](../../pages/checkout.vue) через разные обёртки ([`pages/cart.vue`](../../pages/cart.vue), [`pages/[city_slug]/[tenant_slug]/checkout.vue`](../../pages/[city_slug]/[tenant_slug]/checkout.vue)). При SPA-переходе между ними выполняется **повторный mount** большого экрана оформления → снова срабатывают `onMounted`, watchers с `immediate`, повторный `loadRestaurants()` и т.д.
 
 Плюс на **одном** монтировании возможны дубли из-за гидратации Supabase, нескольких watchers на одни и те же данные и параллельной загрузки зон для нескольких филиалов.
 
@@ -20,10 +20,10 @@
 
 | Область | Файлы |
 |--------|--------|
-| Корзина / шаги / промо / лояльность | [`pages/checkout.vue`](../pages/checkout.vue) |
-| Адресная книга и `/api/customer/addresses` | [`composables/useCheckoutAddress.ts`](../composables/useCheckoutAddress.ts) |
-| Филиалы, `/api/restaurants`, `/api/restaurant-zones` | [`composables/useCheckoutTenantRestaurants.ts`](../composables/useCheckoutTenantRestaurants.ts) |
-| Тема и shop context (пересекается с отдельным планом) | [`composables/useTenant.ts`](../composables/useTenant.ts), [`app.vue`](../app.vue) |
+| Корзина / шаги / промо / лояльность | [`pages/checkout.vue`](../../pages/checkout.vue) |
+| Адресная книга и `/api/customer/addresses` | [`composables/useCheckoutAddress.ts`](../../composables/useCheckoutAddress.ts) |
+| Филиалы, `/api/restaurants`, `/api/restaurant-zones` | [`composables/useCheckoutTenantRestaurants.ts`](../../composables/useCheckoutTenantRestaurants.ts) |
+| Тема и shop context (пересекается с отдельным планом) | [`composables/useTenant.ts`](../../composables/useTenant.ts), [`app.vue`](../../app.vue) |
 
 ---
 
@@ -57,7 +57,7 @@
 
 ## Этап B — лояльность: `/api/loyalty/balance`
 
-**Проблема:** в [`pages/checkout.vue`](../pages/checkout.vue) `watch([supabaseUser, shopIdFromRoute], …, { immediate: true })` даёт два срабатывания при появлении сессии после гидратации.
+**Проблема:** в [`pages/checkout.vue`](../../pages/checkout.vue) `watch([supabaseUser, shopIdFromRoute], …, { immediate: true })` даёт два срабатывания при появлении сессии после гидратации.
 
 **Сделать:**
 
@@ -70,7 +70,7 @@
 
 ## Этап C — адреса: `/api/customer/addresses`
 
-**Проблема:** в [`useCheckoutAddress.ts`](../composables/useCheckoutAddress.ts) watcher по `shopId`, `supabaseUser`, storage key с `immediate: true` вызывает `loadSavedAddresses()` несколько раз при появлении пользователя и после установки `tenant.shopId`.
+**Проблема:** в [`useCheckoutAddress.ts`](../../composables/useCheckoutAddress.ts) watcher по `shopId`, `supabaseUser`, storage key с `immediate: true` вызывает `loadSavedAddresses()` несколько раз при появлении пользователя и после установки `tenant.shopId`.
 
 **Сделать:**
 
@@ -85,8 +85,8 @@
 
 **Проблемы:**
 
-1. В [`checkout.vue`](../pages/checkout.vue) `loadRestaurants()` вызывается из `onMounted` и из `watch(shopIdFromRoute)` (и при появлении messenger `initData`) — возможны пересечения при одном и том же `shop_id`.
-2. В [`useCheckoutTenantRestaurants.ts`](../composables/useCheckoutTenantRestaurants.ts) **`loadAllRestaurantZones`** запрашивает зоны для **каждого** филиала с доставкой, а **`watch(selectedRestaurantId)`** с `immediate: true` **дополнительно** запрашивает зоны для выбранного филиала → дублирование хотя бы для одного `restaurant_id`.
+1. В [`checkout.vue`](../../pages/checkout.vue) `loadRestaurants()` вызывается из `onMounted` и из `watch(shopIdFromRoute)` (и при появлении messenger `initData`) — возможны пересечения при одном и том же `shop_id`.
+2. В [`useCheckoutTenantRestaurants.ts`](../../composables/useCheckoutTenantRestaurants.ts) **`loadAllRestaurantZones`** запрашивает зоны для **каждого** филиала с доставкой, а **`watch(selectedRestaurantId)`** с `immediate: true` **дополнительно** запрашивает зоны для выбранного филиала → дублирование хотя бы для одного `restaurant_id`.
 
 **Сделать:**
 
@@ -138,11 +138,11 @@
 
 ## Связанные файлы (чеклист для разработчика)
 
-- [`pages/checkout.vue`](../pages/checkout.vue)
-- [`composables/useCheckoutAddress.ts`](../composables/useCheckoutAddress.ts)
-- [`composables/useCheckoutTenantRestaurants.ts`](../composables/useCheckoutTenantRestaurants.ts)
-- [`pages/[city_slug]/[tenant_slug]/cart.vue`](../pages/[city_slug]/[tenant_slug]/cart.vue), [`pages/[city_slug]/[tenant_slug]/checkout.vue`](../pages/[city_slug]/[tenant_slug]/checkout.vue)
-- План тенанта (отдельно): [`docs/TENANT_FETCH_OPTIMIZATION_PLAN_RU.md`](./TENANT_FETCH_OPTIMIZATION_PLAN_RU.md)
+- [`pages/checkout.vue`](../../pages/checkout.vue)
+- [`composables/useCheckoutAddress.ts`](../../composables/useCheckoutAddress.ts)
+- [`composables/useCheckoutTenantRestaurants.ts`](../../composables/useCheckoutTenantRestaurants.ts)
+- [`pages/[city_slug]/[tenant_slug]/cart.vue`](../../pages/[city_slug]/[tenant_slug]/cart.vue), [`pages/[city_slug]/[tenant_slug]/checkout.vue`](../../pages/[city_slug]/[tenant_slug]/checkout.vue)
+- План тенанта (отдельно): [`docs/TODO/TENANT_FETCH_OPTIMIZATION_PLAN_RU.md`](./TENANT_FETCH_OPTIMIZATION_PLAN_RU.md)
 
 ---
 
@@ -153,6 +153,6 @@
 | Дата | Этап | Заметки |
 |------|------|---------|
 | 2026-04-19 | **A — выполнен** | Выбрано **объединение URL**: канонический путь оформления — `/{city}/{tenant}/checkout` с **`?step=1`** (корзина) и **`?step=2`** (оформление); переход между шагами через `router.replace` без смены page-компонента. Старые пути **`.../cart`** редиректятся на **`.../checkout?step=1`** (страницы-редиректы в `pages/**/cart.vue`, middleware для путей вида `/{city}/{tenant}/cart`, для кастомного домена `/cart` → `/checkout?step=1`). Плоский legacy `/checkout` ведёт на **`checkoutPath`** (не на cart). Обновлены точки входа (меню, шапка, bridge/auth, ссылки после оплаты с `step=2` где нужно). |
-| — | **Следующий** | **Этап B** — лояльность `/api/loyalty/balance`: стабилизация сессии и дедуп вызовов в [`pages/checkout.vue`](../pages/checkout.vue). |
+| — | **Следующий** | **Этап B** — лояльность `/api/loyalty/balance`: стабилизация сессии и дедуп вызовов в [`pages/checkout.vue`](../../pages/checkout.vue). |
 
 **Этап E:** для сценария «скачок корзина → оформление» отдельный сессионный кэш менее критичен, пока пользователь остаётся на одном маршруте `/checkout`; кэш по-прежнему может понадобиться для других повторных mount.

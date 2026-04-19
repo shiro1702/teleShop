@@ -4,7 +4,7 @@
 
 При переходах между страницами одного тенанта (`/{city}/{tenant}/cart`, `/checkout`, `/bonuses`, `/orders` и т.д.) не нужно каждый раз заново загружать профиль ресторана (тема, юрданные, часы и т.п.). Достаточно загрузить при первом входе в контекст этого тенанта и при смене ресторана / филиала.
 
-Источник логики: [`composables/useTenant.ts`](../composables/useTenant.ts) — `useState('tenant-state')`, `loadTenantSettings()`, watchers.
+Источник логики: [`composables/useTenant.ts`](../../composables/useTenant.ts) — `useState('tenant-state')`, `loadTenantSettings()`, watchers.
 
 ## Цель
 
@@ -37,7 +37,7 @@
 
 ### Этап 3 (опционально) — HTTP-кэш для `/api/tenant`
 
-**Сделать:** в [`server/api/tenant.get.ts`](../server/api/tenant.get.ts) настроить заголовки кэширования (`Cache-Control`, при необходимости ETag), согласовав с тем, есть ли в ответе данные, завязанные на пользователя (`private` vs `public`), чтобы случайный лишний вызов давал меньше нагрузки.
+**Сделать:** в [`server/api/tenant.get.ts`](../../server/api/tenant.get.ts) настроить заголовки кэширования (`Cache-Control`, при необходимости ETag), согласовав с тем, есть ли в ответе данные, завязанные на пользователя (`private` vs `public`), чтобы случайный лишний вызов давал меньше нагрузки.
 
 ---
 
@@ -56,9 +56,9 @@
 
 ## Связанные файлы
 
-- [`composables/useTenant.ts`](../composables/useTenant.ts)
-- [`app.vue`](../app.vue) — `onMounted` / `onServerPrefetch` вызывают `loadTenantSettings()`
-- [`server/api/tenant.get.ts`](../server/api/tenant.get.ts) — Этап 3
+- [`composables/useTenant.ts`](../../composables/useTenant.ts)
+- [`app.vue`](../../app.vue) — `onMounted` / `onServerPrefetch` вызывают `loadTenantSettings()`
+- [`server/api/tenant.get.ts`](../../server/api/tenant.get.ts) — Этап 3
 - Middleware / layout витрины (`server/middleware`, `layouts/` при появлении layout `[city_slug]/[tenant_slug]`) — Этап 4
 
 ## Статус
