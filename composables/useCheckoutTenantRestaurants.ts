@@ -26,6 +26,8 @@ export type RestaurantItem = {
 type RestaurantZoneApiItem = {
   id: string
   name: string
+  /** При запросе с all=1 приходит для группировки по филиалу. */
+  restaurant_id?: string
   polygon_geojson: {
     type?: 'Feature' | 'Polygon'
     geometry?: { type: 'Polygon'; coordinates: number[][][] }
@@ -371,25 +373,61 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
   async function loadAllRestaurantZones(items: RestaurantItem[]) {
     const headers = buildTenantHeaders(params.shopIdFromRoute.value)
     const result: Record<string, DeliveryZoneFeature[]> = {}
-    await Promise.all(items.map(async (restaurant) => {
-      if (!restaurant.supports_delivery) {
-        result[restaurant.id] = []
-        return
+    for (const r of items) {
+      result[r.id] = []
+    }
+
+    const deliveryBranches = items.filter(r => r.supports_delivery)
+    if (deliveryBranches.length === 0) {
+      allRestaurantZones.value = result
+      return
+    }
+
+    let bulkOk = false
+    try {
+      const query: Record<string, string> = { all: '1' }
+      if (params.shopIdFromRoute.value) query.shop_id = params.shopIdFromRoute.value
+      const res = await $fetch<{ ok: boolean; items: RestaurantZoneApiItem[] }>('/api/restaurant-zones', {
+        headers,
+        query,
+      })
+
+      if (res?.ok && Array.isArray(res.items)) {
+        const byRestaurant = new Map<string, RestaurantZoneApiItem[]>()
+        for (const row of res.items) {
+          const rid = typeof row.restaurant_id === 'string' ? row.restaurant_id.trim() : ''
+          if (!rid) continue
+          const list = byRestaurant.get(rid) ?? []
+          list.push(row)
+          byRestaurant.set(rid, list)
+        }
+        for (const restaurant of deliveryBranches) {
+          result[restaurant.id] = mapRestaurantZonesFromApiItems(byRestaurant.get(restaurant.id) ?? [])
+        }
+        bulkOk = true
       }
-      try {
-        const query: Record<string, string> = { restaurant_id: restaurant.id }
-        if (params.shopIdFromRoute.value) query.shop_id = params.shopIdFromRoute.value
-        const res = await $fetch<{ ok: boolean; items: RestaurantZoneApiItem[] }>('/api/restaurant-zones', {
-          headers,
-          query,
-        })
-        result[restaurant.id] = Array.isArray(res?.items)
-          ? mapRestaurantZonesFromApiItems(res.items)
-          : []
-      } catch {
-        result[restaurant.id] = []
-      }
-    }))
+    } catch {
+      bulkOk = false
+    }
+
+    if (!bulkOk) {
+      await Promise.all(deliveryBranches.map(async (restaurant) => {
+        try {
+          const query: Record<string, string> = { restaurant_id: restaurant.id }
+          if (params.shopIdFromRoute.value) query.shop_id = params.shopIdFromRoute.value
+          const res = await $fetch<{ ok: boolean; items: RestaurantZoneApiItem[] }>('/api/restaurant-zones', {
+            headers,
+            query,
+          })
+          result[restaurant.id] = Array.isArray(res?.items)
+            ? mapRestaurantZonesFromApiItems(res.items)
+            : []
+        } catch {
+          result[restaurant.id] = []
+        }
+      }))
+    }
+
     allRestaurantZones.value = result
   }
 

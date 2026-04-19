@@ -1219,11 +1219,12 @@ const showBottomBar = computed(() => {
   return !isStep2ActionsVisible.value
 })
 
+/** Сначала slug/query из маршрута — стабильно при гидратации tenant; иначе смена tenantKey дублирует loadRestaurants/zones. */
 const shopIdFromRoute = computed(() => {
-  const fromTenantState = typeof tenantKey.value === 'string' ? tenantKey.value.trim() : ''
   const fromRouteSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
   const fromQuery = typeof route.query.shop_id === 'string' ? route.query.shop_id.trim() : ''
-  return fromTenantState || fromRouteSlug || fromQuery || null
+  const fromTenantState = typeof tenantKey.value === 'string' ? tenantKey.value.trim() : ''
+  return fromRouteSlug || fromQuery || fromTenantState || null
 })
 /** Канонический идентификатор витрины для API: UUID из тенанта, иначе slug/query из маршрута. */
 const checkoutXShopId = computed(() => {
