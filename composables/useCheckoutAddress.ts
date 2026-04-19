@@ -95,10 +95,37 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
 
   const addressScopeKey = computed(() => resolveCartScopeKey(route, tenantKey.value))
   const addressStorageKey = computed(() => buildAddressStorageKey(addressScopeKey.value))
-  const shopId = computed(() => {
-    const raw = tenant.value.shopId
-    return typeof raw === 'string' ? raw.trim() : ''
+  /** Как checkoutXShopId: UUID тенанта, иначе slug/query из маршрута — для стабильного ключа и x-shop-id. */
+  const addressXShopId = computed(() => {
+    const fromTenant = typeof tenant.value.shopId === 'string' ? tenant.value.shopId.trim() : ''
+    if (fromTenant) return fromTenant
+    const qShop = route.query.shop_id ?? route.query.shopId
+    const fromQuery = typeof qShop === 'string'
+      ? qShop.trim()
+      : Array.isArray(qShop) && typeof qShop[0] === 'string'
+        ? qShop[0].trim()
+        : ''
+    if (fromQuery) return fromQuery
+    const slug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+    return slug
   })
+
+  const addressBookContextKey = computed<string | null>(() => {
+    if (!process.client) return null
+    const storage = addressStorageKey.value
+    const shop = addressXShopId.value
+    if (supabaseUser.value?.id && shop) {
+      return `api:${supabaseUser.value.id}\t${shop}\t${storage}`
+    }
+    if (isMessengerMiniApp.value && messengerInitData.value && shop) {
+      return `api:messenger\t${shop}\t${storage}`
+    }
+    return `local:${storage}`
+  })
+
+  let lastAddressBookFetchedKey: string | null = null
+  let addressBookInFlightKey: string | null = null
+  let addressBookInFlightPromise: Promise<void> | null = null
 
   function readGuestAddressesFromLocalStorage(): SavedAddressItem[] {
     if (!process.client) return []
@@ -161,11 +188,12 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
   }
 
   function buildAuthHeaders() {
-    return buildMessengerAuthHeaders(shopId.value ? { 'x-shop-id': shopId.value } : undefined)
+    const id = addressXShopId.value
+    return buildMessengerAuthHeaders(id ? { 'x-shop-id': id } : undefined)
   }
 
   function canUseAddressApi() {
-    return !!(shopId.value && (supabaseUser.value || (isMessengerMiniApp.value && messengerInitData.value)))
+    return !!(addressXShopId.value && (supabaseUser.value || (isMessengerMiniApp.value && messengerInitData.value)))
   }
 
   function normalizeCoords(lat: unknown, lon: unknown) {
@@ -216,7 +244,7 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
           lon: normalizeCoords(payload.lat, payload.lon).lon,
         },
       })
-      await loadSavedAddresses()
+      await loadSavedAddresses({ force: true })
       const dedupe = addressDedupeKey({ address: payload.addressLine, flat: payload.flat })
       const matched = savedAddresses.value.find((a) => addressDedupeKey(a) === dedupe) ?? null
       if (matched?.id) selectedAddressId.value = matched.id
@@ -319,51 +347,81 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     }
   }
 
-  async function loadSavedAddresses() {
-    addressBookReady.value = false
-    try {
-      if (canUseAddressApi()) {
-        try {
-          const guestBefore = await readGuestAddressesForMerge()
-          const res = await $fetch<{ ok: boolean; items?: SavedAddressItem[] }>('/api/customer/addresses', {
-            headers: buildAuthHeaders(),
-          })
-          let apiItems = Array.isArray(res.items) ? res.items : []
-          if (guestBefore.length > 0) {
-            apiItems = await syncGuestAddressesToServer(guestBefore, apiItems)
-            await pruneGuestStorageAfterApiSync(apiItems, guestBefore)
+  async function loadSavedAddresses(options?: { force?: boolean }) {
+    if (!process.client) return
+    const key = addressBookContextKey.value
+    if (!key) return
+
+    if (!options?.force && key === lastAddressBookFetchedKey) return
+    if (!options?.force && addressBookInFlightPromise && addressBookInFlightKey === key) {
+      await addressBookInFlightPromise
+      return
+    }
+
+    const loadKey = key
+
+    const run = async () => {
+      addressBookReady.value = false
+      try {
+        if (canUseAddressApi()) {
+          try {
+            const guestBefore = await readGuestAddressesForMerge()
+            if (addressBookContextKey.value !== loadKey) return
+            const res = await $fetch<{ ok: boolean; items?: SavedAddressItem[] }>('/api/customer/addresses', {
+              headers: buildAuthHeaders(),
+            })
+            if (addressBookContextKey.value !== loadKey) return
+            let apiItems = Array.isArray(res.items) ? res.items : []
+            if (guestBefore.length > 0) {
+              apiItems = await syncGuestAddressesToServer(guestBefore, apiItems)
+              await pruneGuestStorageAfterApiSync(apiItems, guestBefore)
+            }
+            if (addressBookContextKey.value !== loadKey) return
+            const guestAfter = await readGuestAddressesForMerge()
+            if (addressBookContextKey.value !== loadKey) return
+            savedAddresses.value = mergeAddressesDedupe(apiItems, guestAfter)
+            if (!selectedAddressId.value && savedAddresses.value[0]?.id) {
+              selectedAddressId.value = savedAddresses.value[0].id
+            } else if (selectedAddressId.value && !savedAddresses.value.some((a) => a.id === selectedAddressId.value)) {
+              selectedAddressId.value = savedAddresses.value[0]?.id || ''
+            }
+            syncSelectedToFormIfEmpty()
+            lastAddressBookFetchedKey = loadKey
+            return
+          } catch {
+            if (addressBookContextKey.value !== loadKey) return
+            // fallback to local storage below
           }
-          const guestAfter = await readGuestAddressesForMerge()
-          savedAddresses.value = mergeAddressesDedupe(apiItems, guestAfter)
-          if (!selectedAddressId.value && savedAddresses.value[0]?.id) {
-            selectedAddressId.value = savedAddresses.value[0].id
-          } else if (selectedAddressId.value && !savedAddresses.value.some((a) => a.id === selectedAddressId.value)) {
-            selectedAddressId.value = savedAddresses.value[0]?.id || ''
-          }
-          syncSelectedToFormIfEmpty()
-          return
-        } catch {
-          // fallback to local storage below
         }
-      }
 
-      if (canUseMessengerStorage()) {
-        savedAddresses.value = await readGuestAddressesForMerge()
-        if (!selectedAddressId.value && savedAddresses.value[0]?.id) selectedAddressId.value = savedAddresses.value[0].id
-        syncSelectedToFormIfEmpty()
-        return
-      }
+        if (canUseMessengerStorage()) {
+          savedAddresses.value = await readGuestAddressesForMerge()
+          if (addressBookContextKey.value !== loadKey) return
+          if (!selectedAddressId.value && savedAddresses.value[0]?.id) selectedAddressId.value = savedAddresses.value[0].id
+          syncSelectedToFormIfEmpty()
+          lastAddressBookFetchedKey = loadKey
+          return
+        }
 
-      if (process.client) {
         savedAddresses.value = readGuestAddressesFromLocalStorage()
         if (!selectedAddressId.value && savedAddresses.value[0]?.id) selectedAddressId.value = savedAddresses.value[0].id
         syncSelectedToFormIfEmpty()
-      }
-    } finally {
-      if (process.client) {
+        lastAddressBookFetchedKey = loadKey
+      } finally {
         addressBookReady.value = true
       }
     }
+
+    const p = run()
+    addressBookInFlightKey = loadKey
+    addressBookInFlightPromise = p
+    void p.finally(() => {
+      if (addressBookInFlightKey === loadKey) {
+        addressBookInFlightKey = null
+        addressBookInFlightPromise = null
+      }
+    })
+    await p
   }
 
   async function persistAddresses() {
@@ -422,7 +480,7 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     if (selectedAddressId.value === id) {
       selectedAddressId.value = savedAddresses.value[0]?.id || ''
     }
-    if (shopId.value && (supabaseUser.value || (isMessengerMiniApp.value && messengerInitData.value))) {
+    if (addressXShopId.value && (supabaseUser.value || (isMessengerMiniApp.value && messengerInitData.value))) {
       try {
         await $fetch(`/api/customer/addresses/${encodeURIComponent(id)}`, {
           method: 'DELETE',
@@ -449,19 +507,15 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     }
   })
 
-  watch(
-    () => [
-      supabaseUser.value?.id ?? null,
-      shopId.value,
-      addressStorageKey.value,
-      isMessengerMiniApp.value ? (messengerInitData.value ? 'm' : '') : '',
-    ],
-    () => {
-      if (!process.client) return
-      void loadSavedAddresses()
-    },
-    { immediate: true },
-  )
+  watch(addressBookContextKey, (nextKey: string | null) => {
+    if (!nextKey) {
+      lastAddressBookFetchedKey = null
+      addressBookInFlightKey = null
+      addressBookInFlightPromise = null
+      return
+    }
+    void loadSavedAddresses()
+  }, { immediate: true })
 
   function setDeliveryZones(zones: DeliveryZoneFeature[]) {
     setZones(zones)
