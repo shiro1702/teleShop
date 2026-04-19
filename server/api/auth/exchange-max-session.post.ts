@@ -65,6 +65,11 @@ export default defineEventHandler(async (event) => {
   }
   const maxConversationId = String(tokenRow.max_conversation_id || '').trim() || null
 
+  const bridgePayload = (tokenRow.bridge_payload as Record<string, unknown> | null) || {}
+  const sharedPhoneRaw = bridgePayload.max_shared_phone
+  const sharedPhone =
+    typeof sharedPhoneRaw === 'string' && sharedPhoneRaw.trim() ? sharedPhoneRaw.trim() : ''
+
   const { data: existingProfile, error: profileError } = await serviceClient
     .from('profiles')
     .select('id')
@@ -84,7 +89,10 @@ export default defineEventHandler(async (event) => {
       email: syntheticEmail,
       password: syntheticPassword,
       email_confirm: true,
-      user_metadata: { max_user_id: maxUserId },
+      user_metadata: {
+        max_user_id: maxUserId,
+        ...(sharedPhone ? { phone: sharedPhone } : {}),
+      },
     })
     if (createUserError || !createdUser?.user) {
       throw createError({ statusCode: 500, statusMessage: 'Failed to create MAX user' })
@@ -123,7 +131,10 @@ export default defineEventHandler(async (event) => {
       const { error: normalizeError } = await serviceClient.auth.admin.updateUserById(syntheticUserId, {
         password: syntheticPassword,
         email_confirm: true,
-        user_metadata: { max_user_id: maxUserId },
+        user_metadata: {
+          max_user_id: maxUserId,
+          ...(sharedPhone ? { phone: sharedPhone } : {}),
+        },
       })
       if (normalizeError) {
         throw createError({ statusCode: 500, statusMessage: 'Failed to normalize synthetic MAX user' })
@@ -155,6 +166,14 @@ export default defineEventHandler(async (event) => {
   })
   if (signInError || !signInData?.session) {
     throw createError({ statusCode: 500, statusMessage: 'Failed to create MAX Supabase session' })
+  }
+
+  if (sharedPhone) {
+    const { data: authWrap } = await serviceClient.auth.admin.getUserById(userId)
+    const prevMeta = (authWrap?.user?.user_metadata ?? {}) as Record<string, unknown>
+    await serviceClient.auth.admin.updateUserById(userId, {
+      user_metadata: { ...prevMeta, phone: sharedPhone },
+    })
   }
 
   await serviceClient.from('auth_tokens').delete().eq('token', body.token)

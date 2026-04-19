@@ -91,6 +91,11 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const bridgeFromToken = (tokenRow.bridge_payload as Record<string, unknown> | null) || {}
+  const sharedPhoneRaw = bridgeFromToken.telegram_shared_phone ?? bridgeFromToken.shared_phone
+  const sharedPhone =
+    typeof sharedPhoneRaw === 'string' && sharedPhoneRaw.trim() ? sharedPhoneRaw.trim() : ''
+
   const telegramId: number = tokenRow.telegram_id
 
   // Пытаемся найти существующий профиль по telegram_id
@@ -127,6 +132,7 @@ export default defineEventHandler(async (event) => {
         email_confirm: true,
         user_metadata: {
           telegram_id: telegramId,
+          ...(sharedPhone ? { phone: sharedPhone } : {}),
         },
       })
 
@@ -183,6 +189,7 @@ export default defineEventHandler(async (event) => {
           email_confirm: true,
           user_metadata: {
             telegram_id: telegramId,
+            ...(sharedPhone ? { phone: sharedPhone } : {}),
           },
         })
 
@@ -241,6 +248,7 @@ export default defineEventHandler(async (event) => {
               email_confirm: true,
               user_metadata: {
                 telegram_id: telegramId,
+                ...(sharedPhone ? { phone: sharedPhone } : {}),
               },
             })
           if (createSyntheticError || !createdSyntheticUser?.user?.id) {
@@ -258,6 +266,7 @@ export default defineEventHandler(async (event) => {
           email_confirm: true,
           user_metadata: {
             telegram_id: telegramId,
+            ...(sharedPhone ? { phone: sharedPhone } : {}),
           },
         })
         if (normalizeSyntheticError) {
@@ -307,6 +316,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const session = signInData.session
+
+  if (sharedPhone) {
+    const { data: authWrap } = await serviceClient.auth.admin.getUserById(userId)
+    const prevMeta = (authWrap?.user?.user_metadata ?? {}) as Record<string, unknown>
+    await serviceClient.auth.admin.updateUserById(userId, {
+      user_metadata: { ...prevMeta, phone: sharedPhone },
+    })
+  }
 
   // Токен больше не нужен — удаляем
   const { error: deleteError } = await serviceClient

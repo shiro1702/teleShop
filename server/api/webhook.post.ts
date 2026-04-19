@@ -182,6 +182,7 @@ export default defineEventHandler(async (event) => {
       text?: string
       chat?: { id: number; type?: string }
       from?: { id?: number }
+      contact?: { phone_number?: string; user_id?: number }
     }
     callback_query?: {
       id: string
@@ -193,6 +194,45 @@ export default defineEventHandler(async (event) => {
 
   if (!body) {
     throw createError({ statusCode: 400, message: 'Expected Telegram update body' })
+  }
+
+  /** Ответ контактом после кнопки request_contact (часто без поля text). */
+  if (body.message?.contact?.phone_number && body.message.chat?.id !== undefined) {
+    const chatId = body.message.chat.id
+    const phone = String(body.message.contact.phone_number || '').trim()
+    if (phone) {
+      const supabaseContact = await serverSupabaseServiceRole(event)
+      const { data: tokenForPhone } = await supabaseContact
+        .from('auth_tokens')
+        .select('token, bridge_payload')
+        .eq('channel', 'telegram')
+        .eq('telegram_id', chatId)
+        .gt('expires_at', new Date().toISOString())
+        .order('expires_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (tokenForPhone?.token) {
+        const prev = ((tokenForPhone as { bridge_payload?: Record<string, unknown> }).bridge_payload ??
+          {}) as Record<string, unknown>
+        await supabaseContact
+          .from('auth_tokens')
+          .update({
+            bridge_payload: { ...prev, telegram_shared_phone: phone },
+          })
+          .eq('token', tokenForPhone.token)
+        try {
+          await telegram(botToken, 'sendMessage', {
+            chat_id: chatId,
+            text: 'Номер сохранён. Завершите вход на сайте.',
+            reply_markup: { remove_keyboard: true },
+          })
+        } catch (e) {
+          console.error('telegram contact ack:', e)
+        }
+        return { ok: true }
+      }
+    }
+    return { ok: true }
   }
 
   // Команды /start, /login и другие текстовые команды
@@ -292,7 +332,17 @@ export default defineEventHandler(async (event) => {
           }
         }
 
-        const bridgePayload = (row as { bridge_payload?: Record<string, unknown> }).bridge_payload
+        const phoneFromMessage = body.message.contact?.phone_number?.trim()
+        const baseBridge = ((row as { bridge_payload?: Record<string, unknown> }).bridge_payload ?? null) as
+          | Record<string, unknown>
+          | null
+        const bridgePayload: Record<string, unknown> | null = phoneFromMessage
+          ? { ...(baseBridge || {}), telegram_shared_phone: phoneFromMessage }
+          : baseBridge
+        if (phoneFromMessage) {
+          await supabase.from('auth_tokens').update({ bridge_payload: bridgePayload }).eq('token', tokenUuid)
+        }
+
         const link = buildAuthSiteLinkUrl({
           linkPath: 'link-telegram',
           appUrlBase,
@@ -309,6 +359,12 @@ export default defineEventHandler(async (event) => {
           ],
         }
 
+        const contactReplyMarkup = {
+          keyboard: [[{ text: 'Поделиться номером', request_contact: true }]],
+          resize_keyboard: true,
+          one_time_keyboard: true,
+        }
+
         try {
           await telegram(botToken, 'sendMessage', {
             chat_id: chatId,
@@ -316,9 +372,20 @@ export default defineEventHandler(async (event) => {
               '✅ Telegram подтверждён.',
               '',
               'Вернитесь на сайт — вход завершится автоматически. Если страница не обновилась, нажмите кнопку «Привязать аккаунт…» или скопируйте ссылку и откройте её в браузере.',
+              '',
+              'Следующим сообщением можно отправить номер телефона для заказов — это необязательно.',
             ].join('\n'),
             reply_markup: replyMarkup,
           })
+          try {
+            await telegram(botToken, 'sendMessage', {
+              chat_id: chatId,
+              text: 'Нажмите кнопку ниже, если хотите сохранить номер для заказов.',
+              reply_markup: contactReplyMarkup,
+            })
+          } catch (e2) {
+            console.warn('telegram request_contact keyboard failed:', e2)
+          }
         } catch (e) {
           console.warn('sendMessage with copy_text failed, retrying without copy button:', e)
           await telegram(botToken, 'sendMessage', {
@@ -328,11 +395,22 @@ export default defineEventHandler(async (event) => {
               '',
               'Вернитесь на сайт. Если вход не завершился, откройте ссылку:',
               link,
+              '',
+              'Следующим сообщением можно отправить номер телефона для заказов.',
             ].join('\n'),
             reply_markup: {
               inline_keyboard: [[{ text: 'Открыть сайт для завершения входа', url: link }]],
             },
           })
+          try {
+            await telegram(botToken, 'sendMessage', {
+              chat_id: chatId,
+              text: 'Нажмите кнопку ниже, если хотите сохранить номер для заказов.',
+              reply_markup: contactReplyMarkup,
+            })
+          } catch (e2) {
+            console.warn('telegram request_contact keyboard failed:', e2)
+          }
         }
         return { ok: true }
       }

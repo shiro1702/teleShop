@@ -5,15 +5,24 @@ import { buildAuthSiteLinkUrl, parseAuthLinkTokenUuidFromText } from '~/server/u
 type MaxMessage = {
   sender?: { user_id?: number | string; is_bot?: boolean }
   recipient?: { chat_id?: number | string; user_id?: number | string; chat_type?: string }
-  body?: { text?: string; caption?: string }
+  body?: {
+    text?: string | null
+    caption?: string
+    attachments?: Array<{
+      type?: string
+      payload?: { vcf_info?: string | null; vcf_phone?: string | null; [key: string]: unknown } | null
+    }> | null
+  }
   text?: string
 }
 
 type MaxUpdate = {
   update_type?: string
   payload?: string | null
+  /** Альтернативное имя стартового параметра в части апдейтов MAX */
+  start_payload?: string | null
   chat_id?: number | string
-  user?: { user_id?: number | string; is_bot?: boolean }
+  user?: { user_id?: number | string; is_bot?: boolean; id?: number | string }
   message?: MaxMessage
 }
 
@@ -26,9 +35,42 @@ function parseNumericId(value: unknown): number | null {
   return null
 }
 
+function normalizeAuthTokenUuid(raw: string): string | null {
+  const t = raw.trim()
+  if (!t) return null
+  const plain =
+    /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(t)?.[1] ?? null
+  return plain ? plain.toLowerCase() : null
+}
+
+/** user_id отправителя: сообщение / bot_started (`user`) / альтернативные поля из API MAX. */
+function extractMaxActorUserId(body: MaxUpdate): number | null {
+  const msg = body.message
+  const fromMsg = parseNumericId(msg?.sender?.user_id)
+  if (fromMsg != null) return fromMsg
+  const fromUser = parseNumericId(body.user?.user_id ?? body.user?.id)
+  if (fromUser != null) return fromUser
+  const raw = body as Record<string, unknown>
+  const usr = raw.user
+  if (usr && typeof usr === 'object') {
+    const u = usr as Record<string, unknown>
+    const id = parseNumericId(u.user_id ?? u.id)
+    if (id != null) return id
+  }
+  return parseNumericId(raw.user_id)
+}
+
 function extractTokenUuidFromUpdate(update: MaxUpdate): string | null {
-  const payloadToken = parseAuthLinkTokenUuidFromText(String(update.payload || ''))
-  if (payloadToken) return payloadToken
+  const payloadSources = [
+    String(update.payload || ''),
+    String(update.start_payload || ''),
+  ]
+  for (const s of payloadSources) {
+    const payloadToken = parseAuthLinkTokenUuidFromText(s)
+    if (payloadToken) return normalizeAuthTokenUuid(payloadToken)
+    const plainUuid = normalizeAuthTokenUuid(s)
+    if (plainUuid) return plainUuid
+  }
 
   const msg = update.message
   const candidates = [
@@ -39,16 +81,61 @@ function extractTokenUuidFromUpdate(update: MaxUpdate): string | null {
 
   for (const raw of candidates) {
     const token = parseAuthLinkTokenUuidFromText(raw)
-    if (token) return token
+    if (token) return normalizeAuthTokenUuid(token)
+    const plain = normalizeAuthTokenUuid(raw)
+    if (plain) return plain
   }
 
   // Fallback: MAX может присылать start-параметр в неожиданных полях.
   const dump = JSON.stringify(update)
   const hit = /link_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(dump)
-  return hit?.[1] ?? null
+  return hit?.[1] ? normalizeAuthTokenUuid(hit[1]) : null
 }
 
-async function sendMaxDm(options: {
+function extractTelFromVcf(vcf: string): string | null {
+  const compact = vcf.replace(/\r?\n/g, '\n')
+  const telLine = compact.split('\n').find((line) => /^([^:]*:)?TEL/i.test(line.trim()))
+  if (telLine) {
+    const raw = telLine.replace(/^[^:]+:\s*/i, '').trim()
+    const digits = raw.replace(/\D/g, '')
+    if (digits.length >= 10) return raw
+  }
+  const loose = compact.match(/\+?\d[\d\s().-]{8,}\d/)
+  return loose ? loose[0].replace(/\s/g, '') : null
+}
+
+function normalizeRuPhoneCandidate(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return trimmed
+  const digits = trimmed.replace(/\D/g, '')
+  if (digits.length === 11 && digits.startsWith('8')) return `+7${digits.slice(1)}`
+  if (digits.length === 11 && digits.startsWith('7')) return `+${digits}`
+  if (digits.length === 10) return `+7${digits}`
+  return trimmed.startsWith('+') ? trimmed : `+${digits}`
+}
+
+/** Телефон из вложения contact (ответ на кнопку request_contact). */
+function extractPhoneFromMaxMessageBody(msg: MaxMessage | undefined): string | null {
+  const atts = msg?.body?.attachments
+  if (!Array.isArray(atts)) return null
+  for (const a of atts) {
+    if (!a || typeof a !== 'object') continue
+    if (String(a.type || '') !== 'contact') continue
+    const p = a.payload
+    if (!p || typeof p !== 'object') continue
+    const direct = p.vcf_phone
+    if (typeof direct === 'string' && direct.trim()) return normalizeRuPhoneCandidate(direct.trim())
+    const vcf = p.vcf_info
+    if (typeof vcf === 'string' && vcf.trim()) {
+      const tel = extractTelFromVcf(vcf.trim())
+      if (tel) return normalizeRuPhoneCandidate(tel)
+    }
+  }
+  return null
+}
+
+/** Ссылка + буфер — без request_contact (часть клиентов MAX отклоняет «толстую» клавиатуру целиком). */
+async function sendMaxDmWithLinkAndClipboard(options: {
   baseUrl: string
   token: string
   userId: number
@@ -96,6 +183,39 @@ async function sendMaxDm(options: {
   if (!res.ok) {
     const bodyText = await res.text()
     throw new Error(`max_send_failed:${res.status}:${bodyText}`)
+  }
+}
+
+/** Отдельное сообщение только с кнопкой контакта (совместимость API). */
+async function sendMaxDmRequestContactOnly(options: {
+  baseUrl: string
+  token: string
+  userId: number
+}): Promise<void> {
+  const base = options.baseUrl.replace(/\/$/, '')
+  const url = `${base}/messages?user_id=${encodeURIComponent(String(options.userId))}`
+  const attachments = [
+    {
+      type: 'inline_keyboard',
+      payload: {
+        buttons: [[{ type: 'request_contact', text: 'Поделиться номером' }]],
+      },
+    },
+  ]
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: options.token,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      text: 'По желанию нажмите кнопку ниже, чтобы мы сохранили номер для заказов.',
+      attachments,
+    }),
+  })
+  if (!res.ok) {
+    const bodyText = await res.text()
+    throw new Error(`max_send_contact_row_failed:${res.status}:${bodyText}`)
   }
 }
 
@@ -156,6 +276,47 @@ export default defineEventHandler(async (event) => {
     return { ok: true }
   }
 
+  const actorUserId = extractMaxActorUserId(body)
+
+  /** Ответ только контактом (без текста link_) — сохраняем телефон в bridge_payload активного токена. */
+  if (updateType === 'message_created' && actorUserId != null) {
+    const tokenHint = extractTokenUuidFromUpdate(body)
+    const sharedPhone = extractPhoneFromMaxMessageBody(msg)
+    if (sharedPhone && !tokenHint) {
+      const supabaseEarly = await serverSupabaseServiceRole(event)
+      const { data: tokenForContact } = await supabaseEarly
+        .from('auth_tokens')
+        .select('token, bridge_payload')
+        .eq('channel', 'max')
+        .eq('max_user_id', String(actorUserId))
+        .gt('expires_at', new Date().toISOString())
+        .order('expires_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (tokenForContact?.token) {
+        const prev = ((tokenForContact as { bridge_payload?: Record<string, unknown> }).bridge_payload ??
+          {}) as Record<string, unknown>
+        await supabaseEarly
+          .from('auth_tokens')
+          .update({
+            bridge_payload: { ...prev, max_shared_phone: sharedPhone },
+          })
+          .eq('token', tokenForContact.token)
+        try {
+          await sendMaxDmPlain({
+            baseUrl: maxBaseUrl,
+            token: maxToken,
+            userId: actorUserId,
+            text: 'Номер сохранён. Завершите вход на сайте.',
+          })
+        } catch (e) {
+          console.error('webhook-max contact ack:', e)
+        }
+        return { ok: true }
+      }
+    }
+  }
+
   const tokenUuid = extractTokenUuidFromUpdate(body)
   if (!tokenUuid) {
     console.info('webhook-max: token not found in update payload', {
@@ -164,15 +325,19 @@ export default defineEventHandler(async (event) => {
       recipient: msg?.recipient ?? null,
       chat_id: body.chat_id ?? null,
       payload: body.payload ?? null,
+      start_payload: body.start_payload ?? null,
     })
     return { ok: true }
   }
 
-  const senderId = parseNumericId(msg?.sender?.user_id) ?? parseNumericId(body.user?.user_id)
+  const tokenKey = tokenUuid.toLowerCase()
+
+  const senderId = actorUserId
   if (senderId == null) {
     console.info('webhook-max: sender_id not found/invalid', {
       updateType,
       sender: msg?.sender ?? body.user ?? null,
+      user: body.user ?? null,
       payload: body.payload ?? null,
     })
     return { ok: true }
@@ -194,7 +359,7 @@ export default defineEventHandler(async (event) => {
   const { data: row, error: fetchErr } = await supabase
     .from('auth_tokens')
     .select('token, max_user_id, expires_at, bridge_payload, channel')
-    .eq('token', tokenUuid)
+    .eq('token', tokenKey)
     .maybeSingle()
 
   if (fetchErr) {
@@ -228,7 +393,7 @@ export default defineEventHandler(async (event) => {
 
   const expiresAt = new Date(String((row as { expires_at?: string }).expires_at)).getTime()
   if (Number.isFinite(expiresAt) && expiresAt < Date.now()) {
-    await supabase.from('auth_tokens').delete().eq('token', tokenUuid)
+    await supabase.from('auth_tokens').delete().eq('token', tokenKey)
     try {
       await sendMaxDmPlain({
         baseUrl: maxBaseUrl,
@@ -264,7 +429,7 @@ export default defineEventHandler(async (event) => {
         max_user_id: maxUserIdStr,
         max_conversation_id: conversationKey,
       })
-      .eq('token', tokenUuid)
+      .eq('token', tokenKey)
       .is('max_user_id', null)
       .select('token')
       .maybeSingle()
@@ -277,7 +442,7 @@ export default defineEventHandler(async (event) => {
       const { data: again } = await supabase
         .from('auth_tokens')
         .select('max_user_id')
-        .eq('token', tokenUuid)
+        .eq('token', tokenKey)
         .maybeSingle()
       const rid = (again as { max_user_id?: string | null } | null)?.max_user_id
       if (rid != null && String(rid) !== maxUserIdStr) {
@@ -296,12 +461,27 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const bridgePayload = (row as { bridge_payload?: Record<string, unknown> }).bridge_payload
+  const phoneFromMessage = extractPhoneFromMaxMessageBody(msg)
+  const baseBridge = ((row as { bridge_payload?: Record<string, unknown> }).bridge_payload ?? null) as
+    | Record<string, unknown>
+    | null
+  const bridgePayload: Record<string, unknown> | null =
+    phoneFromMessage
+      ? { ...(baseBridge || {}), max_shared_phone: phoneFromMessage }
+      : baseBridge
+  if (phoneFromMessage) {
+    await supabase.from('auth_tokens').update({ bridge_payload: bridgePayload }).eq('token', tokenKey)
+  }
+
+  const tokenForLink = typeof (row as { token?: string }).token === 'string'
+    ? (row as { token: string }).token
+    : tokenKey
+
   const link = buildAuthSiteLinkUrl({
     linkPath: 'link-max',
     appUrlBase,
     defaultCitySlug,
-    token: tokenUuid,
+    token: tokenForLink,
     bridgePayload: bridgePayload ?? null,
     tenantShop: tenant?.shop,
   })
@@ -309,19 +489,29 @@ export default defineEventHandler(async (event) => {
   const messageText = [
     '✅ MAX подтверждён.',
     '',
+    'По желанию нажмите «Поделиться номером», чтобы мы сохранили телефон для заказов.',
     'Вернитесь на сайт — вход завершится автоматически. Если страница не обновилась, откройте ссылку кнопкой ниже или скопируйте её.',
   ].join('\n')
 
   try {
-    await sendMaxDm({
+    await sendMaxDmWithLinkAndClipboard({
       baseUrl: maxBaseUrl,
       token: maxToken,
       userId: senderId,
       text: messageText,
       linkUrl: link,
     })
+    try {
+      await sendMaxDmRequestContactOnly({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        userId: senderId,
+      })
+    } catch (eContact) {
+      console.warn('webhook-max: follow-up request_contact message failed:', eContact)
+    }
   } catch (e) {
-    console.warn('webhook-max: send with keyboard failed, retrying plain:', e)
+    console.warn('webhook-max: send with link keyboard failed, retrying plain:', e)
     try {
       await sendMaxDmPlain({
         baseUrl: maxBaseUrl,

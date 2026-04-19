@@ -47,93 +47,44 @@
           Пока о пользователе нет данных.
         </p>
         <p class="hint">
-          Можно заполнить анкету ниже или запросить авторизацию через бота в один клик.
+          Нажмите «Редактировать данные», чтобы заполнить анкету, или привяжите аккаунт через бота.
         </p>
       </div>
 
-      <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+      <div class="mt-4 flex flex-col gap-2">
         <button
-          v-if="telegramBotUrl"
           type="button"
-          class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white"
-          @click="openTelegramAuth"
+          class="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white sm:w-auto sm:self-start"
+          @click="showProfileModal = true"
         >
-          {{ isMessengerMiniApp ? 'Запросить данные через Telegram' : (telegramId !== null ? 'Перепривязать Telegram' : 'Войти через Telegram') }}
+          Редактировать данные
         </button>
-        <button
-          v-if="maxBotUrl"
-          type="button"
-          class="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary"
-          @click="openMaxAuth"
-        >
-          {{ isMessengerMiniApp ? 'Запросить данные через MAX' : (maxUserId ? 'Перепривязать MAX' : 'Войти через MAX') }}
-        </button>
-        <button
-          v-if="!isMessengerMiniApp && !user"
-          type="button"
-          class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
-          @click="showAuthModal = true"
-        >
-          Выбрать способ входа
-        </button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <h2>Анкета для заказа</h2>
-          <p class="hint">
-            Эти данные можно заранее заполнить в mini app, чтобы оформление заказа было быстрее.
-          </p>
+        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <button
+            v-if="telegramBotUrl"
+            type="button"
+            class="rounded-lg border border-primary bg-white px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5"
+            @click="openTelegramAuth"
+          >
+            {{ isMessengerMiniApp ? 'Запросить данные через Telegram' : (telegramId !== null ? 'Перепривязать Telegram' : 'Войти через Telegram') }}
+          </button>
+          <button
+            v-if="maxBotUrl"
+            type="button"
+            class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            @click="openMaxAuth"
+          >
+            {{ isMessengerMiniApp ? 'Запросить данные через MAX' : (maxUserId ? 'Перепривязать MAX' : 'Войти через MAX') }}
+          </button>
+          <button
+            v-if="!isMessengerMiniApp && !user"
+            type="button"
+            class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            @click="showAuthModal = true"
+          >
+            Выбрать способ входа
+          </button>
         </div>
-        <span v-if="saveStatus" class="text-xs text-gray-500">{{ saveStatus }}</span>
-      </div>
-
-      <div class="mt-4 grid gap-3">
-        <label class="field">
-          <span>Имя</span>
-          <input
-            v-model="profileForm.name"
-            type="text"
-            placeholder="Как к вам обращаться"
-          >
-        </label>
-        <label class="field">
-          <span>Телефон</span>
-          <input
-            v-model="profileForm.phone"
-            type="tel"
-            placeholder="+7 900 000-00-00"
-          >
-        </label>
-        <label class="field">
-          <span>Комментарий</span>
-          <textarea
-            v-model="profileForm.notes"
-            rows="3"
-            placeholder="Например: домофон, этаж, удобный способ связи"
-          ></textarea>
-        </label>
-      </div>
-
-      <div class="mt-4 flex flex-col gap-2 sm:flex-row">
-        <button
-          type="button"
-          class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="isSaving"
-          @click="saveProfileDraft"
-        >
-          {{ isSaving ? 'Сохраняем...' : 'Сохранить данные' }}
-        </button>
-        <button
-          v-if="telegramBotUrl || maxBotUrl"
-          type="button"
-          class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
-          @click="showAuthModal = true"
-        >
-          Заполнить через бота
-        </button>
       </div>
     </div>
 
@@ -226,19 +177,111 @@
     </template>
   </div>
   <Teleport to="body">
-    <div v-if="showAuthModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-black/40" @click="showAuthModal = false" />
-      <div class="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
-        <h3 class="text-base font-semibold text-gray-900">Выберите способ входа</h3>
-        <div class="mt-4 space-y-2">
-          <button v-if="telegramBotUrl" type="button" class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white" @click="openTelegramAuth">
-            Войти через Telegram
+    <div>
+    <div v-if="showProfileModal" class="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto p-4 py-10">
+      <div class="absolute inset-0 bg-black/40" @click="showProfileModal = false" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="profile-sheet-title"
+        class="relative z-[1] my-auto w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-xl"
+        @click.stop
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 id="profile-sheet-title" class="text-base font-semibold text-gray-900">
+              Анкета для заказа
+            </h3>
+            <p class="mt-1 hint">
+              Эти данные можно заранее заполнить в mini app, чтобы оформление заказа было быстрее.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="shrink-0 rounded-lg px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+            aria-label="Закрыть"
+            @click="showProfileModal = false"
+          >
+            ✕
           </button>
-          <button v-if="maxBotUrl" type="button" class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary" @click="openMaxAuth">
-            Войти через MAX
+        </div>
+        <span v-if="saveStatus" class="mt-2 block text-xs text-gray-500">{{ saveStatus }}</span>
+
+        <div class="mt-4 grid gap-3">
+          <label class="field">
+            <span>Имя</span>
+            <input
+              v-model="profileForm.name"
+              type="text"
+              placeholder="Как к вам обращаться"
+            >
+          </label>
+          <label class="field">
+            <span>Телефон</span>
+            <input
+              v-model="profileForm.phone"
+              type="tel"
+              placeholder="+7 900 000-00-00"
+            >
+          </label>
+          <label class="field">
+            <span>Комментарий</span>
+            <textarea
+              v-model="profileForm.notes"
+              rows="3"
+              placeholder="Например: домофон, этаж, удобный способ связи"
+            ></textarea>
+          </label>
+        </div>
+
+        <div class="mt-5 flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="isSaving"
+            @click="saveProfileDraft"
+          >
+            {{ isSaving ? 'Сохраняем...' : 'Сохранить данные' }}
+          </button>
+          <button
+            v-if="telegramBotUrl || maxBotUrl"
+            type="button"
+            class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            @click="showAuthModal = true"
+          >
+            Заполнить через бота
           </button>
         </div>
       </div>
+    </div>
+
+    <div v-if="showAuthModal" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/40" @click="showAuthModal = false" />
+      <div class="relative z-[1] w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900">Выберите бота</h3>
+        <p class="mt-1 text-xs text-gray-500">
+          Откроется чат с ботом — продолжите там, затем вернитесь на сайт при необходимости.
+        </p>
+        <div class="mt-4 space-y-2">
+          <button
+            v-if="telegramBotUrl"
+            type="button"
+            class="w-full rounded-lg border border-primary bg-white px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5"
+            @click="openTelegramAuth"
+          >
+            Telegram
+          </button>
+          <button
+            v-if="maxBotUrl"
+            type="button"
+            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            @click="openMaxAuth"
+          >
+            MAX
+          </button>
+        </div>
+      </div>
+    </div>
     </div>
   </Teleport>
 </template>
@@ -277,6 +320,7 @@ const maxBotUrl = computed(() => {
   return trimmed || null
 })
 const showAuthModal = ref(false)
+const showProfileModal = ref(false)
 const isSaving = ref(false)
 const saveStatus = ref('')
 
@@ -563,13 +607,37 @@ watch([user, page, debouncedSearch], () => {
   void loadList()
 }, { immediate: true })
 
+function openMessengerExternalUrl(url: string) {
+  if (typeof window === 'undefined' || !url) return
+  try {
+    const tg = (window as unknown as { Telegram?: { WebApp?: { openLink?: (u: string) => void } } }).Telegram
+      ?.WebApp
+    if (tg && typeof tg.openLink === 'function') {
+      tg.openLink(url)
+      return
+    }
+  } catch {
+    // fall through to window.open
+  }
+  try {
+    const max = (window as unknown as { WebApp?: { openLink?: (u: string) => void } }).WebApp
+    if (max && typeof max.openLink === 'function') {
+      max.openLink(url)
+      return
+    }
+  } catch {
+    // fall through
+  }
+  window.open(url, '_blank', 'noopener')
+}
+
 async function openTelegramAuth() {
   showAuthModal.value = false
   if (!telegramBotUrl.value || typeof window === 'undefined') return
   const shopRef =
     (typeof route.query.shop_id === 'string' && route.query.shop_id.trim()) || tenantKey.value?.trim() || ''
   if (!shopRef) {
-    window.alert('Откройте вход из витрины ресторана или добавьте ?shop_id= в адрес страницы.')
+    openMessengerExternalUrl(telegramBotUrl.value)
     return
   }
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
@@ -590,7 +658,7 @@ async function openTelegramAuth() {
       throw new Error('bad_response')
     }
     const tgUrl = `${telegramBotUrl.value}?start=${encodeURIComponent(res.botStartParam)}`
-    window.open(tgUrl, '_blank', 'noopener')
+    openMessengerExternalUrl(tgUrl)
     await navigateTo({
       path: '/link-telegram',
       query: {
@@ -610,7 +678,7 @@ async function openMaxAuth() {
   const shopRef =
     (typeof route.query.shop_id === 'string' && route.query.shop_id.trim()) || tenantKey.value?.trim() || ''
   if (!shopRef) {
-    window.alert('Откройте вход из витрины ресторана или добавьте ?shop_id= в адрес страницы.')
+    openMessengerExternalUrl(maxBotUrl.value)
     return
   }
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
@@ -632,7 +700,7 @@ async function openMaxAuth() {
     }
     const hasQuery = maxBotUrl.value.includes('?')
     const maxUrl = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(res.botStartParam)}`
-    window.open(maxUrl, '_blank', 'noopener')
+    openMessengerExternalUrl(maxUrl)
     await navigateTo({
       path: '/link-max',
       query: {
