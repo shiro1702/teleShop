@@ -24,7 +24,7 @@
             :class="listMode === 'delivery'
               ? 'bg-primary text-on-primary shadow-sm'
               : 'text-gray-600 hover:bg-white'"
-            @click="listMode = 'delivery'"
+            @click="selectListMode('delivery')"
           >
             Доставка
           </button>
@@ -35,7 +35,7 @@
             :class="listMode === 'pickup'
               ? 'bg-primary text-on-primary shadow-sm'
               : 'text-gray-600 hover:bg-white'"
-            @click="listMode = 'pickup'"
+            @click="selectListMode('pickup')"
           >
             Самовывоз
           </button>
@@ -46,7 +46,7 @@
             :class="listMode === 'dine-in'
               ? 'bg-primary text-on-primary shadow-sm'
               : 'text-gray-600 hover:bg-white'"
-            @click="listMode = 'dine-in'"
+            @click="selectListMode('dine-in')"
           >
             В&nbsp;ресторане
           </button>
@@ -263,6 +263,10 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { MapPointInput } from '~/composables/useGeocodedMarkers'
+import {
+  readCityFulfillmentMode,
+  writeCityFulfillmentMode,
+} from '~/utils/fulfillmentPreference'
 
 type ShopFulfillment = {
   delivery: boolean
@@ -370,15 +374,18 @@ function yandexMapsLink(address: string) {
   return `https://yandex.ru/maps/?text=${encodeURIComponent(address)}`
 }
 
+function persistCityMode(mode: 'delivery' | 'pickup' | 'dine-in') {
+  writeCityFulfillmentMode(citySlug.value, mode)
+}
+
+function selectListMode(mode: 'delivery' | 'pickup' | 'dine-in') {
+  listMode.value = mode
+  // Пишем сразу, чтобы переход в ресторан после клика не терял выбор из-за отложенного watch.
+  persistCityMode(mode)
+}
+
 watch(listMode, (mode: 'delivery' | 'pickup' | 'dine-in') => {
-  if (typeof window === 'undefined') return
-  const slug = citySlug.value
-  if (!slug) return
-  try {
-    localStorage.setItem(`teleshop-city-fulfillment:${slug}`, mode)
-  } catch {
-    // ignore
-  }
+  persistCityMode(mode)
 })
 
 function pickInitialListMode(list: ShopItem[]): 'delivery' | 'pickup' | 'dine-in' {
@@ -411,16 +418,10 @@ function restoreListMode(list: ShopItem[]) {
     listMode.value = pickInitialListMode(list)
     return
   }
-  try {
-    const raw = localStorage.getItem(`teleshop-city-fulfillment:${slug}`)
-    if (raw === 'delivery' || raw === 'pickup' || raw === 'dine-in') {
-      if (modeAllowed(raw, list)) {
-        listMode.value = raw
-        return
-      }
-    }
-  } catch {
-    // ignore
+  const raw = readCityFulfillmentMode(slug)
+  if (raw && modeAllowed(raw, list)) {
+    listMode.value = raw
+    return
   }
   listMode.value = pickInitialListMode(list)
 }

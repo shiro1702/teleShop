@@ -463,6 +463,13 @@ import { useTenant } from '../composables/useTenant'
 import { useMessengerStorage } from '../composables/useMessengerStorage'
 import { useCartStore } from '../stores/cart'
 import { readShopIdFromQuery, resolveCartScopeKey } from '../utils/cartScope'
+import { useTenantRestaurantsCache } from '../composables/useTenantRestaurantsCache'
+import {
+  mapFulfillmentToCityMode,
+  readCityFulfillmentMode,
+  resolveFulfillmentByPreference,
+  writeCityFulfillmentMode,
+} from '../utils/fulfillmentPreference'
 import StoriesTopBar from '../components/stories/StoriesTopBar.vue'
 import StoryGridBanner from '../components/stories/StoryGridBanner.vue'
 import StoryViewer from '../components/stories/StoryViewer.vue'
@@ -703,6 +710,11 @@ const showFulfillmentSelector = computed(() => derivedAllowedFulfillmentTypes.va
 const selectedRestaurantIdForCheckout = computed(() => {
   return restaurantOps.value.length === 1 ? restaurantOps.value[0].id : null
 })
+const citySlug = computed(() => {
+  const raw = route.params.city_slug
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : null
+})
+const { loadRestaurants: loadTenantRestaurants } = useTenantRestaurantsCache<RestaurantOps>()
 
 function readCheckoutStateLocal(): any | null {
   if (typeof window === 'undefined') return null
@@ -786,6 +798,10 @@ function persistFulfillmentTypeToCheckout(next: FulfillmentType) {
 function setFulfillmentType(next: FulfillmentType) {
   if (!derivedAllowedFulfillmentTypes.value.includes(next)) return
   selectedFulfillmentType.value = next
+  const cityMode = mapFulfillmentToCityMode(next)
+  if (cityMode) {
+    writeCityFulfillmentMode(citySlug.value, cityMode)
+  }
   persistFulfillmentTypeToCheckout(next)
   void loadCatalog()
 }
@@ -805,13 +821,8 @@ async function loadRestaurantModes() {
   restaurantOps.value = []
 
   try {
-    const shopId = tenantKey.value
     const branchIdFromQuery = readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
-
-    const res = await $fetch<{ ok: boolean; items: RestaurantOps[] }>('/api/restaurants', {
-      query: shopId ? { shop_id: shopId } : undefined,
-      headers: shopId ? { 'x-shop-id': shopId } : undefined,
-    })
+    const res = await loadTenantRestaurants({ shopId: tenantKey.value })
 
     if (res?.ok && Array.isArray(res.items)) {
       restaurantOps.value = branchIdFromQuery
@@ -830,9 +841,12 @@ async function loadRestaurantModes() {
       void loadCatalog()
       return
     }
-    if (!allowed.includes(selectedFulfillmentType.value)) {
-      selectedFulfillmentType.value = allowed.includes('delivery') ? 'delivery' : allowed[0]
-    }
+    const cityMode = readCityFulfillmentMode(citySlug.value)
+    selectedFulfillmentType.value = resolveFulfillmentByPreference({
+      allowed,
+      cityMode,
+      current: selectedFulfillmentType.value,
+    }) ?? allowed[0]
     persistFulfillmentTypeToCheckout(selectedFulfillmentType.value)
     void loadCatalog()
   }

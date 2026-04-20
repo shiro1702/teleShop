@@ -387,7 +387,7 @@
                     :class="state.fulfillmentType === 'delivery'
                       ? 'bg-primary text-on-primary shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'"
-                    @click="state.fulfillmentType = 'delivery'"
+                    @click="setFulfillmentTypeByUser('delivery')"
                   >
                     Доставка
                   </button>
@@ -398,7 +398,7 @@
                     :class="state.fulfillmentType === 'pickup'
                       ? 'bg-primary text-on-primary shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'"
-                    @click="state.fulfillmentType = 'pickup'"
+                    @click="setFulfillmentTypeByUser('pickup')"
                   >
                     Самовывоз
                   </button>
@@ -409,7 +409,7 @@
                     :class="state.fulfillmentType === 'qr-menu'
                       ? 'bg-primary text-on-primary shadow-sm'
                       : 'text-gray-600 hover:bg-gray-100'"
-                    @click="state.fulfillmentType = 'qr-menu'"
+                    @click="setFulfillmentTypeByUser('qr-menu')"
                   >
                     В&nbsp;ресторане
                   </button>
@@ -1068,6 +1068,13 @@ import {
   readOrderContinuationHint,
 } from '~/composables/useTelegram'
 import { readShopIdFromQuery, resolveCartScopeKey } from '~/utils/cartScope'
+import {
+  mapFulfillmentToCityMode,
+  readCityFulfillmentMode,
+  resolveFulfillmentByPreference,
+  resolveFulfillmentScopeFromRoute,
+  writeCityFulfillmentMode,
+} from '~/utils/fulfillmentPreference'
 import { useWorkingHoursStatus } from '~/composables/useWorkingHoursStatus'
 import type { Product, ModifierGroup, ModifierOption } from '~/data/products'
 import type { CartItem, SelectedModifier, SelectedParameter } from '~/stores/cart'
@@ -1157,6 +1164,7 @@ const state = reactive<CheckoutState>({
   paymentMethod: 'cash',
   fulfillmentType: 'delivery',
 })
+const pendingRestoredFulfillmentType = ref<FulfillmentType | null>(null)
 
 const isPlacing = ref(false)
 const promoCodeInput = ref('')
@@ -1245,11 +1253,39 @@ if (!hasTenantRouteContext.value && !shopIdFromRoute.value) {
 }
 
 function applyCartScope() {
-  const scope = resolveCartScopeKey(route, shopIdFromRoute.value)
+  const scope = resolveFulfillmentScopeFromRoute(route, shopIdFromRoute.value)
   console.log('applyCartScope', scope);
   
   cartStore.setScope(scope)
   cartStore.adoptLegacyShopIdScopeIfEmpty(readShopIdFromQuery(route))
+}
+
+const citySlug = computed(() => {
+  const raw = route.params.city_slug
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : null
+})
+
+function resolveCheckoutFulfillment(allowed: FulfillmentType[], current: FulfillmentType) {
+  const resolved = resolveFulfillmentByPreference({
+    allowed,
+    preferred: pendingRestoredFulfillmentType.value,
+    cityMode: readCityFulfillmentMode(citySlug.value),
+    current,
+  })
+  if (resolved === pendingRestoredFulfillmentType.value) {
+    pendingRestoredFulfillmentType.value = null
+  }
+  return resolved
+}
+
+function setFulfillmentTypeByUser(next: FulfillmentType) {
+  if (!availableFulfillmentTypes.value.includes(next)) return
+  state.fulfillmentType = next
+  pendingRestoredFulfillmentType.value = null
+  const cityMode = mapFulfillmentToCityMode(next)
+  if (cityMode) {
+    writeCityFulfillmentMode(citySlug.value, cityMode)
+  }
 }
 applyCartScope()
 
@@ -1311,6 +1347,7 @@ const {
   currentFulfillmentType: toRef(state, 'fulfillmentType'),
   setDeliveryZones,
   skipNextDeliveryZoneReset,
+  resolveFallbackFulfillmentType: ({ allowed, current }) => resolveCheckoutFulfillment(allowed, current),
 })
 
 type DeliveryResolveApi = {
@@ -2382,10 +2419,16 @@ function restoreFromPlainObject(obj: any) {
     state.paymentMethod = obj.paymentMethod
   }
   if (
-    (obj.fulfillmentType === 'delivery' || obj.fulfillmentType === 'pickup')
-    && availableFulfillmentTypes.value.includes(obj.fulfillmentType)
+    obj.fulfillmentType === 'delivery'
+    || obj.fulfillmentType === 'pickup'
+    || obj.fulfillmentType === 'qr-menu'
   ) {
-    state.fulfillmentType = obj.fulfillmentType
+    if (availableFulfillmentTypes.value.includes(obj.fulfillmentType)) {
+      state.fulfillmentType = obj.fulfillmentType
+      pendingRestoredFulfillmentType.value = null
+    } else {
+      pendingRestoredFulfillmentType.value = obj.fulfillmentType
+    }
   }
   if (typeof obj.addressLine === 'string') {
     addressLine.value = obj.addressLine
@@ -2652,6 +2695,12 @@ onMounted(async () => {
   state.currentStep = deriveEffectiveStep()
 
   await loadRestaurants()
+  if (availableFulfillmentTypes.value.length) {
+    state.fulfillmentType = resolveCheckoutFulfillment(
+      availableFulfillmentTypes.value,
+      state.fulfillmentType,
+    ) ?? state.fulfillmentType
+  }
 })
 
 watch(
@@ -2667,6 +2716,12 @@ watch(
 watch(shopIdFromRoute, async () => {
   applyCartScope()
   await loadRestaurants()
+  if (availableFulfillmentTypes.value.length) {
+    state.fulfillmentType = resolveCheckoutFulfillment(
+      availableFulfillmentTypes.value,
+      state.fulfillmentType,
+    ) ?? state.fulfillmentType
+  }
 })
 
 watch(
@@ -2677,6 +2732,12 @@ watch(
     // Если первая загрузка филиалов прошла без auth-заголовков, повторяем.
     if (initData === prevInitData) return
     await loadRestaurants()
+    if (availableFulfillmentTypes.value.length) {
+      state.fulfillmentType = resolveCheckoutFulfillment(
+        availableFulfillmentTypes.value,
+        state.fulfillmentType,
+      ) ?? state.fulfillmentType
+    }
   },
 )
 
@@ -2685,6 +2746,12 @@ watch(checkoutStorageKey, async (nextKey: string, prevKey: string) => {
   resetScopedCheckoutFields()
   const saved = await loadCheckoutStateCloud()
   if (saved) restoreFromPlainObject(saved)
+  if (availableFulfillmentTypes.value.length) {
+    state.fulfillmentType = resolveCheckoutFulfillment(
+      availableFulfillmentTypes.value,
+      state.fulfillmentType,
+    ) ?? state.fulfillmentType
+  }
 })
 
 async function placeOrder() {
