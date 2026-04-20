@@ -67,11 +67,15 @@
 
 1. **Связи «товар → рекомендованные товары»** (3–5 SKU) — ручная настройка в дашборде.
 2. **Связи «категория → категория для кросс-сейла»** (например «Пиццы» → «Соусы»).
-3. На **корзине / checkout** блок «С этим заказывают» / «Добавьте к заказу»:
+3. **Глобальные рекомендации по категориям** (fallback): админ выбирает 1-2 категории, которые всегда можно показывать в корзине, если персональные связи не дали достаточный пул.
+4. На **корзине / checkout** блок «С этим заказывают» / «Добавьте к заказу»:
    - кандидаты из пересечения правил по **товарам в корзине** и **категориям** этих товаров;
+   - fallback на глобальные категории (из пункта выше), если после фильтрации кандидатов мало;
    - исключить уже добавленные `product.id`;
+   - исключить «сложные» SKU, требующие обязательного выбора модификаторов перед добавлением;
    - при **доставке** и наличии `freeDeliveryThreshold > 0` — опционально **приоритизировать** товары с ценой ≤ «остаток до бесплатной доставки» (микро-копирайт в UI).
-4. Добавление в корзину в один тап (reuse `cartStore.addItem` / тот же флоу, что у [`ProductCard.vue`](../../components/ProductCard.vue)).
+5. Добавление в корзину в один тап (reuse `cartStore.addItem` / тот же флоу, что у [`ProductCard.vue`](../../components/ProductCard.vue)).
+6. Ограничение выдачи в UI: не более 4-6 карточек в карусели, без дубликатов.
 
 ### Следующие этапы (не блокируют MVP)
 
@@ -142,6 +146,7 @@
 4. Загрузить **`restaurant_product_overrides`** для `restaurantId`: выкинуть стоп, скрытые; применить цену филиала если так заведено в проекте.
 5. Отфильтровать по доступности доставки/меню (как в каталоге: `evaluateMenuAvailability`, `delivery_restricted` — см. импорты в `products.get.ts`).
 6. Опционально: параметр «приоритет ценой ≤ remaining» если передан `remainingToFreeDeliveryRub` (считается на клиенте из `deliveryProgress.remaining` или дублируется на сервере из зоны — **важно** использовать ту же базу субтотала, что и промо).
+7. Возвращать не более `limit` позиций (по умолчанию 6), с легкой ротацией внутри подходящего пула, чтобы подборка не выглядела всегда одинаковой.
 
 **Заголовки:** как у остальных запросов витрины — `x-shop-id` / как принято в [`checkout.vue`](../../pages/checkout.vue) для `checkoutXShopIdHeaders()`.
 
@@ -152,6 +157,171 @@
 - `GET/PATCH` (или отдельные POST/DELETE) в [`server/api/dashboard/menu/`](../../server/api/dashboard/) по аналогии с существующими ресурсами меню — привязка к `shop_id` из сессии/роли.
 
 Зависимость: те же проверки прав, что для редактирования категорий/товаров (`shop_members`).
+
+---
+
+## Тех-дизайн API (детализация для реализации)
+
+### 1) Endpoint: `POST /api/cart/recommendations`
+
+**Файл:** `server/api/cart/recommendations.post.ts`  
+**Авторизация/tenant:** через `requireTenantShop(event)` + `x-shop-id`, как в `products.get.ts` и `promo/preview.post.ts`.
+
+**Request body (предложение):**
+
+```json
+{
+  "restaurantId": "uuid",
+  "fulfillmentType": "delivery",
+  "cartProductIds": ["uuid-1", "uuid-2"],
+  "remainingToFreeDeliveryRub": 180,
+  "limit": 6
+}
+```
+
+**Правила валидации входа:**
+
+- `restaurantId` обязателен, UUID.
+- `fulfillmentType` только: `delivery | pickup | qr-menu`.
+- `cartProductIds` массив UUID, пустой массив допустим.
+- `remainingToFreeDeliveryRub` optional, если передан — `>= 0`.
+- `limit` optional, clamp `1..12`, default `6`.
+
+**Response 200 (предложение):**
+
+```json
+{
+  "ok": true,
+  "items": [
+    {
+      "id": "uuid",
+      "name": "Картофель фри",
+      "price": 180,
+      "image": "https://...",
+      "category_id": "uuid",
+      "category": "Закуски",
+      "score": 96,
+      "reasons": ["product_link", "fits_remaining"]
+    }
+  ],
+  "meta": {
+    "limit": 6,
+    "remainingToFreeDeliveryRub": 180
+  }
+}
+```
+
+`score`/`reasons` можно не отдавать в MVP, но полезно для диагностики и QA.
+
+### 2) Алгоритм подбора (сервер)
+
+Порядок (в одном endpoint, чтобы не размазывать логику по клиенту):
+
+1. Проверить тенант `shop_id`.
+2. Загрузить продукты корзины: `products(id, category_id)` для `cartProductIds`.
+3. Построить пул кандидатов из:
+   - `product -> product` связей;
+   - `source_category -> target_category` (товары target-категорий);
+   - глобальных категорий fallback.
+4. Дедуп кандидатов по `product_id`.
+5. Убрать `cartProductIds`.
+6. Фильтрация филиала (`restaurant_product_overrides`):
+   - `is_in_stop_list = true` исключить;
+   - `is_hidden = true` исключить;
+   - если есть branch price override — использовать ее как `price` в выдаче.
+7. Фильтрация доступности: `evaluateMenuAvailability` (как в `GET /api/products`) с тем же `fulfillmentType`.
+8. Исключить «не one-click» SKU:
+   - если у товара есть обязательная parameter-group/modifier-group (`isRequired`/`minSelect > 0`) — не выдавать в upsell-карусель.
+9. Скоорить кандидаты:
+   - base score по источнику (`product_link` > `category_link` > `global_fallback`);
+   - +bonus если `price <= remainingToFreeDeliveryRub` и `remaining > 0`;
+   - +стабильная псевдо-рандомизация (seed от `shopId + restaurantId + day`) для ротации.
+10. Отсортировать, взять top `limit`.
+
+### 3) SQL/данные (минимальные таблицы)
+
+- `cart_cross_sell_product_links` (`shop_id`, `source_product_id`, `target_product_id`, `sort_order`)
+- `cart_cross_sell_category_links` (`shop_id`, `source_category_id`, `target_category_id`, `sort_order`)
+- `cart_cross_sell_global_categories` (`shop_id`, `target_category_id`, `sort_order`)
+
+Уникальные индексы:
+
+- `(shop_id, source_product_id, target_product_id)`
+- `(shop_id, source_category_id, target_category_id)`
+- `(shop_id, target_category_id)` для global fallback
+
+### 4) Ошибки и контракты
+
+- `400` — невалидный body (`restaurantId`, `fulfillmentType`, UUID и т.д.).
+- `404` — ресторан не относится к текущему тенанту.
+- `500` — ошибка чтения БД.
+
+Формат ошибки (как в других endpoint проекта):
+
+```json
+{ "ok": false, "error": "message" }
+```
+
+### 5) Производительность
+
+- Один round-trip с батч-запросами лучше, чем несколько вызовов из клиента.
+- Ограничить исходный пул SQL `LIMIT 100` до пост-фильтрации.
+- Дебаунс на клиенте `300-450ms` (как у promo preview).
+- Ключ подписи запроса: `shopId + restaurantId + fulfillmentType + cartProductIds + remaining`.
+
+---
+
+## Что уже сделано в коде и куда применять изменения
+
+### Уже реализовано (можно переиспользовать как есть)
+
+- `pages/checkout.vue`:
+  - есть блок `deliveryProgress` рядом с CTA и уже корректный расчет от `promoPreview.subtotalAfterPromo`/`cartStore.total`;
+  - есть `checkoutXShopIdHeaders()` и общая схема `$fetch` для tenant-aware API;
+  - есть debounce/watch-паттерн (`promoPreviewWatchSignature`) для недорогого обновления при изменении корзины.
+- `stores/cart.ts`:
+  - есть все данные для сигнатуры запроса (`items`, `id`, `quantity`, `cartItemId`, `selected*`);
+  - есть one-click добавление через `addItem(...)`.
+- `server/api/products.get.ts`:
+  - уже реализованы фильтры доступности по `fulfillmentType` (`evaluateMenuAvailability`);
+  - уже есть загрузка модификаторов/параметров, по которым можно определить «сложные SKU».
+- `composables/useCheckoutTenantRestaurants.ts`:
+  - уже есть контроль `selectedRestaurantId` и обновление зон/филиала;
+  - это правильная точка для инвалидации/перезапроса рекомендаций при смене филиала.
+- `composables/useTenantRestaurantsCache.ts`:
+  - уже внедрен TTL/in-flight cache для ресторанов; паттерн можно повторить для рекомендаций.
+
+### Пока отсутствует (нужно добавить)
+
+- Endpoint `POST /api/cart/recommendations` отсутствует.
+- Таблицы/CRUD для cross-sell правил (product/category/global fallback) отсутствуют.
+- UI-компонент карусели апсейла на checkout отсутствует.
+
+### Куда вносить изменения (точки интеграции)
+
+1. **Сервер API**
+   - Добавить `server/api/cart/recommendations.post.ts`.
+   - Переиспользовать utility-функции из `products.get.ts` (availability + параметры/модификаторы), чтобы не плодить дубли.
+
+2. **Checkout клиент**
+   - В `pages/checkout.vue` добавить `upsellItems`, `isUpsellLoading`, `upsellError`, `runUpsellRecommendations`.
+   - В template вставить блок карусели сразу под `deliveryProgress` (правильное место по UX из чата).
+   - Вызовы `runUpsellRecommendations` привязать к watch-сигнатуре:
+     - `cartStore.items` (product ids),
+     - `selectedRestaurantId`,
+     - `state.fulfillmentType`,
+     - `deliveryProgress.remaining` (или `null`).
+
+3. **Компонент**
+   - Вынести визуал в `components/checkout/CartUpsellStrip.vue`, чтобы не раздувать `checkout.vue`.
+   - Внутри кнопки «Добавить» использовать `cartStore.addItem` только для one-click SKU.
+
+4. **Дашборд**
+   - Добавить CRUD API в `server/api/dashboard/menu/*` рядом с категориями/товарами/модификаторами.
+   - Добавить UI-настройки в menu dashboard для трех уровней правил (product/category/global).
+
+5. **Согласованность iiko/internal**
+   - Применять в дашборде и документации: при `iiko` запрещаем редактировать master-данные меню, но cross-sell правила оставляем в нашей админке.
 
 ---
 
@@ -181,10 +351,50 @@
 
 ## Порядок работ (рекомендуемый)
 
-1. Миграция Supabase: две таблицы + индексы + RLS.
-2. Сервер: `POST /api/cart/recommendations` (или выбранное имя) + unit/интеграционная проверка фильтрации стоп-листа.
-3. Дашборд: UI в карточке товара и категории (пути из [`pages/dashboard/menu.md`](../../pages/dashboard/menu.md)) + API сохранения.
+1. Миграция Supabase: две таблицы + индексы + RLS (добавить таблицу/настройку глобальных категорий для fallback, если не хранится в существующих настройках меню).
+2. Сервер: `POST /api/cart/recommendations` (или выбранное имя) + unit/интеграционная проверка фильтрации стоп-листа, сложных SKU и лимита выдачи.
+3. Дашборд: UI в карточке товара, категории и блоке глобальных рекомендаций (пути из [`pages/dashboard/menu.md`](../../pages/dashboard/menu.md)) + API сохранения.
 4. Витрина: блок в `checkout.vue`, дебаунс запроса при изменении корзины, пустое состояние.
+5. Обновить документацию/подсказки в дашборде: для клиентов с iiko меню и модификаторы редактируются в iiko (master), а кросс-сейл настраивается в нашей админке.
+
+---
+
+## Статусы по задаче
+
+### Уже сделано
+
+- [x] Актуализирован продуктовый план по апсейлу/кросс-сейлу на основе чата `docs/chat/апсейл.md`.
+- [x] Добавлена гибридная модель `iiko + internal` в план.
+- [x] Добавлен тех-дизайн API для `POST /api/cart/recommendations`.
+- [x] Зафиксированы точки интеграции в текущем коде (`checkout`, `cart`, `products`, `tenant restaurants`).
+
+### Ближайшие шаги (next)
+
+- [ ] Создать миграции таблиц cross-sell (product links, category links, global fallback categories) + индексы + RLS.
+- [ ] Реализовать `server/api/cart/recommendations.post.ts` с фильтрами: stop-list, hidden, availability, one-click SKU.
+- [ ] Добавить компонент карусели апсейла и подключить его в `pages/checkout.vue` рядом с `deliveryProgress`.
+- [ ] Подключить debounce/watch-подпись для пересчета рекомендаций при изменении корзины, филиала и `remainingToFreeDelivery`.
+- [ ] Добавить базовые серверные тесты на фильтрацию и лимит выдачи.
+
+### План на будущее
+
+- [ ] Дашборд-редактор правил (товар->товар, категория->категория, глобальные категории).
+- [ ] Расширить ранжирование рекомендаций (вес по конверсии, ротация, A/B режим).
+- [ ] Добавить персонализацию на истории заказов (после запуска MVP).
+- [ ] Добавить аналитику эффективности блока: CTR, add-to-cart rate, uplift среднего чека.
+- [ ] Подготовить режимы “умных целей” (добивка до бесплатной доставки, до минималки, до промо-порога).
+
+---
+
+## Модель интеграции с iiko / internal (обязательное решение)
+
+- Поддерживаем **оба режима** на уровне тенанта: `internal` и `iiko` (гибридная архитектура).
+- Для `iiko`:
+  - меню/цены/стоп-листы/модификаторы синхронизируются из iiko в локальный кэш;
+  - при оформлении заказа сервер отправляет заказ в iiko;
+  - редактирование «мастер-данных» меню в нашей админке ограничено/заблокировано.
+- Для `internal`: меню и модификаторы ведутся полностью в нашей БД.
+- Кросс-сейл в корзине (правила рекомендаций и «добивка до порога») реализуется на нашей стороне **для обоих режимов**, чтобы не зависеть от ограничений iiko UI и иметь единое поведение витрины.
 
 ---
 
@@ -195,6 +405,8 @@
 - [ ] При применённом промо остаток «до бесплатной доставки» совпадает с логикой блока прогресса.
 - [ ] Смена ресторана/адреса обновляет подборку.
 - [ ] Нет лишнего дублирования тяжёлых запросов при каждом клике (см. [оптимизация fetch](./CART_CHECKOUT_FETCH_OPTIMIZATION_PLAN_RU.md)).
+- [ ] Для `iiko`-тенантов рекомендации в корзине работают на наших правилах, а не на UI-настройках iiko.
+- [ ] В апсейл-карусель не попадают SKU, которые нельзя добавить в 1 клик из-за обязательных модификаторов.
 
 ---
 
