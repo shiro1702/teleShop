@@ -3,11 +3,29 @@ import type { Product } from '~/data/products'
 import { MOCK_PRODUCTS } from '~/data/products'
 import type { DeliveryZoneProperties } from '~/utils/deliveryZones'
 
-const CART_STORAGE_KEY = 'teleshop-cart'
+/** Префикс ключей корзины в localStorage: `teleshop-cart` или `teleshop-cart:<scope>`. */
+export const CART_LOCAL_STORAGE_PREFIX = 'teleshop-cart'
+
+export function cartLocalStorageKey(scopeKey: string | null | undefined): string {
+  const scope = typeof scopeKey === 'string' ? scopeKey.trim() : ''
+  return scope ? `${CART_LOCAL_STORAGE_PREFIX}:${scope}` : CART_LOCAL_STORAGE_PREFIX
+}
+
+/** Все ключи в localStorage, относящиеся к корзине (отладка). */
+export function listCartLocalStorageKeys(): string[] {
+  if (typeof localStorage === 'undefined') return []
+  const keys: string[] = []
+  const p = CART_LOCAL_STORAGE_PREFIX
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)
+    if (!k) continue
+    if (k === p || k.startsWith(`${p}:`)) keys.push(k)
+  }
+  return keys.sort()
+}
 
 function buildCartStorageKey(scopeKey: string | null): string {
-  const scope = typeof scopeKey === 'string' ? scopeKey.trim() : ''
-  return scope ? `${CART_STORAGE_KEY}:${scope}` : CART_STORAGE_KEY
+  return cartLocalStorageKey(scopeKey)
 }
 
 export interface SelectedParameter {
@@ -87,6 +105,10 @@ function persistCart(scopeKey: string | null, items: CartItem[]) {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function looksLikeShopUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim())
 }
 
 function normalizeBridgeItem(input: unknown): CartItem | null {
@@ -291,17 +313,48 @@ export const useCartStore = defineStore('cart', {
         ? nextScopeKey.trim()
         : null
 
-      if (this.scopeKey === normalized) return
+      if (this.scopeKey !== normalized) {
+        this.flushPendingRemovals()
+        this.scopeKey = normalized
+        this.items = getStoredCartItems(this.scopeKey)
+        this.deliveryZone = null
+        this.deliveryError = null
+        this.deliveryCost = this.items.length ? 200 : 0
+        this.pendingRemovals = {}
+        // Каталог товаров должен загружаться заново для нового ресторана
+        this.products = []
+        return
+      }
 
-      this.flushPendingRemovals()
-      this.scopeKey = normalized
+      // Тот же scope: раньше здесь был return и не вызывался getStoredCartItems —
+      // после гидрации Pinia scope уже верный, а items пустые, хотя данные есть в localStorage.
       this.items = getStoredCartItems(this.scopeKey)
-      this.deliveryZone = null
-      this.deliveryError = null
       this.deliveryCost = this.items.length ? 200 : 0
-      this.pendingRemovals = {}
-      // Каталог товаров должен загружаться заново для нового ресторана
-      this.products = []
+      if (this.deliveryZone) {
+        this.setDeliveryZone(this.deliveryZone)
+      }
+    },
+    /**
+     * Раньше ключом при ?shop_id=uuid был UUID; теперь приоритет у city/tenant в пути.
+     * Если для нового ключа пусто, а в legacy UUID-ключе есть позиции — переносим в текущий scope.
+     */
+    adoptLegacyShopIdScopeIfEmpty(legacyShopIdFromQuery: string | null | undefined) {
+      if (typeof localStorage === 'undefined') return
+      const legacy =
+        typeof legacyShopIdFromQuery === 'string' ? legacyShopIdFromQuery.trim() : ''
+      if (!legacy || !looksLikeShopUuid(legacy)) return
+      const current = this.scopeKey
+      if (!current || legacy === current) return
+      if (looksLikeShopUuid(current)) return
+      if (this.items.length > 0) return
+      const fromLegacy = getStoredCartItems(legacy)
+      if (!fromLegacy.length) return
+      this.items = [...fromLegacy]
+      persistCart(this.scopeKey, this.items)
+      this.deliveryCost = this.items.length ? 200 : 0
+      if (this.deliveryZone) {
+        this.setDeliveryZone(this.deliveryZone)
+      }
     },
     setProducts(products: Product[]) {
       this.products = Array.isArray(products) ? products : []

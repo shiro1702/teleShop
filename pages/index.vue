@@ -462,7 +462,7 @@ import type { SelectedModifier, SelectedParameter } from '../stores/cart'
 import { useTenant } from '../composables/useTenant'
 import { useMessengerStorage } from '../composables/useMessengerStorage'
 import { useCartStore } from '../stores/cart'
-import { resolveCartScopeKey } from '../utils/cartScope'
+import { readShopIdFromQuery, resolveCartScopeKey } from '../utils/cartScope'
 import StoriesTopBar from '../components/stories/StoriesTopBar.vue'
 import StoryGridBanner from '../components/stories/StoryGridBanner.vue'
 import StoryViewer from '../components/stories/StoryViewer.vue'
@@ -851,6 +851,7 @@ if (
 function applyCartScope() {
   const scope = resolveCartScopeKey(route, tenantKey.value)
   cartStore.setScope(scope)
+  cartStore.adoptLegacyShopIdScopeIfEmpty(readShopIdFromQuery(route))
 }
 
 function openProduct(product: Product) {

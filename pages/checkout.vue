@@ -1067,7 +1067,7 @@ import {
   clearOrderContinuationHint,
   readOrderContinuationHint,
 } from '~/composables/useTelegram'
-import { resolveCartScopeKey } from '~/utils/cartScope'
+import { readShopIdFromQuery, resolveCartScopeKey } from '~/utils/cartScope'
 import { useWorkingHoursStatus } from '~/composables/useWorkingHoursStatus'
 import type { Product, ModifierGroup, ModifierOption } from '~/data/products'
 import type { CartItem, SelectedModifier, SelectedParameter } from '~/stores/cart'
@@ -1246,9 +1246,19 @@ if (!hasTenantRouteContext.value && !shopIdFromRoute.value) {
 
 function applyCartScope() {
   const scope = resolveCartScopeKey(route, shopIdFromRoute.value)
+  console.log('applyCartScope', scope);
+  
   cartStore.setScope(scope)
+  cartStore.adoptLegacyShopIdScopeIfEmpty(readShopIdFromQuery(route))
 }
 applyCartScope()
+
+// После полной гидрации маршрута (особенно hard refresh) повторно подхватываем scope/localStorage.
+if (import.meta.client) {
+  onMounted(() => {
+    applyCartScope()
+  })
+}
 
 const {
   addressLine,
