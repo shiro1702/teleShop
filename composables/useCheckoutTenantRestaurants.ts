@@ -1,6 +1,7 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import type { DeliveryZoneFeature } from '~/utils/deliveryZones'
 import { useTelegram } from '~/composables/useTelegram'
+import { useTenantRestaurantsCache } from '~/composables/useTenantRestaurantsCache'
 
 export type FulfillmentType = 'delivery' | 'pickup' | 'qr-menu'
 export type DineInHallMode = 'qr-menu-browse' | 'to-table' | 'pickup-point'
@@ -75,6 +76,10 @@ type UseCheckoutTenantRestaurantsParams = {
   fulfillmentTypesConfigRaw: string
   currentFulfillmentType: Ref<FulfillmentType>
   setDeliveryZones: (zones: DeliveryZoneFeature[]) => void
+  resolveFallbackFulfillmentType?: (ctx: {
+    allowed: FulfillmentType[]
+    current: FulfillmentType
+  }) => FulfillmentType | null
   /** When true, next zone reload after branch change will not clear delivery zone / error (server resolve will refresh) */
   skipNextDeliveryZoneReset?: Ref<boolean>
 }
@@ -96,6 +101,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
   const allRestaurantZones = ref<Record<string, DeliveryZoneFeature[]>>({})
   const organizationTimezone = ref<string>('Asia/Irkutsk')
   const dineInHallMode = ref<DineInHallMode>('to-table')
+  const { loadRestaurants: loadTenantRestaurants } = useTenantRestaurantsCache<RestaurantItem>()
 
   let lastRestaurantsLoadedKey: string | null = null
   let restaurantsLoadInFlightKey: string | null = null
@@ -288,7 +294,13 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
     (types) => {
       if (!types.length) return
       if (types.includes(params.currentFulfillmentType.value)) return
-      params.currentFulfillmentType.value = types[0]
+      const resolved = params.resolveFallbackFulfillmentType?.({
+        allowed: types,
+        current: params.currentFulfillmentType.value,
+      })
+      params.currentFulfillmentType.value = resolved && types.includes(resolved)
+        ? resolved
+        : types[0]
     },
     { immediate: true },
   )
@@ -325,16 +337,9 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
 
     const run = async () => {
       try {
-        const headers = buildTenantHeaders(params.shopIdFromRoute.value)
-        const query = params.shopIdFromRoute.value ? { shop_id: params.shopIdFromRoute.value } : undefined
-        const res = await $fetch<{
-          ok: boolean
-          items: RestaurantItem[]
-          organizationTimezone?: string
-          dineInHallMode?: DineInHallMode
-        }>('/api/restaurants', {
-          headers,
-          query,
+        const res = await loadTenantRestaurants({
+          shopId: params.shopIdFromRoute.value,
+          force: options?.force,
         })
         if (res?.ok && Array.isArray(res.items)) {
           await loadAllRestaurantZones(res.items)
