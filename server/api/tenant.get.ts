@@ -1,18 +1,30 @@
-import { defineEventHandler } from 'h3'
+import { defineEventHandler, getQuery } from 'h3'
+import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireTenantShop } from '~/server/utils/tenant'
-import { getStyleRecord } from '~/server/utils/organizationStyle'
+import { getOrganizationSettings, getStyleRecord } from '~/server/utils/organizationStyle'
+import { normalizeWeeklyWorkingHours, resolveEffectiveWorkingHours } from '~/utils/workingHours'
 
 export default defineEventHandler(async (event) => {
+  const query = getQuery(event)
+  const branchId = typeof query.branch_id === 'string' && query.branch_id.trim()
+    ? query.branch_id.trim()
+    : typeof query.restaurant_id === 'string' && query.restaurant_id.trim()
+      ? query.restaurant_id.trim()
+      : null
   const tenantFromContext = event.context.tenant
   if (tenantFromContext) {
     const shopId = tenantFromContext.shopId
     let uiSettings = tenantFromContext.uiSettings ?? {}
     let shopName = tenantFromContext.shop?.name ?? ''
+    const orgSettings = await getOrganizationSettings(event, shopId)
+    let effectiveWorkingHours = orgSettings.ops.workingHours
     try {
       const record = await getStyleRecord(event, shopId)
       const cfg = record.config
 
-      const nextLogo = typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : ''
+      const nextSmallLogo = typeof cfg.identity.logoSmallUrl === 'string' ? cfg.identity.logoSmallUrl.trim() : ''
+      const nextLargeLogo = typeof cfg.identity.logoLargeUrl === 'string' ? cfg.identity.logoLargeUrl.trim() : ''
+      const nextLogo = nextSmallLogo || (typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : '')
       const nextDesc = typeof cfg.identity.shortDescription === 'string' ? cfg.identity.shortDescription.trim() : ''
       const fallbackLogo = typeof uiSettings?.logo_url === 'string' ? uiSettings.logo_url : ''
       const fallbackDesc = typeof uiSettings?.description === 'string' ? uiSettings.description : ''
@@ -21,6 +33,7 @@ export default defineEventHandler(async (event) => {
         ...uiSettings,
         // MVP: если identity не заполнена — не ломаем старые shops.ui_settings.
         logo_url: nextLogo || fallbackLogo,
+        logo_large_url: nextLargeLogo || nextLogo || fallbackLogo,
         description: nextDesc || fallbackDesc,
         ...deriveTenantThemeFromStyle(cfg),
         // Радиусы пробрасываем в theme-систему CSS vars.
@@ -28,10 +41,44 @@ export default defineEventHandler(async (event) => {
         radius_modal: `${cfg.radii.modal}px`,
         radius_input: `${cfg.radii.input}px`,
         radius_card: `${cfg.radii.card}px`,
+        organization_timezone: orgSettings.locale.timezone,
+        organization_working_hours: orgSettings.ops.workingHours,
+        effective_working_hours: effectiveWorkingHours,
       }
       shopName = cfg.identity.name || shopName
     } catch {
       // best-effort: storefront should not break if style table is absent/unavailable
+    }
+    if (branchId) {
+      try {
+        const client = await serverSupabaseServiceRole(event)
+        const branchRes = await client
+          .from('restaurants')
+          .select('use_organization_working_hours,working_hours')
+          .eq('shop_id', shopId)
+          .eq('id', branchId)
+          .eq('is_active', true)
+          .maybeSingle<{ use_organization_working_hours: boolean; working_hours: unknown }>()
+        if (branchRes.data) {
+          const branchWorkingHours = normalizeWeeklyWorkingHours(branchRes.data.working_hours, orgSettings.ops.workingHours)
+          effectiveWorkingHours = resolveEffectiveWorkingHours(orgSettings.ops.workingHours, {
+            useOrganizationHours: branchRes.data.use_organization_working_hours !== false,
+            workingHours: branchWorkingHours,
+          })
+          uiSettings = {
+            ...uiSettings,
+            effective_working_hours: effectiveWorkingHours,
+          }
+        }
+      } catch {
+        // best-effort
+      }
+    }
+    uiSettings = {
+      ...uiSettings,
+      organization_timezone: orgSettings.locale.timezone,
+      organization_working_hours: orgSettings.ops.workingHours,
+      effective_working_hours: effectiveWorkingHours,
     }
 
     return {
@@ -55,11 +102,15 @@ export default defineEventHandler(async (event) => {
 
   let uiSettings = shop.ui_settings ?? {}
   let shopName = shop.name
+  const orgSettings = await getOrganizationSettings(event, shopId)
+  let effectiveWorkingHours = orgSettings.ops.workingHours
   try {
     const record = await getStyleRecord(event, shopId)
     const cfg = record.config
 
-    const nextLogo = typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : ''
+    const nextSmallLogo = typeof cfg.identity.logoSmallUrl === 'string' ? cfg.identity.logoSmallUrl.trim() : ''
+    const nextLargeLogo = typeof cfg.identity.logoLargeUrl === 'string' ? cfg.identity.logoLargeUrl.trim() : ''
+    const nextLogo = nextSmallLogo || (typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : '')
     const nextDesc = typeof cfg.identity.shortDescription === 'string' ? cfg.identity.shortDescription.trim() : ''
     const fallbackLogo = typeof uiSettings?.logo_url === 'string' ? uiSettings.logo_url : ''
     const fallbackDesc = typeof uiSettings?.description === 'string' ? uiSettings.description : ''
@@ -67,16 +118,51 @@ export default defineEventHandler(async (event) => {
     uiSettings = {
       ...uiSettings,
       logo_url: nextLogo || fallbackLogo,
+      logo_large_url: nextLargeLogo || nextLogo || fallbackLogo,
       description: nextDesc || fallbackDesc,
       ...deriveTenantThemeFromStyle(cfg),
       radius_button: `${cfg.radii.button}px`,
       radius_modal: `${cfg.radii.modal}px`,
       radius_input: `${cfg.radii.input}px`,
       radius_card: `${cfg.radii.card}px`,
+      organization_timezone: orgSettings.locale.timezone,
+      organization_working_hours: orgSettings.ops.workingHours,
+      effective_working_hours: effectiveWorkingHours,
     }
     shopName = cfg.identity.name || shopName
   } catch {
     // best-effort
+  }
+  if (branchId) {
+    try {
+      const client = await serverSupabaseServiceRole(event)
+      const branchRes = await client
+        .from('restaurants')
+        .select('use_organization_working_hours,working_hours')
+        .eq('shop_id', shopId)
+        .eq('id', branchId)
+        .eq('is_active', true)
+        .maybeSingle<{ use_organization_working_hours: boolean; working_hours: unknown }>()
+      if (branchRes.data) {
+        const branchWorkingHours = normalizeWeeklyWorkingHours(branchRes.data.working_hours, orgSettings.ops.workingHours)
+        effectiveWorkingHours = resolveEffectiveWorkingHours(orgSettings.ops.workingHours, {
+          useOrganizationHours: branchRes.data.use_organization_working_hours !== false,
+          workingHours: branchWorkingHours,
+        })
+        uiSettings = {
+          ...uiSettings,
+          effective_working_hours: effectiveWorkingHours,
+        }
+      }
+    } catch {
+      // best-effort
+    }
+  }
+  uiSettings = {
+    ...uiSettings,
+    organization_timezone: orgSettings.locale.timezone,
+    organization_working_hours: orgSettings.ops.workingHours,
+    effective_working_hours: effectiveWorkingHours,
   }
 
   return {
@@ -132,6 +218,7 @@ function derivePrimaryVariants(brandPrimary: string) {
 function deriveTenantThemeFromStyle(cfg: {
   tokens: {
     brandPrimary: string
+    textOnPrimary: string
     brandSecondary: string
     brandAccent: string
     surfaceBackground: string
@@ -145,6 +232,7 @@ function deriveTenantThemeFromStyle(cfg: {
 }) {
   return {
     ...derivePrimaryVariants(cfg.tokens.brandPrimary),
+    on_primary: cfg.tokens.textOnPrimary,
     secondary: cfg.tokens.brandSecondary,
     accent: cfg.tokens.brandAccent,
     surface_background: cfg.tokens.surfaceBackground,

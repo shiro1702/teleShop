@@ -1,8 +1,9 @@
 <template>
   <article
-    class="flex h-full w-full cursor-pointer flex-col overflow-hidden rounded-xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+    class="flex h-full w-full flex-col overflow-hidden rounded-xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
     :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }"
-    @click="emit('open', product)"
+    :class="isUnavailable ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'"
+    @click="!isUnavailable && emit('open', product)"
   >
     <div class="aspect-square w-full shrink-0 overflow-hidden bg-gray-100 relative">
       <img
@@ -12,10 +13,10 @@
         @error="onImageError"
       />
       <div class="absolute top-2 right-2 flex flex-col gap-1 items-end">
-        <div v-if="quantity > 0" class="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-white shadow-sm">
+        <div v-if="quantity > 0 && !isConfigurableProduct" class="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-on-primary shadow-sm">
           {{ quantity }} шт
         </div>
-        <div v-if="(product.modifiers && product.modifiers.length > 0) || (product.parameters && product.parameters.length > 0)" class="rounded-full bg-white/90 backdrop-blur px-2 py-1 text-[10px] font-medium text-gray-700 shadow-sm">
+        <div v-if="isConfigurableProduct" class="rounded-full bg-white/90 backdrop-blur px-2 py-1 text-[10px] font-medium text-gray-700 shadow-sm">
           Настраиваемый
         </div>
       </div>
@@ -30,18 +31,28 @@
         </p>
       </div>
       <div class="mt-3 shrink-0 space-y-3">
+        <p v-if="isUnavailable" class="rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">
+          {{ unavailableReason }}
+        </p>
         <p class="text-lg font-medium text-primary">
           {{ displayPrice }}
         </p>
 
         <!-- Если есть модификаторы или параметры, всегда показываем кнопку "Выбрать" (открывает модалку) -->
         <button
-          v-if="(product.modifiers && product.modifiers.length > 0) || (product.parameters && product.parameters.length > 0)"
+          v-if="isConfigurableProduct"
           type="button"
-          class="w-full rounded-lg px-4 py-3 text-base font-medium transition"
+          class="relative w-full rounded-lg px-4 py-3 text-base font-medium transition"
           :style="{ backgroundColor: theme.primary_50 || '#f3f4f6', color: theme.primary_700 || '#111827' }"
+            :disabled="isUnavailable"
           @click.stop="emit('open', product)"
         >
+          <span
+            v-if="quantity > 0"
+            class="absolute right-2 top-1 rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-on-primary shadow-sm"
+          >
+            {{ quantity }} шт
+          </span>
           Выбрать
         </button>
 
@@ -50,7 +61,8 @@
           <button
             v-if="quantity === 0"
             type="button"
-            class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
+            class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700"
+            :disabled="isUnavailable"
             @click.stop="cartStore.addItem(product)"
           >
             В корзину
@@ -75,8 +87,9 @@
             </span>
             <button
               type="button"
-              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-white transition hover:opacity-90"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-on-primary transition hover:opacity-90"
               aria-label="Добавить"
+              :disabled="isUnavailable"
               @click.stop="cartStore.addItem(product)"
             >
               +
@@ -109,6 +122,14 @@ const theme = computed(() => tenant.value.theme || {})
 const cardBgColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
 const mainTextColor = computed(() => theme.value.text_primary || 'var(--color-text-primary)')
 const mutedTextColor = computed(() => theme.value.text_muted || 'var(--color-text-muted)')
+const isConfigurableProduct = computed(() =>
+  Boolean(
+    (props.product.modifiers && props.product.modifiers.length > 0) ||
+      (props.product.parameters && props.product.parameters.length > 0),
+  ),
+)
+const isUnavailable = computed(() => props.product.availability?.isOrderable === false)
+const unavailableReason = computed(() => props.product.availability?.reason || 'Временно недоступно')
 
 // Для товаров без модификаторов cartItemId совпадает с product.id
 const quantity = computed(() => cartStore.quantityByProductId(props.product.id))

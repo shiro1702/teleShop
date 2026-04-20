@@ -12,6 +12,7 @@ import {
 
 type OrderRow = {
   id: string
+  order_number: string | null
   status: string
   fulfillment_type: string
   total: number
@@ -48,7 +49,7 @@ export default defineEventHandler(async (event) => {
 
   const { data: rows, error } = await client
     .from('orders')
-    .select('id,status,fulfillment_type,total,created_at,items,comment')
+    .select('id,order_number,status,fulfillment_type,total,created_at,items,comment')
     .eq('shop_id', access.shopId)
     .eq('restaurant_id', restaurantId)
     .eq('fulfillment_type', fulfillmentType)
@@ -71,13 +72,20 @@ export default defineEventHandler(async (event) => {
   const dupSums = computeDuplicateQtySumByKey(normalizedByOrder)
   const orderCounts = computeOrderCountByDuplicateKey(normalizedByOrder)
 
-  const orders = activeRows.map((row, idx) => {
-    const items = normalizedByOrder[idx] ?? []
+  const normalizedByOrderId = new Map<string, NormalizedOrderItem[]>()
+  for (let idx = 0; idx < activeRows.length; idx += 1) {
+    normalizedByOrderId.set(activeRows[idx].id, normalizedByOrder[idx] ?? [])
+  }
+
+  const orders = allRows.map((row) => {
+    const st = normalizeDashboardStatus(row.status)
+    const items = normalizedByOrderId.get(row.id) ?? normalizeOrderItemsJson(row.items)
     const refined = items.map((it) => {
       const key = orderItemDuplicateKey(it)
       const dupQtySum = dupSums.get(key) ?? it.quantity
       const ordersWithKey = orderCounts.get(key) ?? 1
-      const isDuplicate = ordersWithKey > 1 || dupQtySum > it.quantity
+      const isActiveForDuplicates = st === 'new' || st === 'in_progress'
+      const isDuplicate = isActiveForDuplicates && (ordersWithKey > 1 || dupQtySum > it.quantity)
       return {
         productId: it.productId,
         name: it.name,
@@ -92,7 +100,8 @@ export default defineEventHandler(async (event) => {
 
     return {
       id: row.id,
-      status: normalizeDashboardStatus(row.status),
+      orderNumber: row.order_number,
+      status: st,
       fulfillmentType: row.fulfillment_type || 'delivery',
       total: row.total ?? 0,
       createdAt: row.created_at,

@@ -5,6 +5,7 @@
 ## Что уже можно делать
 
 - Настраивать Telegram-ботов: token, connect/reconnect/disconnect webhook, health-check.
+- **Привязка чата магазина к Telegram** через токен и сценарий в бота (отдельная таблица токенов, маршруты `telegram-chat-link-token` / `telegram-chat-unlink`), расширенные уведомления и кнопки в `webhook` — см. обзор в `docs/RECENT_MAJOR_CHANGES_RU.md` (коммиты `8be33fd1`, `bff04152`).
 - Управлять API-ключами и webhook endpoints для внешних систем.
 - Подготовить интеграции с iiko и онлайн-кассой.
 

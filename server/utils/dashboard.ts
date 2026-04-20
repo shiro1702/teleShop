@@ -74,6 +74,26 @@ export async function requireDashboardAccess(event: any): Promise<DashboardAcces
   }
 
   if (!shopId) {
+    const memberAccess = await client
+      .from('shop_members')
+      .select('shop_id,role')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    // Support legacy/new deployments where shop_members may not exist yet.
+    if (memberAccess.error && !/relation .*shop_members.* does not exist/i.test(memberAccess.error.message)) {
+      throw createError({ statusCode: 500, statusMessage: 'Failed to read shop membership' })
+    }
+
+    if (memberAccess.data?.shop_id) {
+      shopId = memberAccess.data.shop_id as string
+      role = normalizeRole((memberAccess.data as any).role)
+    }
+  }
+
+  if (!shopId) {
     throw createError({ statusCode: 403, statusMessage: 'No shop access. Complete onboarding first.' })
   }
 

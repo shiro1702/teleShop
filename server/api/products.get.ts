@@ -1,15 +1,22 @@
-import { createError, defineEventHandler } from 'h3'
+import { createError, defineEventHandler, getHeader, getQuery } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireTenantShop } from '~/server/utils/tenant'
 import { fetchProductParameterGroupsByProductId } from '~/server/utils/productParametersCatalog'
+import { evaluateMenuAvailability, normalizeTimeWindows, type FulfillmentType } from '~/server/utils/menuAvailability'
 
 export default defineEventHandler(async (event) => {
   const { shopId } = await requireTenantShop(event)
+  /** В UI — «в ресторане»; в API заказа тот же сценарий, что и org `dine-in` + dineInHallMode (см. /api/restaurants). */
+  const fulfillmentType = (() => {
+    const raw = getHeader(event, 'x-fulfillment-type') || getQuery(event).fulfillment_type
+    if (raw === 'pickup' || raw === 'qr-menu') return raw as FulfillmentType
+    return 'delivery' as FulfillmentType
+  })()
 
   const client = await serverSupabaseServiceRole(event)
   const { data, error } = await client
     .from('products')
-    .select('id,name,price,image,description,category,category_id,sort_order,is_active,categories(name)')
+    .select('id,name,price,image,description,category,category_id,sort_order,is_active,delivery_restricted_override,availability_windows,categories(name,delivery_restricted,availability_windows)')
     .eq('shop_id', shopId)
     .eq('is_active', true)
     .order('sort_order', { ascending: true })
@@ -174,7 +181,14 @@ export default defineEventHandler(async (event) => {
       price: displayPrice,
       category: item.categories?.name || item.category || 'Без категории',
       modifiers: modifiersMap[item.id] || [],
-      parameters: params
+      parameters: params,
+      availability: evaluateMenuAvailability({
+        fulfillmentType,
+        productDeliveryRestricted: item.delivery_restricted_override,
+        categoryDeliveryRestricted: item.categories?.delivery_restricted,
+        productTimeWindows: normalizeTimeWindows(item.availability_windows),
+        categoryTimeWindows: normalizeTimeWindows(item.categories?.availability_windows)
+      })
     }
   })
 

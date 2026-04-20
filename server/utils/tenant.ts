@@ -1,5 +1,6 @@
 import type { H3Event } from 'h3'
 import { createError, getHeader, getQuery } from 'h3'
+import { getMessengerInitDataFromEvent } from '~/server/utils/messengerInitData'
 import { serverSupabaseServiceRole } from '#supabase/server'
 
 export type TenantShop = {
@@ -23,11 +24,14 @@ export type TenantShop = {
 export type TenantRestaurant = {
   id: string
   shop_id: string
+  city_id: string | null
   name: string
   address: string
   supports_delivery: boolean
   supports_pickup: boolean
   supports_qr_menu: boolean
+  use_organization_working_hours: boolean
+  working_hours: Record<string, unknown> | null
   is_active: boolean
 }
 
@@ -98,9 +102,9 @@ export async function resolveShopIdFromEvent(event: H3Event): Promise<string | n
   const headerShop = getHeader(event, 'x-shop-id')
   if (headerShop?.trim()) return headerShop.trim()
 
-  const rawInitDataHeader = getHeader(event, 'x-telegram-init-data')
-  if (rawInitDataHeader?.trim()) {
-    return extractShopIdFromInitData(rawInitDataHeader) ?? null
+  const rawInitData = getMessengerInitDataFromEvent(event)
+  if (rawInitData?.trim()) {
+    return extractShopIdFromInitData(rawInitData) ?? null
   }
 
   return null
@@ -234,6 +238,42 @@ export async function requireTenantShop(event: H3Event): Promise<{ shopId: strin
   return { shopId: shop.id, shop }
 }
 
+export async function resolveCanonicalTenantCartPath(
+  event: H3Event,
+  shop: Pick<TenantShop, 'id' | 'slug'>,
+): Promise<{ citySlug: string; tenantSlug: string; cartPath: string; checkoutPath: string }> {
+  const config = useRuntimeConfig()
+  const defaultCitySlugRaw = typeof config.public?.defaultCitySlug === 'string' ? config.public.defaultCitySlug : ''
+  const defaultCitySlug = defaultCitySlugRaw.trim() || 'ulan-ude'
+
+  const client = await serverSupabaseServiceRole(event)
+  const { data: restaurants } = await client
+    .from('restaurants')
+    .select('city_id,is_active')
+    .eq('shop_id', shop.id)
+    .eq('is_active', true)
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  let citySlug = defaultCitySlug
+  const cityId = Array.isArray(restaurants) && restaurants[0]?.city_id ? String(restaurants[0].city_id) : ''
+  if (cityId) {
+    const { data: cityRow } = await client
+      .from('cities')
+      .select('slug')
+      .eq('id', cityId)
+      .maybeSingle<{ slug: string }>()
+    if (cityRow?.slug?.trim()) {
+      citySlug = cityRow.slug.trim()
+    }
+  }
+
+  const tenantSlug = shop.slug.trim()
+  const cartPath = `/${citySlug}/${tenantSlug}/cart`
+  const checkoutPath = `/${citySlug}/${tenantSlug}/checkout`
+  return { citySlug, tenantSlug, cartPath, checkoutPath }
+}
+
 /**
  * Проверяет, что shop_id из тела запроса относится к тому же магазину, что и tenant-контекст.
  * В теле можно передать UUID магазина или его slug — оба сопоставляются с `shops.id`.
@@ -264,13 +304,35 @@ export async function requireRestaurantForShop(
   }
 
   const client = await serverSupabaseServiceRole(event)
-  const { data, error } = await client
+  let data: any = null
+  let error: any = null
+  const primary = await client
     .from('restaurants')
-    .select('id,shop_id,name,address,supports_delivery,supports_pickup,supports_qr_menu,is_active')
+    .select('id,shop_id,city_id,name,address,supports_delivery,supports_pickup,supports_qr_menu,use_organization_working_hours,working_hours,is_active')
     .eq('shop_id', shopId)
     .eq('id', normalizedRestaurantId)
     .eq('is_active', true)
     .maybeSingle()
+  data = primary.data
+  error = primary.error
+  if (error && error.code === '42703') {
+    const fallback = await client
+      .from('restaurants')
+      .select('id,shop_id,city_id,name,address,supports_delivery,supports_pickup,supports_qr_menu,is_active')
+      .eq('shop_id', shopId)
+      .eq('id', normalizedRestaurantId)
+      .eq('is_active', true)
+      .maybeSingle()
+    data = fallback.data
+    error = fallback.error
+    if (data) {
+      data = {
+        ...data,
+        use_organization_working_hours: true,
+        working_hours: null,
+      }
+    }
+  }
 
   if (error) {
     console.error('Error querying restaurant for shop:', error)

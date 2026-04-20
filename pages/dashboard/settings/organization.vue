@@ -1,5 +1,26 @@
 <template>
   <section class="space-y-6">
+    <div class="pointer-events-none fixed right-4 top-4 z-[100] flex w-full max-w-sm flex-col gap-2">
+      <div
+        v-for="toast in toasts"
+        :key="toast.id"
+        class="pointer-events-auto flex items-start gap-2 rounded-lg border px-3 py-2 text-sm shadow-lg"
+        :class="toast.kind === 'error'
+          ? 'border-red-200 bg-red-50 text-red-700'
+          : 'border-green-200 bg-green-50 text-green-700'"
+        role="status"
+      >
+        <span class="min-w-0 flex-1 break-words">{{ toast.message }}</span>
+        <button
+          type="button"
+          class="shrink-0 rounded px-1 leading-none text-gray-500 hover:bg-black/5 hover:text-gray-800"
+          aria-label="Закрыть"
+          @click="dismissToast(toast.id)"
+        >
+          ×
+        </button>
+      </div>
+    </div>
     <div class="space-y-1">
       <h1 class="text-2xl font-semibold">Настройки организации</h1>
       <p class="text-sm text-gray-600">Бренд, стиль и пресеты витрины ресторана.</p>
@@ -7,9 +28,6 @@
 
     <div v-if="loading" class="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
       Загружаем текущий стиль...
-    </div>
-    <div v-else-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-      {{ errorMessage }}
     </div>
 
     <template v-else>
@@ -22,7 +40,10 @@
           Айдентика
         </button>
         <button class="rounded border px-3 py-1.5 text-sm" :class="activeMainTab === 'contacts' ? 'border-blue-400 bg-blue-50' : 'border-gray-300'" @click="activeMainTab = 'contacts'">
-          Контакты и операционные настройки
+          Контакты
+        </button>
+        <button class="rounded border px-3 py-1.5 text-sm" :class="activeMainTab === 'operations' ? 'border-blue-400 bg-blue-50' : 'border-gray-300'" @click="activeMainTab = 'operations'">
+          Операционные настройки
         </button>
         <button class="rounded border px-3 py-1.5 text-sm" :class="activeMainTab === 'styles' ? 'border-blue-400 bg-blue-50' : 'border-gray-300'" @click="activeMainTab = 'styles'">
           Стили
@@ -106,10 +127,16 @@
         </label>
         <div class="md:col-span-2 grid gap-3 md:grid-cols-2">
           <label class="text-sm">
-            <span class="mb-1 block text-gray-600">Логотип</span>
+            <span class="mb-1 block text-gray-600">Логотип (маленький, для шапки)</span>
             <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" :disabled="isReadonly || saving" @change="onFileChange($event, 'logo')">
             <p class="mt-1 text-xs text-gray-500">PNG/SVG/WebP, до 2MB, минимум 256x256.</p>
             <img v-if="form.identity.logoUrl" :src="form.identity.logoUrl" alt="logo" class="mt-2 h-14 w-14 rounded object-cover">
+          </label>
+          <label class="text-sm">
+            <span class="mb-1 block text-gray-600">Логотип (большой, для главной)</span>
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" :disabled="isReadonly || saving" @change="onFileChange($event, 'logo-large')">
+            <p class="mt-1 text-xs text-gray-500">Если не задан, автоматически используется маленький логотип из шапки.</p>
+            <img v-if="form.identity.logoLargeUrl || form.identity.logoUrl" :src="form.identity.logoLargeUrl || form.identity.logoUrl" alt="logo-large" class="mt-2 h-14 w-auto rounded object-cover">
           </label>
           <label class="text-sm">
             <span class="mb-1 block text-gray-600">Favicon</span>
@@ -148,13 +175,13 @@
             <div class="rounded border p-3" :style="{ backgroundColor: form.tokens.surfaceCard, borderRadius: `${form.radii.card}px` }">
               <p class="text-sm font-semibold">{{ settings.displayName || form.identity.name || 'Название ресторана' }}</p>
               <p class="mt-1 text-xs" :style="{ color: form.tokens.textMuted }">{{ form.identity.shortDescription || 'Короткое описание' }}</p>
-              <button class="mt-3 px-3 py-1.5 text-sm text-white" :style="{ backgroundColor: form.tokens.brandPrimary, borderRadius: `${form.radii.button}px` }">Открыть меню</button>
+              <button class="mt-3 px-3 py-1.5 text-sm" :style="{ backgroundColor: form.tokens.brandPrimary, color: form.tokens.textOnPrimary, borderRadius: `${form.radii.button}px` }">Открыть меню</button>
             </div>
           </div>
         </div>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="save('Айдентика сохранена.')">
+        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="saveIdentity">
           {{ saving ? 'Сохраняем...' : 'Сохранить айдентику' }}
         </button>
       </div>
@@ -162,77 +189,11 @@
 
       <div v-if="activeMainTab === 'contacts'" class="space-y-4">
       <div class="grid gap-4 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-2">
-        <h2 class="md:col-span-2 text-sm font-semibold text-gray-900">Контакты и операционные настройки</h2>
+        <h2 class="md:col-span-2 text-sm font-semibold text-gray-900">Контакты</h2>
         <label class="text-sm"><span class="mb-1 block text-gray-600">Телефон</span><input v-model="settings.contacts.phone" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
         <label class="text-sm"><span class="mb-1 block text-gray-600">Email</span><input v-model="settings.contacts.email" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
         <label class="text-sm"><span class="mb-1 block text-gray-600">MAX</span><input v-model="settings.contacts.max" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
         <label class="text-sm"><span class="mb-1 block text-gray-600">Telegram</span><input v-model="settings.contacts.telegram" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
-        <label class="text-sm"><span class="mb-1 block text-gray-600">Статус</span>
-          <select v-model="settings.ops.status" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly">
-            <option value="open">Открыт</option><option value="closed">Закрыт</option><option value="coming_soon">Скоро открытие</option><option value="temporarily_unavailable">Временно недоступен</option>
-          </select>
-        </label>
-        <label class="text-sm"><span class="mb-1 block text-gray-600">Минимальный заказ</span><input v-model.number="settings.ops.minOrderAmount" type="number" min="0" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
-        <label class="text-sm"><span class="mb-1 block text-gray-600">Время приготовления (мин)</span><input v-model.number="settings.ops.prepTimeMinutes" type="number" min="0" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
-        <label class="text-sm"><span class="mb-1 block text-gray-600">Стоимость доставки</span><input v-model.number="settings.ops.deliveryFee" type="number" min="0" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
-        <label class="text-sm"><span class="mb-1 block text-gray-600">Бесплатная доставка от</span><input v-model.number="settings.ops.freeDeliveryFrom" type="number" min="0" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
-        <div class="md:col-span-2 rounded-lg border border-gray-200 p-3">
-          <p class="text-sm font-medium text-gray-700">Способы работы ресторана</p>
-          <p class="mt-1 text-xs text-gray-500">
-            Здесь задаются общие режимы работы ресторана. На уровне филиала можно включить/выключить режимы отдельно - филиальные настройки перебивают эти правила.
-          </p>
-          <div class="mt-3 grid gap-2 md:grid-cols-2">
-            <label v-for="option in fulfillmentOptions" :key="option.value" class="flex items-start gap-2 rounded border border-gray-200 p-2">
-              <input
-                type="checkbox"
-                class="mt-0.5"
-                :checked="settings.ops.fulfillmentTypes.includes(option.value)"
-                :disabled="isReadonly"
-                @change="onFulfillmentCheckboxChange($event, option.value)"
-              >
-              <span>
-                <span class="block text-sm text-gray-700">{{ option.label }}</span>
-                <span class="block text-xs text-gray-500">{{ option.description }}</span>
-              </span>
-            </label>
-          </div>
-          <div v-if="settings.ops.fulfillmentTypes.includes('showcase-order')" class="mt-3 rounded border border-gray-200 bg-gray-50 p-3">
-            <p class="text-sm font-medium text-gray-700">Режим для "Витрина + к столу"</p>
-            <p class="mt-1 text-xs text-gray-500">Переключает сценарий выдачи заказа: официант доносит до столика или гость забирает на выдаче.</p>
-            <div class="mt-2 grid gap-2 md:grid-cols-2">
-              <label class="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
-                <input
-                  v-model="settings.ops.showcaseOrderFulfillment"
-                  type="radio"
-                  value="to-table"
-                  :disabled="isReadonly"
-                >
-                До столика
-              </label>
-              <label class="flex items-center gap-2 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
-                <input
-                  v-model="settings.ops.showcaseOrderFulfillment"
-                  type="radio"
-                  value="pickup-point"
-                  :disabled="isReadonly"
-                >
-                На выдачу
-              </label>
-            </div>
-          </div>
-        </div>
-        <label class="text-sm"><span class="mb-1 block text-gray-600">Принятие заказов</span>
-          <select v-model="settings.ops.orderAcceptanceMode" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly">
-            <option value="manual">Ручное</option><option value="auto">Автоматическое</option>
-          </select>
-        </label>
-        <label class="text-sm"><span class="mb-1 block text-gray-600">Валюта</span><input v-model="settings.locale.currency" class="w-full rounded-lg border border-gray-300 px-3 py-2 uppercase" :disabled="isReadonly"></label>
-        <label class="text-sm"><span class="mb-1 block text-gray-600">Часовой пояс</span><input v-model="settings.locale.timezone" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
-        <label class="text-sm"><span class="mb-1 block text-gray-600">Налоговый режим (РФ)</span>
-          <select v-model="settings.tax.vatMode" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly">
-            <option value="none">Без НДС</option><option value="included">НДС включен в цену</option><option value="excluded">НДС начисляется сверху</option>
-          </select>
-        </label>
         <div class="md:col-span-2 rounded-lg border border-gray-200 p-3">
           <p class="text-sm font-medium text-gray-700">Реквизиты для публичного футера</p>
           <p class="mt-1 text-xs text-gray-500">
@@ -255,8 +216,131 @@
         </div>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="save('Контакты и операционные настройки сохранены.')">
-          {{ saving ? 'Сохраняем...' : 'Сохранить контакты и операционные настройки' }}
+        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="saveContacts">
+          {{ saving ? 'Сохраняем...' : 'Сохранить контакты' }}
+        </button>
+      </div>
+      </div>
+
+      <div v-if="activeMainTab === 'operations'" class="space-y-4">
+      <div class="grid gap-4 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-2">
+        <h2 class="md:col-span-2 text-sm font-semibold text-gray-900">Операционные настройки</h2>
+        <label class="text-sm"><span class="mb-1 block text-gray-600">Статус</span>
+          <select v-model="settings.ops.status" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly">
+            <option value="open">Открыт</option><option value="closed">Закрыт</option><option value="coming_soon">Скоро открытие</option><option value="temporarily_unavailable">Временно недоступен</option>
+          </select>
+        </label>
+        <label class="text-sm"><span class="mb-1 block text-gray-600">Минимальный заказ</span><input v-model.number="settings.ops.minOrderAmount" type="number" min="0" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
+        <label class="text-sm"><span class="mb-1 block text-gray-600">Время приготовления (мин)</span><input v-model.number="settings.ops.prepTimeMinutes" type="number" min="0" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
+        <label class="text-sm"><span class="mb-1 block text-gray-600">Стоимость доставки</span><input v-model.number="settings.ops.deliveryFee" type="number" min="0" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
+        <label class="text-sm"><span class="mb-1 block text-gray-600">Бесплатная доставка от</span><input v-model.number="settings.ops.freeDeliveryFrom" type="number" min="0" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
+        <div class="md:col-span-2 rounded-lg border border-gray-200 p-3">
+          <p class="text-sm font-medium text-gray-700">Способы работы ресторана</p>
+          <p class="mt-1 text-xs text-gray-500">
+            Общие режимы. На уровне филиала их можно отключать точечно.
+          </p>
+          <div class="mt-3 grid gap-2 md:grid-cols-2">
+            <label v-for="option in fulfillmentOptions" :key="option.value" class="flex items-start gap-2 rounded border border-gray-200 p-2">
+              <input
+                type="checkbox"
+                class="mt-0.5"
+                :checked="settings.ops.fulfillmentTypes.includes(option.value)"
+                :disabled="isReadonly"
+                @change="onFulfillmentCheckboxChange($event, option.value)"
+              >
+              <span>
+                <span class="block text-sm text-gray-700">{{ option.label }}</span>
+                <span class="block text-xs text-gray-500">{{ option.description }}</span>
+              </span>
+            </label>
+          </div>
+          <div v-if="settings.ops.fulfillmentTypes.includes('dine-in')" class="mt-3 rounded border border-gray-200 bg-gray-50 p-3">
+            <p class="text-sm font-medium text-gray-700">В зале: сценарий для гостя</p>
+            <p class="mt-1 text-xs text-gray-500">Один активный сценарий. Для «До столика» можно включить кнопки вызова персонала (гостевой экран — позже).</p>
+            <div class="mt-2 space-y-2">
+              <label class="flex items-start gap-2 rounded border border-gray-200 bg-white p-2 text-sm text-gray-700">
+                <input v-model="settings.ops.dineInHallMode" type="radio" value="qr-menu-browse" class="mt-0.5" :disabled="isReadonly">
+                <span><span class="font-medium">QR-меню</span><span class="block text-xs text-gray-500">Только просмотр меню, без оформления заказа.</span></span>
+              </label>
+              <label class="flex items-start gap-2 rounded border border-gray-200 bg-white p-2 text-sm text-gray-700">
+                <input v-model="settings.ops.dineInHallMode" type="radio" value="to-table" class="mt-0.5" :disabled="isReadonly">
+                <span><span class="font-medium">До столика</span><span class="block text-xs text-gray-500">Заказ по QR со столика; стол и вызов персонала.</span></span>
+              </label>
+              <label class="flex items-start gap-2 rounded border border-gray-200 bg-white p-2 text-sm text-gray-700">
+                <input v-model="settings.ops.dineInHallMode" type="radio" value="pickup-point" class="mt-0.5" :disabled="isReadonly">
+                <span><span class="font-medium">На выдачу</span><span class="block text-xs text-gray-500">Заказ по QR, выдача с общей точки.</span></span>
+              </label>
+            </div>
+            <div v-if="settings.ops.dineInHallMode === 'to-table'" class="mt-3 rounded border border-gray-200 bg-white p-3">
+              <p class="text-sm font-medium text-gray-700">Кнопки для гостя (экран стола)</p>
+              <label class="mt-2 flex items-center gap-2 text-sm text-gray-700">
+                <input v-model="settings.ops.dineInStaffButtons.waiter" type="checkbox" class="rounded border-gray-300" :disabled="isReadonly">
+                Позвать официанта
+              </label>
+              <label class="mt-1 flex items-center gap-2 text-sm text-gray-700">
+                <input v-model="settings.ops.dineInStaffButtons.hookah" type="checkbox" class="rounded border-gray-300" :disabled="isReadonly">
+                Позвать кальянщика
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="md:col-span-2 rounded-lg border border-gray-200 p-3">
+          <p class="text-sm font-medium text-gray-700">График работы ресторана</p>
+          <p class="mt-1 text-xs text-gray-500">
+            Используется как базовый график для всех филиалов. В карточке филиала его можно переопределить.
+          </p>
+          <div class="mt-3 space-y-2">
+            <div
+              v-for="day in workingDayRows"
+              :key="day.key"
+              class="grid items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-2 md:grid-cols-[120px,120px,1fr,1fr]"
+            >
+              <span class="text-sm text-gray-700">{{ day.label }}</span>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  v-model="settings.ops.workingHours[day.key].isOpen"
+                  type="checkbox"
+                  :disabled="isReadonly"
+                >
+                Открыто
+              </label>
+              <label class="text-sm">
+                <span class="mb-1 block text-xs text-gray-500">Открытие</span>
+                <input
+                  v-model="settings.ops.workingHours[day.key].openAt"
+                  type="time"
+                  class="w-full rounded border border-gray-300 px-2 py-1.5"
+                  :disabled="isReadonly || !settings.ops.workingHours[day.key].isOpen"
+                >
+              </label>
+              <label class="text-sm">
+                <span class="mb-1 block text-xs text-gray-500">Закрытие</span>
+                <input
+                  v-model="settings.ops.workingHours[day.key].closeAt"
+                  type="time"
+                  class="w-full rounded border border-gray-300 px-2 py-1.5"
+                  :disabled="isReadonly || !settings.ops.workingHours[day.key].isOpen"
+                >
+              </label>
+            </div>
+          </div>
+        </div>
+        <label class="text-sm"><span class="mb-1 block text-gray-600">Принятие заказов</span>
+          <select v-model="settings.ops.orderAcceptanceMode" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly">
+            <option value="manual">Ручное</option><option value="auto">Автоматическое</option>
+          </select>
+        </label>
+        <label class="text-sm"><span class="mb-1 block text-gray-600">Валюта</span><input v-model="settings.locale.currency" class="w-full rounded-lg border border-gray-300 px-3 py-2 uppercase" :disabled="isReadonly"></label>
+        <label class="text-sm"><span class="mb-1 block text-gray-600">Часовой пояс</span><input v-model="settings.locale.timezone" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly"></label>
+        <label class="text-sm md:col-span-2"><span class="mb-1 block text-gray-600">Налоговый режим (РФ)</span>
+          <select v-model="settings.tax.vatMode" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="isReadonly">
+            <option value="none">Без НДС</option><option value="included">НДС включен в цену</option><option value="excluded">НДС начисляется сверху</option>
+          </select>
+        </label>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="saveOperations">
+          {{ saving ? 'Сохраняем...' : 'Сохранить операционные настройки' }}
         </button>
       </div>
       </div>
@@ -276,9 +360,9 @@
             <div class="mt-3 rounded border p-3" :style="{ backgroundColor: form.tokens.surfaceCard, borderRadius: `${form.radii.modal}px` }">
               <p class="text-sm font-semibold">Кнопки</p>
               <div class="mt-2 flex flex-wrap gap-2">
-                <button class="px-3 py-1.5 text-xs text-white" :style="{ backgroundColor: form.tokens.brandPrimary, borderRadius: `${form.radii.button}px` }">Primary</button>
+                <button class="px-3 py-1.5 text-xs" :style="{ backgroundColor: form.tokens.brandPrimary, color: form.tokens.textOnPrimary, borderRadius: `${form.radii.button}px` }">Primary</button>
                 <button class="px-3 py-1.5 text-xs" :style="{ backgroundColor: form.tokens.brandSecondary, color: form.tokens.textPrimary, borderRadius: `${form.radii.button}px` }">Secondary</button>
-                <button class="px-3 py-1.5 text-xs text-white" :style="{ backgroundColor: form.tokens.brandAccent, borderRadius: `${form.radii.button}px` }">Accent</button>
+                <button class="px-3 py-1.5 text-xs" :style="{ backgroundColor: form.tokens.brandAccent, color: form.tokens.textOnPrimary, borderRadius: `${form.radii.button}px` }">Accent</button>
               </div>
             </div>
           </div>
@@ -367,7 +451,7 @@
       </div>
 
       <div class="flex flex-wrap gap-2">
-        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="save('Стили сохранены.')">
+        <button class="rounded border border-blue-500 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50" :disabled="isReadonly || saving || !!validationErrors.length" @click="saveStyles">
           {{ saving ? 'Сохраняем...' : 'Сохранить стили' }}
         </button>
         <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="isReadonly || saving || !hasRollback" @click="rollback">
@@ -386,10 +470,6 @@
         <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="isReadonly || saving" @click="resetForm">
           Отменить несохраненные изменения
         </button>
-      </div>
-
-      <div v-if="successMessage" class="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-        {{ successMessage }}
       </div>
 
       <div class="rounded-xl border border-gray-200 bg-white p-4">
@@ -424,8 +504,6 @@ definePageMeta({ layout: 'dashboard' })
 const { role, load } = useDashboardAccess()
 const loading = ref(true)
 const saving = ref(false)
-const successMessage = ref('')
-const errorMessage = ref('')
 const hasRollback = ref(false)
 const presets = ref<OrganizationStylePreset[]>([])
 const auditLog = ref<OrganizationStyleAuditEntry[]>([])
@@ -433,20 +511,25 @@ const originalConfig = ref<OrganizationStyleConfig | null>(null)
 const originalSettings = ref<OrganizationSettings | null>(null)
 const newPresetTitle = ref('')
 const newPresetMood = ref('')
-const activeMainTab = ref<'identity' | 'contacts' | 'styles'>('identity')
+const activeMainTab = ref<'identity' | 'contacts' | 'operations' | 'styles'>('identity')
+const toasts = ref<Array<{ id: number; kind: 'success' | 'error'; message: string }>>([])
+let toastSeq = 0
 
 const form = reactive<OrganizationStyleConfig>({
   identity: {
     name: '',
     shortDescription: '',
     fullDescription: '',
+    logoSmallUrl: '',
     logoUrl: '',
+    logoLargeUrl: '',
     faviconUrl: '',
     restaurantCardImageUrl: '',
     heroImageUrl: '',
   },
   tokens: {
     brandPrimary: '#000000',
+    textOnPrimary: '#FFFFFF',
     brandSecondary: '#000000',
     brandAccent: '#000000',
     surfaceBackground: '#FFFFFF',
@@ -479,10 +562,20 @@ const settings = reactive<OrganizationSettings>({
     deliveryFee: 150,
     freeDeliveryFrom: 1000,
     fulfillmentTypes: ['delivery', 'pickup'],
-    showcaseOrderFulfillment: 'to-table',
+    dineInHallMode: 'to-table',
+    dineInStaffButtons: { waiter: true, hookah: false },
     orderAcceptanceMode: 'manual',
     ordersPaused: false,
     ordersPausedReason: '',
+    workingHours: {
+      mon: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      tue: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      wed: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      thu: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      fri: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      sat: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+      sun: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    },
   },
   locale: {
     currency: 'RUB',
@@ -516,19 +609,27 @@ const defaultCuisineSuggestions = [
   'Кофейня',
 ]
 const fulfillmentOptions: Array<{
-  value: 'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'
+  value: 'delivery' | 'pickup' | 'dine-in'
   label: string
   description: string
 }> = [
   { value: 'delivery', label: 'Доставка', description: 'Заказ с доставкой по адресу клиента.' },
   { value: 'pickup', label: 'Самовывоз', description: 'Клиент оформляет и забирает заказ сам.' },
-  { value: 'dine-in', label: 'В зале', description: 'Заказ для гостей внутри ресторана.' },
-  { value: 'qr-menu', label: 'QR-меню', description: 'Гость сканирует QR, открывает меню и делает заказ с телефона.' },
-  { value: 'showcase-order', label: 'Витрина + к столу', description: 'Гость выбирает и оплачивает в витрине, заказ приносят сразу к столу.' },
+  { value: 'dine-in', label: 'В зале', description: 'Гость в зале; подрежим (QR-просмотр, до столика, на выдачу) задаётся ниже.' },
+]
+const workingDayRows: Array<{ key: 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'; label: string }> = [
+  { key: 'mon', label: 'Понедельник' },
+  { key: 'tue', label: 'Вторник' },
+  { key: 'wed', label: 'Среда' },
+  { key: 'thu', label: 'Четверг' },
+  { key: 'fri', label: 'Пятница' },
+  { key: 'sat', label: 'Суббота' },
+  { key: 'sun', label: 'Воскресенье' },
 ]
 
 const colorFields = [
   { key: 'brandPrimary', label: 'brand.primary' },
+  { key: 'textOnPrimary', label: 'text.onPrimary' },
   { key: 'brandSecondary', label: 'brand.secondary' },
   { key: 'brandAccent', label: 'brand.accent' },
   { key: 'surfaceBackground', label: 'surface.background' },
@@ -651,6 +752,8 @@ function fillSettings(next: OrganizationSettings) {
   settings.ops.prepTimeMinutes = next.ops.prepTimeMinutes ?? 30
   settings.ops.deliveryFee = next.ops.deliveryFee ?? 150
   settings.ops.freeDeliveryFrom = next.ops.freeDeliveryFrom ?? 1000
+  settings.ops.dineInHallMode = next.ops.dineInHallMode ?? 'to-table'
+  settings.ops.dineInStaffButtons = next.ops.dineInStaffButtons ?? { waiter: true, hookah: false }
 }
 
 function syncCuisineToSettings() {
@@ -678,7 +781,6 @@ function removeCuisineTag(tag: string) {
 
 async function loadData() {
   loading.value = true
-  errorMessage.value = ''
   try {
     await load()
     const [styleResponse, presetsResponse] = await Promise.all([
@@ -693,7 +795,8 @@ async function loadData() {
     fillForm(styleResponse.data)
     fillSettings(styleResponse.settings)
   } catch (err: any) {
-    errorMessage.value = err?.data?.statusMessage || err?.message || 'Не удалось загрузить настройки организации.'
+    const message = err?.data?.statusMessage || err?.message || 'Не удалось загрузить настройки организации.'
+    pushToast('error', message, { durationMs: 14000 })
   } finally {
     loading.value = false
   }
@@ -708,20 +811,32 @@ function applyPreset(presetId: string) {
 }
 
 function resetForm() {
-  successMessage.value = ''
   if (!originalConfig.value) return
   fillForm(originalConfig.value)
   if (originalSettings.value) fillSettings(originalSettings.value)
 }
 
-async function save(successText = 'Настройки сохранены.') {
+function dismissToast(id: number) {
+  toasts.value = toasts.value.filter((item) => item.id !== id)
+}
+
+function pushToast(
+  kind: 'success' | 'error',
+  message: string,
+  options?: { durationMs?: number },
+) {
+  const id = ++toastSeq
+  toasts.value.push({ id, kind, message })
+  const durationMs = options?.durationMs ?? (kind === 'error' ? 12000 : 5000)
+  setTimeout(() => dismissToast(id), durationMs)
+}
+
+async function saveByEndpoint(endpoint: string, successText: string, fallbackErrorText: string) {
   if (isReadonly.value || validationErrors.value.length) return
   syncCuisineToSettings()
   saving.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
   try {
-    const response = await $fetch<OrganizationStyleResponse>('/api/dashboard/organization/style', {
+    const response = await $fetch<OrganizationStyleResponse>(endpoint, {
       method: 'PUT',
       body: {
         data: cloneConfig(form),
@@ -734,19 +849,42 @@ async function save(successText = 'Настройки сохранены.') {
     fillSettings(response.settings)
     auditLog.value = response.auditLog
     hasRollback.value = response.hasRollback
-    successMessage.value = successText
+    pushToast('success', successText)
   } catch (err: any) {
-    errorMessage.value = err?.data?.statusMessage || err?.message || 'Не удалось сохранить настройки.'
+    const message = err?.data?.statusMessage || err?.message || fallbackErrorText
+    pushToast('error', message, { durationMs: 14000 })
   } finally {
     saving.value = false
   }
 }
 
+async function saveIdentity() {
+  await saveByEndpoint('/api/dashboard/organization/style/identity', 'Айдентика сохранена.', 'Не удалось сохранить айдентику.')
+}
+
+async function saveContacts() {
+  await saveByEndpoint(
+    '/api/dashboard/organization/style/contacts',
+    'Контакты сохранены.',
+    'Не удалось сохранить контакты.',
+  )
+}
+
+async function saveOperations() {
+  await saveByEndpoint(
+    '/api/dashboard/organization/style/operations',
+    'Операционные настройки сохранены.',
+    'Не удалось сохранить операционные настройки.',
+  )
+}
+
+async function saveStyles() {
+  await saveByEndpoint('/api/dashboard/organization/style/styles', 'Стили сохранены.', 'Не удалось сохранить стили.')
+}
+
 async function rollback() {
   if (isReadonly.value || !hasRollback.value) return
   saving.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
   try {
     const response = await $fetch<OrganizationStyleResponse>('/api/dashboard/organization/style/rollback', {
       method: 'POST',
@@ -757,9 +895,10 @@ async function rollback() {
     fillSettings(response.settings)
     auditLog.value = response.auditLog
     hasRollback.value = response.hasRollback
-    successMessage.value = 'Предыдущий стиль восстановлен.'
+    pushToast('success', 'Предыдущий стиль восстановлен.')
   } catch (err: any) {
-    errorMessage.value = err?.data?.statusMessage || err?.message || 'Не удалось выполнить rollback.'
+    const message = err?.data?.statusMessage || err?.message || 'Не удалось выполнить rollback.'
+    pushToast('error', message, { durationMs: 14000 })
   } finally {
     saving.value = false
   }
@@ -816,7 +955,6 @@ function contrastRatio(a: { r: number; g: number; b: number }, b: { r: number; g
 async function savePreset() {
   if (isReadonly.value || !newPresetTitle.value.trim()) return
   saving.value = true
-  errorMessage.value = ''
   try {
     const response = await $fetch<{ ok: true; item: OrganizationStylePreset }>('/api/dashboard/organization/style-presets', {
       method: 'POST',
@@ -832,40 +970,49 @@ async function savePreset() {
     presets.value = [response.item, ...presets.value]
     newPresetTitle.value = ''
     newPresetMood.value = ''
-    successMessage.value = 'Пользовательский пресет сохранен.'
+    pushToast('success', 'Пользовательский пресет сохранен.')
   } catch (err: any) {
-    errorMessage.value = err?.data?.statusMessage || err?.message || 'Не удалось сохранить пресет.'
+    const message = err?.data?.statusMessage || err?.message || 'Не удалось сохранить пресет.'
+    pushToast('error', message, { durationMs: 14000 })
   } finally {
     saving.value = false
   }
 }
 
-async function onFileChange(event: Event, kind: 'logo' | 'favicon' | 'restaurant-card' | 'hero') {
+async function onFileChange(event: Event, kind: 'logo' | 'logo-large' | 'favicon' | 'restaurant-card' | 'hero') {
   if (isReadonly.value) return
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
   if (file.size > 2 * 1024 * 1024) {
-    errorMessage.value = 'Файл должен быть меньше 2MB.'
+    pushToast('error', 'Файл должен быть меньше 2MB.', { durationMs: 10000 })
     return
   }
-  const dataBase64 = await fileToBase64(file)
-  const dimensions = await getImageDimensions(file)
-  const response = await $fetch<{ ok: true; url: string }>('/api/dashboard/organization/media', {
-    method: 'POST',
-    body: {
-      kind,
-      fileName: file.name,
-      mimeType: file.type,
-      dataBase64,
-      width: dimensions?.width,
-      height: dimensions?.height,
-    },
-  })
-  if (kind === 'logo') form.identity.logoUrl = response.url
-  if (kind === 'favicon') form.identity.faviconUrl = response.url
-  if (kind === 'restaurant-card') form.identity.restaurantCardImageUrl = response.url
-  if (kind === 'hero') form.identity.heroImageUrl = response.url
+  try {
+    const dataBase64 = await fileToBase64(file)
+    const dimensions = await getImageDimensions(file)
+    const response = await $fetch<{ ok: true; url: string }>('/api/dashboard/organization/media', {
+      method: 'POST',
+      body: {
+        kind,
+        fileName: file.name,
+        mimeType: file.type,
+        dataBase64,
+        width: dimensions?.width,
+        height: dimensions?.height,
+      },
+    })
+    if (kind === 'logo') form.identity.logoUrl = response.url
+    if (kind === 'logo') form.identity.logoSmallUrl = response.url
+    if (kind === 'logo-large') form.identity.logoLargeUrl = response.url
+    if (kind === 'favicon') form.identity.faviconUrl = response.url
+    if (kind === 'restaurant-card') form.identity.restaurantCardImageUrl = response.url
+    if (kind === 'hero') form.identity.heroImageUrl = response.url
+    pushToast('success', 'Файл загружен.')
+  } catch (err: any) {
+    const message = err?.data?.statusMessage || err?.message || 'Не удалось загрузить файл.'
+    pushToast('error', message, { durationMs: 14000 })
+  }
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -906,7 +1053,7 @@ watch(languagesRaw, (value) => {
 })
 
 function toggleFulfillmentType(
-  value: 'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order',
+  value: 'delivery' | 'pickup' | 'dine-in',
   checked: boolean,
 ) {
   if (checked) {
@@ -920,7 +1067,7 @@ function toggleFulfillmentType(
 
 function onFulfillmentCheckboxChange(
   event: Event,
-  value: 'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order',
+  value: 'delivery' | 'pickup' | 'dine-in',
 ) {
   const input = event.target as HTMLInputElement | null
   toggleFulfillmentType(value, Boolean(input?.checked))

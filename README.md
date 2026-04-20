@@ -89,6 +89,10 @@ npm run generate  # static generation (если применимо)
 - подготовьте Supabase таблицы и миграции из `supabase/migrations`
 - добавьте записи в `shops`, `restaurants`, `restaurant_delivery_zones`, `products` с корректным `shop_id`
 
+## Недавние существенные изменения
+
+- `docs/RECENT_MAJOR_CHANGES_RU.md` — что кардинально добавлено или изменено в ряде коммитов (Telegram-чат, адреса клиента, настройки организации, карта самовывоза и геокодинг).
+
 ## Документация по платежам
 
 - `docs/PAYMENTS_RU_YOOKASSA_TBANK.md` - архитектура платежей YooKassa/Т-Банк, B2C/B2B контуры, webhook-процессы.

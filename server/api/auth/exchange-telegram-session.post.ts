@@ -7,6 +7,27 @@ interface ExchangeSessionBody {
   token?: string
 }
 
+async function findAuthUserIdByEmail(
+  serviceClient: any,
+  email: string,
+): Promise<string | null> {
+  let page = 1
+  const perPage = 200
+  while (page <= 10) {
+    const { data, error } = await serviceClient.auth.admin.listUsers({ page, perPage })
+    if (error) {
+      console.error('Error listing auth users in exchange-session:', error)
+      return null
+    }
+    const users = data?.users ?? []
+    const hit = users.find((user: any) => (user.email || '').toLowerCase() === email.toLowerCase())
+    if (hit?.id) return hit.id
+    if (users.length < perPage) break
+    page += 1
+  }
+  return null
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody<ExchangeSessionBody>(event)
 
@@ -63,6 +84,18 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (tokenRow.telegram_id == null) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Telegram confirmation pending',
+    })
+  }
+
+  const bridgeFromToken = (tokenRow.bridge_payload as Record<string, unknown> | null) || {}
+  const sharedPhoneRaw = bridgeFromToken.telegram_shared_phone ?? bridgeFromToken.shared_phone
+  const sharedPhone =
+    typeof sharedPhoneRaw === 'string' && sharedPhoneRaw.trim() ? sharedPhoneRaw.trim() : ''
+
   const telegramId: number = tokenRow.telegram_id
 
   // Пытаемся найти существующий профиль по telegram_id
@@ -99,6 +132,7 @@ export default defineEventHandler(async (event) => {
         email_confirm: true,
         user_metadata: {
           telegram_id: telegramId,
+          ...(sharedPhone ? { phone: sharedPhone } : {}),
         },
       })
 
@@ -133,7 +167,7 @@ export default defineEventHandler(async (event) => {
     // Профиль уже есть: убеждаемся, что auth-пользователь существует и имеет синтетические учётные данные
     userId = existingProfile.id as string
 
-    const { data: existingUser, error: getUserError } =
+    const { data: existingUserData, error: getUserError } =
       await serviceClient.auth.admin.getUserById(userId)
 
     if (getUserError) {
@@ -144,7 +178,9 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    if (!existingUser) {
+    const existingAuthUser = existingUserData?.user ?? null
+
+    if (!existingAuthUser) {
       // На всякий случай: профиль есть, а пользователя нет — создаём нового пользователя и переназначаем профиль
       const { data: createdUser, error: createUserError } =
         await serviceClient.auth.admin.createUser({
@@ -153,6 +189,7 @@ export default defineEventHandler(async (event) => {
           email_confirm: true,
           user_metadata: {
             telegram_id: telegramId,
+            ...(sharedPhone ? { phone: sharedPhone } : {}),
           },
         })
 
@@ -198,11 +235,61 @@ export default defineEventHandler(async (event) => {
       })
 
       if (updateError) {
-        console.error('Error updating existing auth user in exchange-session:', updateError)
-        throw createError({
-          statusCode: 500,
-          statusMessage: 'Failed to prepare existing Telegram user',
+        console.warn('Primary updateUserById failed, trying repair path in exchange-session:', updateError)
+
+        // Repair path: synthetic email may belong to another auth user OR current user cannot be normalized directly.
+        // Rebind profile to synthetic user and normalize password/metadata.
+        let syntheticUserId = await findAuthUserIdByEmail(serviceClient, syntheticEmail)
+        if (!syntheticUserId) {
+          const { data: createdSyntheticUser, error: createSyntheticError } =
+            await serviceClient.auth.admin.createUser({
+              email: syntheticEmail,
+              password: syntheticPassword,
+              email_confirm: true,
+              user_metadata: {
+                telegram_id: telegramId,
+                ...(sharedPhone ? { phone: sharedPhone } : {}),
+              },
+            })
+          if (createSyntheticError || !createdSyntheticUser?.user?.id) {
+            console.error('Error creating synthetic auth user during repair in exchange-session:', createSyntheticError)
+            throw createError({
+              statusCode: 500,
+              statusMessage: 'Failed to prepare existing Telegram user',
+            })
+          }
+          syntheticUserId = createdSyntheticUser.user.id
+        }
+
+        const { error: normalizeSyntheticError } = await serviceClient.auth.admin.updateUserById(syntheticUserId, {
+          password: syntheticPassword,
+          email_confirm: true,
+          user_metadata: {
+            telegram_id: telegramId,
+            ...(sharedPhone ? { phone: sharedPhone } : {}),
+          },
         })
+        if (normalizeSyntheticError) {
+          console.error('Error normalizing synthetic auth user in exchange-session:', normalizeSyntheticError)
+          throw createError({
+            statusCode: 500,
+            statusMessage: 'Failed to normalize synthetic Telegram user',
+          })
+        }
+
+        const { error: rebindError } = await serviceClient
+          .from('profiles')
+          .update({ id: syntheticUserId, telegram_id: telegramId })
+          .eq('id', userId)
+          .eq('telegram_id', telegramId)
+        if (rebindError) {
+          console.error('Error rebinding profile to synthetic user in exchange-session:', rebindError)
+          throw createError({
+            statusCode: 500,
+            statusMessage: 'Failed to rebind Telegram profile',
+          })
+        }
+        userId = syntheticUserId
       }
     }
   }
@@ -230,6 +317,14 @@ export default defineEventHandler(async (event) => {
 
   const session = signInData.session
 
+  if (sharedPhone) {
+    const { data: authWrap } = await serviceClient.auth.admin.getUserById(userId)
+    const prevMeta = (authWrap?.user?.user_metadata ?? {}) as Record<string, unknown>
+    await serviceClient.auth.admin.updateUserById(userId, {
+      user_metadata: { ...prevMeta, phone: sharedPhone },
+    })
+  }
+
   // Токен больше не нужен — удаляем
   const { error: deleteError } = await serviceClient
     .from('auth_tokens')
@@ -244,6 +339,7 @@ export default defineEventHandler(async (event) => {
     success: true,
     userId,
     telegramId,
+    bridge_payload: tokenRow.bridge_payload ?? null,
     access_token: session.access_token,
     refresh_token: session.refresh_token,
     expires_in: session.expires_in,

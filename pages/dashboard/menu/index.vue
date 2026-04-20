@@ -25,6 +25,11 @@
         <p class="text-sm font-semibold text-gray-900">Параметры</p>
         <p class="mt-1 text-xs text-gray-600">Справочник типов параметров (например, "Размер", "Объём").</p>
       </NuxtLink>
+
+      <NuxtLink to="/dashboard/menu/cross-sell" class="rounded-xl border border-gray-200 bg-white p-4 transition hover:border-primary hover:shadow-sm">
+        <p class="text-sm font-semibold text-gray-900">Апсейл и кросс-сейл</p>
+        <p class="mt-1 text-xs text-gray-600">Правила рекомендаций в корзине: товарные, категорийные и fallback связи.</p>
+      </NuxtLink>
     </div>
 
     <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">

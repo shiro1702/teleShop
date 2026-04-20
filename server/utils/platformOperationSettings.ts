@@ -1,6 +1,7 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 
-export type FulfillmentMode = 'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'
+/** Режимы на уровне организации (legacy qr-menu/showcase-order сняты — см. dineInHallMode). */
+export type FulfillmentMode = 'delivery' | 'pickup' | 'dine-in'
 
 type PlatformOperationSettings = {
   disabledFulfillmentModes: FulfillmentMode[]
@@ -15,12 +16,19 @@ type RawSettingsRow = {
 }
 
 const SETTINGS_TABLE = 'platform_operation_settings'
-const ALL_MODES: FulfillmentMode[] = ['delivery', 'pickup', 'dine-in', 'qr-menu', 'showcase-order']
+const ALL_MODES: FulfillmentMode[] = ['delivery', 'pickup', 'dine-in']
+
+/** Старые значения в platform_operation_settings — маппим на dine-in для фильтра. */
+const LEGACY_MODE_MAP: Record<string, FulfillmentMode | undefined> = {
+  'qr-menu': 'dine-in',
+  'showcase-order': 'dine-in',
+}
 
 function normalizeModes(input: unknown): FulfillmentMode[] {
   if (!Array.isArray(input)) return []
   const items = input
     .map((item) => String(item).trim().toLowerCase())
+    .map((item) => LEGACY_MODE_MAP[item] ?? item)
     .filter((item): item is FulfillmentMode => ALL_MODES.includes(item as FulfillmentMode))
   return Array.from(new Set(items))
 }

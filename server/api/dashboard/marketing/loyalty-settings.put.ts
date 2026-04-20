@@ -4,6 +4,7 @@ import { requireDashboardAccess } from '~/server/utils/dashboard'
 
 type Body = {
   bonuses_enabled?: boolean
+  allow_simultaneous_bonus_spend_and_earn?: boolean
   earn_percent_of_subtotal?: number
   max_order_percent_payable_with_bonus?: number
   expiry_enabled?: boolean
@@ -22,6 +23,7 @@ export default defineEventHandler(async (event) => {
   const row = {
     shop_id: access.shopId,
     bonuses_enabled: body?.bonuses_enabled !== false,
+    allow_simultaneous_bonus_spend_and_earn: body?.allow_simultaneous_bonus_spend_and_earn === true,
     earn_percent_of_subtotal: Math.min(
       100,
       Math.max(0, Math.floor(Number(body?.earn_percent_of_subtotal ?? 5))),

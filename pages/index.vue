@@ -4,7 +4,7 @@
       v-if="storiesLoading || storiesTopBar.length"
       :campaigns="storiesTopBar"
       :loading="storiesLoading"
-      @open="openStoryCampaign"
+      @open="openTopBarStoryCampaign"
       :style="topBarStyle"
     />
     <div class="w-full sticky top-16 z-40 backdrop-blur" :style="topBarStyle">
@@ -23,48 +23,55 @@
 
         <div
           v-if="isRestaurantModesLoaded && showFulfillmentSelector"
-          class="hidden shrink-0 items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 sm:flex"
+          class="hidden max-w-[min(100%,22rem)] shrink-0 items-center gap-0.5 rounded-xl border border-gray-200 bg-white p-1 sm:flex"
           :style="{ borderColor: theme.primary_100 || '#e5e7eb' }"
         >
           <button
+            v-if="hasDeliveryOption"
             type="button"
-            class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
+            class="min-w-0 flex-1 rounded-lg px-2 py-1 text-xs font-medium transition sm:px-3 sm:text-sm"
             :class="selectedFulfillmentType === 'delivery'
-              ? 'bg-primary text-white shadow-sm'
+              ? 'bg-primary text-on-primary shadow-sm'
               : 'text-gray-600 hover:bg-gray-100'"
             @click="setFulfillmentType('delivery')"
           >
             Доставка
           </button>
           <button
+            v-if="hasPickupOption"
             type="button"
-            class="flex-1 rounded-lg px-3 py-1 text-sm font-medium transition"
+            class="min-w-0 flex-1 rounded-lg px-2 py-1 text-xs font-medium transition sm:px-3 sm:text-sm"
             :class="selectedFulfillmentType === 'pickup'
-              ? 'bg-primary text-white shadow-sm'
+              ? 'bg-primary text-on-primary shadow-sm'
               : 'text-gray-600 hover:bg-gray-100'"
             @click="setFulfillmentType('pickup')"
           >
             Самовывоз
           </button>
+          <button
+            v-if="hasQrMenuOption"
+            type="button"
+            class="min-w-0 flex-1 rounded-lg px-2 py-1 text-xs font-medium transition sm:px-3 sm:text-sm"
+            :class="selectedFulfillmentType === 'qr-menu'
+              ? 'bg-primary text-on-primary shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'"
+            @click="setFulfillmentType('qr-menu')"
+          >
+            В&nbsp;ресторане
+          </button>
         </div>
 
         <button
           type="button"
-          class="hidden shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 sm:flex"
+          class="hidden shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 sm:flex"
           @click="goToCheckout"
         >
           <span>Корзина</span>
-          <span
-            v-if="isRestaurantModesLoaded"
-            class="text-xs font-semibold text-white/90"
-          >
-            {{ fulfillmentTypeLabel }}
-          </span>
           <template v-if="cartStore.count > 0">
-            <span class="text-orange-100">
+            <span class="">
               {{ cartStore.count }} шт.
             </span>
-            <span class="font-semibold text-white">
+            <span class="font-semibold">
               {{ formatPrice(cartStore.total) }}
             </span>
           </template>
@@ -82,7 +89,7 @@
           <img
             :src="tenantLogoUrl"
             :alt="tenantName"
-            class="h-16 w-16 shrink-0 rounded-2xl border border-white/80 bg-white object-cover shadow-sm"
+            class="h-16 w-auto shrink-0 rounded-2xl border border-white/80 bg-white object-cover shadow-sm"
           />
           <div class="min-w-0">
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
@@ -161,7 +168,7 @@
             <StoryGridBanner
               v-else
               :campaign="cell.campaign"
-              @open="openStoryCampaign"
+              @open="openCatalogStoryCampaign"
             />
           </li>
         </ul>
@@ -199,7 +206,7 @@
             </p>
             <button
               type="button"
-            class="mt-4 w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700"
+            class="mt-4 w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700"
               @click="showOrderSuccess = false"
             >
               Понятно
@@ -216,34 +223,47 @@
     >
       <div
         v-if="isRestaurantModesLoaded && showFulfillmentSelector"
-        class="inline-flex w-full rounded-xl border border-gray-200 bg-white p-1"
+        class="inline-flex w-full gap-0.5 rounded-xl border border-gray-200 bg-white p-1"
         :style="{ borderColor: theme.primary_100 || '#e5e7eb' }"
       >
         <button
+          v-if="hasDeliveryOption"
           type="button"
-          class="flex-1 rounded-lg px-3 py-2 text-xs font-medium transition"
+          class="min-w-0 flex-1 rounded-lg px-2 py-2 text-[11px] font-medium leading-tight transition sm:text-xs"
           :class="selectedFulfillmentType === 'delivery'
-            ? 'bg-primary text-white shadow-sm'
+            ? 'bg-primary text-on-primary shadow-sm'
             : 'text-gray-600 hover:bg-gray-100'"
           @click="setFulfillmentType('delivery')"
         >
           Доставка
         </button>
         <button
+          v-if="hasPickupOption"
           type="button"
-          class="flex-1 rounded-lg px-3 py-2 text-xs font-medium transition"
+          class="min-w-0 flex-1 rounded-lg px-2 py-2 text-[11px] font-medium leading-tight transition sm:text-xs"
           :class="selectedFulfillmentType === 'pickup'
-            ? 'bg-primary text-white shadow-sm'
+            ? 'bg-primary text-on-primary shadow-sm'
             : 'text-gray-600 hover:bg-gray-100'"
           @click="setFulfillmentType('pickup')"
         >
           Самовывоз
         </button>
+        <button
+          v-if="hasQrMenuOption"
+          type="button"
+          class="min-w-0 flex-1 rounded-lg px-2 py-2 text-[11px] font-medium leading-tight transition sm:text-xs"
+          :class="selectedFulfillmentType === 'qr-menu'
+            ? 'bg-primary text-on-primary shadow-sm'
+            : 'text-gray-600 hover:bg-gray-100'"
+          @click="setFulfillmentType('qr-menu')"
+        >
+          В&nbsp;ресторане
+        </button>
       </div>
 
       <button
         type="button"
-        class="flex w-full items-center justify-between gap-3 rounded-lg bg-primary px-4 py-3 text-base font-medium text-white shadow-md"
+        class="flex w-full items-center justify-between gap-3 rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary shadow-md"
         @click="goToCheckout"
       >
         <div class="flex items-center gap-2">
@@ -251,12 +271,6 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
           <span>Корзина</span>
-          <span
-            v-if="isRestaurantModesLoaded"
-            class="text-xs font-semibold text-white/90"
-          >
-            {{ fulfillmentTypeLabel }}
-          </span>
         </div>
         <div v-if="cartStore.count > 0" class="flex items-center gap-2">
           <span class="text-sm text-orange-100">
@@ -352,7 +366,7 @@
                       <!-- Badge для количества в корзине -->
                       <span 
                         v-if="getParameterQuantityInCart(opt.id) > 0" 
-                        class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-sm"
+                        class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary shadow-sm"
                       >
                         {{ getParameterQuantityInCart(opt.id) }}
                       </span>
@@ -392,7 +406,7 @@
                       <!-- Badge для количества в корзине -->
                       <span 
                         v-if="getOptionQuantityInCart(opt.id) > 0" 
-                        class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-sm"
+                        class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary shadow-sm"
                       >
                         {{ getOptionQuantityInCart(opt.id) }}
                       </span>
@@ -402,10 +416,19 @@
               </div>
             </div>
 
-            <div class="shrink-0 border-t p-4 sm:p-5 bg-white" :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }">
+            <div
+              class="shrink-0 border-t p-4 sm:p-5 bg-white"
+              :style="{ borderColor: theme.primary_100 || '#e5e7eb', backgroundColor: cardBgColor }"
+            >
+              <p
+                v-if="orderingDisabled"
+                class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-900"
+              >
+                Способ получения не настроен для филиала. Добавление в корзину доступно; оформление проверьте на шаге заказа.
+              </p>
               <button
                 type="button"
-                class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-white transition hover:bg-primary-600 active:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
+                class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
                 :disabled="!isModifiersValid"
                 @click="addSelectedToCart"
               >
@@ -422,6 +445,7 @@
       v-model="viewerOpen"
       :campaign="viewerCampaign"
       :campaigns="storyViewerNavigableCampaigns"
+      :auto-advance-campaigns="viewerAutoAdvanceCampaigns"
       :shop-id="tenantKey"
       @campaign-change="viewerCampaign = $event"
       @action="onStoryAction"
@@ -436,9 +460,16 @@ import { $fetch } from 'ofetch'
 import type { Product, ModifierGroup, ModifierOption, ProductParameterGroup, ProductParameterOption } from '../data/products'
 import type { SelectedModifier, SelectedParameter } from '../stores/cart'
 import { useTenant } from '../composables/useTenant'
-import { useTelegram } from '../composables/useTelegram'
+import { useMessengerStorage } from '../composables/useMessengerStorage'
 import { useCartStore } from '../stores/cart'
-import { resolveCartScopeKey } from '../utils/cartScope'
+import { readShopIdFromQuery, resolveCartScopeKey } from '../utils/cartScope'
+import { useTenantRestaurantsCache } from '../composables/useTenantRestaurantsCache'
+import {
+  mapFulfillmentToCityMode,
+  readCityFulfillmentMode,
+  resolveFulfillmentByPreference,
+  writeCityFulfillmentMode,
+} from '../utils/fulfillmentPreference'
 import StoriesTopBar from '../components/stories/StoriesTopBar.vue'
 import StoryGridBanner from '../components/stories/StoryGridBanner.vue'
 import StoryViewer from '../components/stories/StoryViewer.vue'
@@ -447,12 +478,13 @@ import type { StoryCampaignDto, StorySlideDto } from '../types/stories'
 import { buildDefaultCartSelections, findProductById } from '../utils/storyCart'
 
 const cartStore = useCartStore()
-const { isTelegram, webApp } = useTelegram()
+const { canUseMessengerStorage, setItem } = useMessengerStorage()
 const router = useRouter()
 const route = useRoute()
 const { tenant, tenantKey, tenantPath } = useTenant()
 const viewerOpen = ref(false)
 const viewerCampaign = ref<StoryCampaignDto | null>(null)
+const viewerAutoAdvanceCampaigns = ref(false)
 const {
   loading: storiesLoading,
   topBar: storiesTopBar,
@@ -500,7 +532,14 @@ const sectionsWithStoryCells = computed(() => {
   })
 })
 
-function openStoryCampaign(c: StoryCampaignDto) {
+function openTopBarStoryCampaign(c: StoryCampaignDto) {
+  viewerAutoAdvanceCampaigns.value = true
+  viewerCampaign.value = c
+  viewerOpen.value = true
+}
+
+function openCatalogStoryCampaign(c: StoryCampaignDto) {
+  viewerAutoAdvanceCampaigns.value = false
   viewerCampaign.value = c
   viewerOpen.value = true
 }
@@ -550,7 +589,7 @@ const showOrderSuccess = ref(false)
 const lastOrderId = ref<string | null>(null)
 const isCatalogLoading = ref(false)
 const tenantName = computed(() => tenant.value.shopName || 'Наш магазин')
-const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
+const tenantLogoUrl = computed(() => tenant.value.logoLargeUrl || tenant.value.logoUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
 const theme = computed(() => tenant.value.theme || {})
 
@@ -594,11 +633,14 @@ const mobileBarStyle = computed(() => ({
   backgroundColor: cardBgColor.value,
 }))
 
-type FulfillmentType = 'delivery' | 'pickup'
+type FulfillmentType = 'delivery' | 'pickup' | 'qr-menu'
 type RestaurantOps = {
   id: string
   supports_delivery: boolean
   supports_pickup: boolean
+  supports_qr_menu?: boolean
+  /** Витрина: org dine-in + филиал «в зале» (в т.ч. режим только просмотра меню). */
+  supports_in_restaurant?: boolean
 }
 
 const CHECKOUT_STORAGE_KEY = 'teleshop_checkout_state'
@@ -610,45 +652,74 @@ type CatalogCacheEntry = {
   items: Product[]
 }
 
+function buildCheckoutStorageKey(scopeKey: string | null | undefined) {
+  const scope = typeof scopeKey === 'string' ? scopeKey.trim() : ''
+  return scope ? `${CHECKOUT_STORAGE_KEY}:${scope}` : CHECKOUT_STORAGE_KEY
+}
+
+const checkoutStorageKey = computed(() => buildCheckoutStorageKey(tenantKey.value))
+
 const restaurantOps = ref<RestaurantOps[]>([])
 const isRestaurantModesLoaded = ref(false)
 const selectedFulfillmentType = ref<FulfillmentType>('delivery')
 
-const fulfillmentTypeLabel = computed(() =>
-  selectedFulfillmentType.value === 'pickup' ? 'Самовывоз' : 'Доставка',
-)
+function restaurantHasInHallMode(r: RestaurantOps) {
+  return r.supports_qr_menu === true || r.supports_in_restaurant === true
+}
 
 const derivedAllowedFulfillmentTypes = computed<FulfillmentType[]>(() => {
   const ops = restaurantOps.value
-  const fallback: FulfillmentType[] = ['delivery', 'pickup']
-
-  if (!ops.length) return fallback
+  if (!ops.length) return []
 
   if (ops.length === 1) {
     const out: FulfillmentType[] = []
     if (ops[0].supports_delivery) out.push('delivery')
     if (ops[0].supports_pickup) out.push('pickup')
+    if (restaurantHasInHallMode(ops[0])) out.push('qr-menu')
     return out
   }
 
   const out: FulfillmentType[] = []
   if (ops.some((r) => r.supports_delivery)) out.push('delivery')
   if (ops.some((r) => r.supports_pickup)) out.push('pickup')
+  if (ops.some((r) => restaurantHasInHallMode(r))) out.push('qr-menu')
   return out
 })
 
+/**
+ * Скрываем корзину только если филиалы уже загружены, список не пустой,
+ * и ни один канал (доставка / самовывоз / в зале) недоступен.
+ * При пустом ответе API не блокируем UI (избегаем «пропавшей» корзины).
+ */
+const orderingDisabled = computed(
+  () =>
+    isRestaurantModesLoaded.value
+    && restaurantOps.value.length > 0
+    && derivedAllowedFulfillmentTypes.value.length === 0,
+)
+
+const catalogFulfillmentType = computed<FulfillmentType>(() =>
+  orderingDisabled.value ? 'delivery' : selectedFulfillmentType.value,
+)
+
 const hasDeliveryOption = computed(() => derivedAllowedFulfillmentTypes.value.includes('delivery'))
 const hasPickupOption = computed(() => derivedAllowedFulfillmentTypes.value.includes('pickup'))
-const showFulfillmentSelector = computed(() => hasDeliveryOption.value && hasPickupOption.value)
+const hasQrMenuOption = computed(() => derivedAllowedFulfillmentTypes.value.includes('qr-menu'))
+const showFulfillmentSelector = computed(() => derivedAllowedFulfillmentTypes.value.length > 1)
 
 const selectedRestaurantIdForCheckout = computed(() => {
   return restaurantOps.value.length === 1 ? restaurantOps.value[0].id : null
 })
+const citySlug = computed(() => {
+  const raw = route.params.city_slug
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : null
+})
+const { loadRestaurants: loadTenantRestaurants } = useTenantRestaurantsCache<RestaurantOps>()
 
 function readCheckoutStateLocal(): any | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = localStorage.getItem(CHECKOUT_STORAGE_KEY)
+    const raw = localStorage.getItem(checkoutStorageKey.value)
     if (!raw) return null
     return JSON.parse(raw) as any
   } catch {
@@ -660,10 +731,10 @@ function getCurrentRestaurantIdFromQuery(): string | null {
   return readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
 }
 
-function buildCatalogCacheKey(shopId: string | null, restaurantId: string | null) {
+function buildCatalogCacheKey(shopId: string | null, restaurantId: string | null, fulfillmentType: FulfillmentType) {
   const shopPart = shopId && shopId.trim() ? shopId.trim() : 'default'
   const restaurantPart = restaurantId && restaurantId.trim() ? restaurantId.trim() : 'default'
-  return `${CATALOG_CACHE_KEY_PREFIX}:${shopPart}:${restaurantPart}`
+  return `${CATALOG_CACHE_KEY_PREFIX}:${shopPart}:${restaurantPart}:${fulfillmentType}`
 }
 
 function readCatalogCache(cacheKey: string): Product[] | null {
@@ -696,21 +767,17 @@ function writeCatalogCache(cacheKey: string, items: Product[]) {
 function persistCheckoutStateLocal(data: string) {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(CHECKOUT_STORAGE_KEY, data)
+    localStorage.setItem(checkoutStorageKey.value, data)
   } catch {
     // ignore
   }
 }
 
-function persistCheckoutStateCloud(data: string) {
-  if (!isTelegram.value || !(webApp.value as any)?.CloudStorage) {
-    persistCheckoutStateLocal(data)
-    return
+async function persistCheckoutStateCloud(data: string) {
+  persistCheckoutStateLocal(data)
+  if (canUseMessengerStorage()) {
+    await setItem(checkoutStorageKey.value, data)
   }
-
-  ;(webApp.value as any).CloudStorage.setItem(CHECKOUT_STORAGE_KEY, data, () => {
-    persistCheckoutStateLocal(data)
-  })
 }
 
 function persistFulfillmentTypeToCheckout(next: FulfillmentType) {
@@ -725,13 +792,18 @@ function persistFulfillmentTypeToCheckout(next: FulfillmentType) {
   }
 
   const payload = JSON.stringify(nextState)
-  persistCheckoutStateCloud(payload)
+  void persistCheckoutStateCloud(payload)
 }
 
 function setFulfillmentType(next: FulfillmentType) {
   if (!derivedAllowedFulfillmentTypes.value.includes(next)) return
   selectedFulfillmentType.value = next
+  const cityMode = mapFulfillmentToCityMode(next)
+  if (cityMode) {
+    writeCityFulfillmentMode(citySlug.value, cityMode)
+  }
   persistFulfillmentTypeToCheckout(next)
+  void loadCatalog()
 }
 
 function readFirstQueryString(key: string): string | null {
@@ -749,13 +821,8 @@ async function loadRestaurantModes() {
   restaurantOps.value = []
 
   try {
-    const shopId = tenantKey.value
     const branchIdFromQuery = readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
-
-    const res = await $fetch<{ ok: boolean; items: RestaurantOps[] }>('/api/restaurants', {
-      query: shopId ? { shop_id: shopId } : undefined,
-      headers: shopId ? { 'x-shop-id': shopId } : undefined,
-    })
+    const res = await loadTenantRestaurants({ shopId: tenantKey.value })
 
     if (res?.ok && Array.isArray(res.items)) {
       restaurantOps.value = branchIdFromQuery
@@ -769,28 +836,40 @@ async function loadRestaurantModes() {
     isRestaurantModesLoaded.value = true
     const allowed = derivedAllowedFulfillmentTypes.value
     if (!allowed.length) {
-      persistFulfillmentTypeToCheckout(selectedFulfillmentType.value)
+      selectedFulfillmentType.value = 'delivery'
+      persistFulfillmentTypeToCheckout('delivery')
+      void loadCatalog()
       return
     }
-    if (!allowed.includes(selectedFulfillmentType.value)) {
-      selectedFulfillmentType.value = allowed.includes('delivery') ? 'delivery' : allowed[0]
-    }
+    const cityMode = readCityFulfillmentMode(citySlug.value)
+    selectedFulfillmentType.value = resolveFulfillmentByPreference({
+      allowed,
+      cityMode,
+      current: selectedFulfillmentType.value,
+    }) ?? allowed[0]
     persistFulfillmentTypeToCheckout(selectedFulfillmentType.value)
+    void loadCatalog()
   }
 }
 
 // Initialize from stored state (before restaurants are loaded).
 const saved = readCheckoutStateLocal()
-if (saved?.fulfillmentType === 'delivery' || saved?.fulfillmentType === 'pickup') {
+if (
+  saved?.fulfillmentType === 'delivery'
+  || saved?.fulfillmentType === 'pickup'
+  || saved?.fulfillmentType === 'qr-menu'
+) {
   selectedFulfillmentType.value = saved.fulfillmentType
 }
 
 function applyCartScope() {
   const scope = resolveCartScopeKey(route, tenantKey.value)
   cartStore.setScope(scope)
+  cartStore.adoptLegacyShopIdScopeIfEmpty(readShopIdFromQuery(route))
 }
 
 function openProduct(product: Product) {
+  if (product.availability?.isOrderable === false) return
   selectedProduct.value = product
   const nextMods: Record<string, Set<string>> = {}
   const nextParams: Record<string, string> = {}
@@ -1026,8 +1105,8 @@ function goToCheckout() {
   // вручную выбирать филиал/ресторан.
   const branchId = readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
   void router.push({
-    path: tenantPath('/cart'),
-    query: branchId ? { branch_id: branchId } : undefined,
+    path: tenantPath('/checkout'),
+    query: branchId ? { branch_id: branchId, step: '1' } : { step: '1' },
   })
 }
 
@@ -1075,6 +1154,7 @@ watch(
     const all = [...storiesTopBar.value, ...storiesCatalogGrid.value]
     const found = all.find((c) => c.id === id)
     if (found) {
+      viewerAutoAdvanceCampaigns.value = false
       viewerCampaign.value = found
       viewerOpen.value = true
       const nextQuery = { ...route.query } as Record<string, string | string[] | undefined>
@@ -1088,7 +1168,7 @@ watch(
 async function loadCatalog() {
   if (isCatalogLoading.value) return
   const restaurantId = getCurrentRestaurantIdFromQuery()
-  const cacheKey = buildCatalogCacheKey(tenantKey.value || null, restaurantId)
+  const cacheKey = buildCatalogCacheKey(tenantKey.value || null, restaurantId, catalogFulfillmentType.value)
   const cachedItems = readCatalogCache(cacheKey)
   if (cachedItems && cachedItems.length) {
     cartStore.setProducts(cachedItems)
@@ -1104,9 +1184,13 @@ async function loadCatalog() {
     const headers: Record<string, string> = {}
     if (tenantKey.value) headers['x-shop-id'] = tenantKey.value
     if (restaurantId) headers['x-restaurant-id'] = restaurantId
+    headers['x-fulfillment-type'] = catalogFulfillmentType.value
 
     const res = await $fetch<{ ok: boolean; items: Product[] }>('/api/products', {
-      query: Object.keys(query).length ? query : undefined,
+      query: {
+        ...(Object.keys(query).length ? query : {}),
+        fulfillment_type: catalogFulfillmentType.value,
+      },
       headers: Object.keys(headers).length ? headers : undefined,
     })
     if (res?.ok && Array.isArray(res.items)) {
@@ -1120,6 +1204,10 @@ async function loadCatalog() {
     isCatalogLoading.value = false
   }
 }
+
+watch(catalogFulfillmentType, () => {
+  void loadCatalog()
+})
 
 </script>
 

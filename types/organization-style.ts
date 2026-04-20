@@ -2,7 +2,9 @@ export type OrganizationStyleIdentity = {
   name: string
   shortDescription: string
   fullDescription: string
+  logoSmallUrl: string
   logoUrl: string
+  logoLargeUrl: string
   faviconUrl: string
   restaurantCardImageUrl: string
   heroImageUrl: string
@@ -10,6 +12,7 @@ export type OrganizationStyleIdentity = {
 
 export type OrganizationStyleTokens = {
   brandPrimary: string
+  textOnPrimary: string
   brandSecondary: string
   brandAccent: string
   surfaceBackground: string
@@ -42,18 +45,39 @@ export type OrganizationContactSettings = {
   email: string
 }
 
+/** Подрежим работы «В зале» (только если в fulfillmentTypes есть dine-in). */
+export type OrganizationDineInHallMode = 'qr-menu-browse' | 'to-table' | 'pickup-point'
+
+export type OrganizationDineInStaffButtons = {
+  waiter: boolean
+  hookah: boolean
+}
+
 export type OrganizationOpsSettings = {
   status: 'open' | 'closed' | 'coming_soon' | 'temporarily_unavailable'
   minOrderAmount: number | null
   prepTimeMinutes: number | null
   deliveryFee: number | null
   freeDeliveryFrom: number | null
-  fulfillmentTypes: Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>
-  showcaseOrderFulfillment: 'to-table' | 'pickup-point'
+  /** Только delivery, pickup, dine-in; qr-menu/showcase-order мигрируют в dine-in + dineInHallMode. */
+  fulfillmentTypes: Array<'delivery' | 'pickup' | 'dine-in'>
+  dineInHallMode: OrganizationDineInHallMode
+  dineInStaffButtons: OrganizationDineInStaffButtons
   orderAcceptanceMode: 'auto' | 'manual'
   ordersPaused: boolean
   ordersPausedReason: string
+  workingHours: WeeklyWorkingHours
 }
+
+export type WorkingDayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
+
+export type WorkingHoursDay = {
+  isOpen: boolean
+  openAt: string
+  closeAt: string
+}
+
+export type WeeklyWorkingHours = Record<WorkingDayKey, WorkingHoursDay>
 
 export type OrganizationLocaleSettings = {
   currency: string

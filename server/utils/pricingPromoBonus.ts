@@ -26,6 +26,7 @@ export type ShopPromoRow = {
 export type ShopLoyaltySettingsRow = {
   shop_id: string
   bonuses_enabled: boolean
+  allow_simultaneous_bonus_spend_and_earn: boolean
   earn_percent_of_subtotal: number
   max_order_percent_payable_with_bonus: number
   expiry_enabled: boolean
@@ -60,6 +61,7 @@ export async function fetchShopLoyaltySettings(
     return {
       shop_id: shopId,
       bonuses_enabled: true,
+      allow_simultaneous_bonus_spend_and_earn: false,
       earn_percent_of_subtotal: 5,
       max_order_percent_payable_with_bonus: 25,
       expiry_enabled: false,
@@ -393,7 +395,7 @@ export function capBonusSpend(
   return Math.min(Math.max(0, Math.floor(requested)), Math.max(0, maxApply))
 }
 
-/** Начисление бонусов после оплаты онлайн (идемпотентно по unique на earn_order). */
+/** Начисление бонусов после успешной выдачи/доставки (идемпотентно по unique на earn_order). */
 export async function accrueLoyaltyEarnForPaidOrder(
   client: SupabaseClient,
   orderId: string,
@@ -401,7 +403,7 @@ export async function accrueLoyaltyEarnForPaidOrder(
 ): Promise<void> {
   const { data: order, error: oErr } = await client
     .from('orders')
-    .select('id, shop_id, subtotal, customer_profile_id, payment_method')
+    .select('id, shop_id, subtotal, customer_profile_id, status, bonus_amount_spent')
     .eq('id', orderId)
     .eq('shop_id', shopId)
     .maybeSingle<{
@@ -409,15 +411,21 @@ export async function accrueLoyaltyEarnForPaidOrder(
       shop_id: string
       subtotal: number
       customer_profile_id: string | null
-      payment_method: string
+      status: string
+      bonus_amount_spent: number | null
     }>()
 
   if (oErr || !order?.customer_profile_id) {
     return
   }
+  if (String(order.status || '').toLowerCase() !== 'handed_to_customer') {
+    return
+  }
 
   const settings = await fetchShopLoyaltySettings(client, shopId)
   if (!settings.bonuses_enabled) return
+  const bonusSpent = typeof order.bonus_amount_spent === 'number' ? order.bonus_amount_spent : 0
+  if (bonusSpent > 0 && !settings.allow_simultaneous_bonus_spend_and_earn) return
   const pct = settings.earn_percent_of_subtotal
   if (pct <= 0) return
 

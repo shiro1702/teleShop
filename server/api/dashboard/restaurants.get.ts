@@ -2,38 +2,83 @@ import { createError, defineEventHandler } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
 import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
+import { getDefaultOrganizationSettings, getOrganizationSettings } from '~/server/utils/organizationStyle'
+import { normalizeWeeklyWorkingHours } from '~/utils/workingHours'
 
 type RestaurantRow = {
   id: string
   name: string
   address: string
+  lat: number | null
+  lon: number | null
   supports_delivery: boolean
   supports_pickup: boolean
   supports_dine_in: boolean
   supports_qr_menu: boolean
   supports_showcase_order: boolean
+  use_organization_working_hours: boolean
+  working_hours: unknown
   is_active: boolean
   created_at: string
+}
+type RestaurantFallbackRow = Partial<RestaurantRow> & Pick<RestaurantRow, 'id' | 'name' | 'address' | 'is_active' | 'created_at'>
+
+function isMissingColumnError(error: any): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = typeof error.code === 'string' ? error.code : ''
+  const message = typeof error.message === 'string' ? error.message.toLowerCase() : ''
+  const details = typeof error.details === 'string' ? error.details.toLowerCase() : ''
+  return (
+    code === '42703'
+    || code === 'PGRST204'
+    || message.includes('column')
+    || details.includes('column')
+  )
 }
 
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
-  const allowedModes = await applyGlobalFulfillmentPolicy(event, access.shopId, ['delivery', 'pickup', 'dine-in', 'qr-menu', 'showcase-order'])
+  const org = await getOrganizationSettings(event, access.shopId)
+  const allowedModes = await applyGlobalFulfillmentPolicy(event, access.shopId, org.ops.fulfillmentTypes)
   const allowedSet = new Set(allowedModes)
+  const hallMode = org.ops.dineInHallMode
+  const hallOrderingEnabled = allowedSet.has('dine-in') && hallMode !== 'qr-menu-browse'
   const client = await serverSupabaseServiceRole(event)
-
-  const { data, error } = await client
+  let data: RestaurantFallbackRow[] | null = null
+  let error: any = null
+  const primary = await client
     .from('restaurants')
-    .select('id,name,address,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active,created_at')
+    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,created_at')
     .eq('shop_id', access.shopId)
     .order('created_at', { ascending: false })
+  data = primary.data as RestaurantFallbackRow[] | null
+  error = primary.error
+  if (isMissingColumnError(error)) {
+    const fallback = await client
+      .from('restaurants')
+      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active,created_at')
+      .eq('shop_id', access.shopId)
+      .order('created_at', { ascending: false })
+    data = fallback.data as RestaurantFallbackRow[] | null
+    error = fallback.error
+  }
+  if (isMissingColumnError(error)) {
+    const fallbackLegacy = await client
+      .from('restaurants')
+      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,is_active,created_at')
+      .eq('shop_id', access.shopId)
+      .order('created_at', { ascending: false })
+    data = fallbackLegacy.data as RestaurantFallbackRow[] | null
+    error = fallbackLegacy.error
+  }
 
   if (error) {
     console.error('Failed to load dashboard restaurants:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to load restaurants' })
   }
 
-  const rows = (data ?? []) as RestaurantRow[]
+  const rows = (data ?? []) as RestaurantFallbackRow[]
+  const fallbackWorkingHours = getDefaultOrganizationSettings().ops.workingHours
   return {
     ok: true,
     shopId: access.shopId,
@@ -41,11 +86,21 @@ export default defineEventHandler(async (event) => {
       id: row.id,
       name: row.name,
       address: row.address,
-      supportsDelivery: row.supports_delivery && allowedSet.has('delivery'),
-      supportsPickup: row.supports_pickup && allowedSet.has('pickup'),
-      supportsDineIn: row.supports_dine_in && allowedSet.has('dine-in'),
-      supportsQrMenu: row.supports_qr_menu && allowedSet.has('qr-menu'),
-      supportsShowcaseOrder: row.supports_showcase_order && allowedSet.has('showcase-order'),
+      lat: typeof row.lat === 'number' && Number.isFinite(row.lat) ? row.lat : null,
+      lon: typeof row.lon === 'number' && Number.isFinite(row.lon) ? row.lon : null,
+      supportsDelivery: row.supports_delivery === true && allowedSet.has('delivery'),
+      supportsPickup: row.supports_pickup === true && allowedSet.has('pickup'),
+      supportsDineIn: row.supports_dine_in === true && allowedSet.has('dine-in'),
+      supportsQrMenu:
+        row.supports_qr_menu === true
+        && hallOrderingEnabled
+        && hallMode === 'to-table',
+      supportsShowcaseOrder:
+        row.supports_showcase_order === true
+        && hallOrderingEnabled
+        && hallMode === 'pickup-point',
+      useOrganizationWorkingHours: row.use_organization_working_hours !== false,
+      workingHours: normalizeWeeklyWorkingHours(row.working_hours, fallbackWorkingHours),
       isActive: row.is_active,
       createdAt: row.created_at,
     })),

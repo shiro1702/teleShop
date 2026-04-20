@@ -1,12 +1,15 @@
-import { createError, defineEventHandler, getHeader } from 'h3'
+import { createError, defineEventHandler, getHeader, sendRedirect } from 'h3'
 import {
   extractBotIdFromInitData,
+  extractShopIdFromInitData,
   getShopByBotId,
   getShopByCustomDomain,
   getShopById,
+  resolveCanonicalTenantCartPath,
   resolveShopIdFromEvent,
 } from '~/server/utils/tenant'
 import { getStyleRecord } from '~/server/utils/organizationStyle'
+import { getMessengerInitDataFromEvent } from '~/server/utils/messengerInitData'
 
 const REQUIRED_PATHS = [
   '/api/order',
@@ -16,6 +19,7 @@ const REQUIRED_PATHS = [
   '/api/products',
   '/api/restaurants',
   '/api/restaurant-zones',
+  '/api/delivery-resolve',
   '/api/cart-bridge',
   '/api/stories',
 ]
@@ -70,8 +74,20 @@ function shouldRewriteCustomDomainPath(path: string): boolean {
   return CUSTOM_DOMAIN_REWRITE_PATHS.has(normalizedPath)
 }
 
+function extractCityAndTenantFromPath(path: string): { citySlug: string; tenantSlug: string } | null {
+  const segments = path.split('?')[0].split('/').filter(Boolean)
+  if (segments.length < 2) return null
+  const [citySlug, tenantSlug] = segments
+  if (!citySlug || !tenantSlug) return null
+  if (['api', '_nuxt', '__nuxt_error', 'profile', 'link-telegram'].includes(citySlug)) return null
+  if (/\.[a-z0-9]+$/i.test(citySlug) || /\.[a-z0-9]+$/i.test(tenantSlug)) return null
+  return { citySlug, tenantSlug }
+}
+
 export default defineEventHandler(async (event) => {
   const path = event.path || ''
+  const normalizedPath = (path.split('?')[0] || '/').replace(/\/+$/, '') || '/'
+  const isLegacyFlatCheckout = normalizedPath === '/checkout'
   const isCartBridgeGet = path.startsWith('/api/cart-bridge') && event.method === 'GET'
   const config = useRuntimeConfig()
   const defaultCitySlug = typeof config.public?.defaultCitySlug === 'string' ? config.public.defaultCitySlug : null
@@ -98,15 +114,31 @@ export default defineEventHandler(async (event) => {
   }
 
   if (!shop) {
-    const initData = getHeader(event, 'x-telegram-init-data')
-    const botId = initData ? extractBotIdFromInitData(initData) : null
-    if (botId) {
-      shop = await getShopByBotId(event, botId)
+    const initData = getMessengerInitDataFromEvent(event)
+    if (initData) {
+      const botId = extractBotIdFromInitData(initData)
+      if (botId) {
+        shop = await getShopByBotId(event, botId)
+      }
+      /**
+       * Telegram Mini App initData часто не содержит bot_id, но может содержать start_param
+       * (shop slug/ID). Используем его как fallback, чтобы required API не падали с 404.
+       */
+      if (!shop) {
+        const shopRef = extractShopIdFromInitData(initData)
+        if (shopRef) {
+          shop = await getShopById(event, shopRef)
+        }
+      }
     }
   }
 
   if (!shop) {
     if (!path.startsWith('/api/')) {
+      const cityAndTenant = extractCityAndTenantFromPath(path)
+      if (cityAndTenant) {
+        return sendRedirect(event, `/${cityAndTenant.citySlug}/`, 302)
+      }
       return
     }
     if (isCartBridgeGet) {
@@ -121,6 +153,23 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 403, message: 'Shop is inactive' })
   }
 
+  // Старый URL корзины /{city}/{tenant}/cart → канонический /checkout?step=1
+  if (!path.startsWith('/api/')) {
+    const pathnameOnly = (path.split('?')[0] || '').replace(/\/+$/, '') || '/'
+    const segments = pathnameOnly.split('/').filter(Boolean)
+    if (segments.length >= 3 && segments[segments.length - 1] === 'cart') {
+      const url = new URL(path, 'http://internal.local')
+      url.pathname = pathnameOnly.replace(/\/cart$/, '/checkout')
+      if (!url.searchParams.has('step')) url.searchParams.set('step', '1')
+      return sendRedirect(event, `${url.pathname}${url.search}`, 302)
+    }
+  }
+
+  if (!path.startsWith('/api/') && isLegacyFlatCheckout) {
+    const canonical = await resolveCanonicalTenantCartPath(event, shop)
+    return sendRedirect(event, canonical.checkoutPath, 302)
+  }
+
   let uiSettings = shop.ui_settings ?? {}
   let shopName = shop.name
 
@@ -131,7 +180,9 @@ export default defineEventHandler(async (event) => {
     try {
       const record = await getStyleRecord(event, shop.id)
       const cfg = record.config
-      const nextLogo = typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : ''
+      const nextSmallLogo = typeof cfg.identity.logoSmallUrl === 'string' ? cfg.identity.logoSmallUrl.trim() : ''
+      const nextLargeLogo = typeof cfg.identity.logoLargeUrl === 'string' ? cfg.identity.logoLargeUrl.trim() : ''
+      const nextLogo = nextSmallLogo || (typeof cfg.identity.logoUrl === 'string' ? cfg.identity.logoUrl.trim() : '')
       const nextDesc = typeof cfg.identity.shortDescription === 'string' ? cfg.identity.shortDescription.trim() : ''
       const fallbackLogo = typeof uiSettings?.logo_url === 'string' ? (uiSettings as any).logo_url : ''
       const fallbackDesc = typeof uiSettings?.description === 'string' ? (uiSettings as any).description : ''
@@ -139,6 +190,7 @@ export default defineEventHandler(async (event) => {
       uiSettings = {
         ...uiSettings,
         logo_url: nextLogo || fallbackLogo,
+        logo_large_url: nextLargeLogo || nextLogo || fallbackLogo,
         description: nextDesc || fallbackDesc,
         ...deriveTenantThemeFromStyle(cfg),
         radius_button: `${cfg.radii.button}px`,
@@ -165,7 +217,12 @@ export default defineEventHandler(async (event) => {
   if (!path.startsWith('/api/') && isCustomDomain && shouldRewriteCustomDomainPath(path)) {
     const url = new URL(event.node.req.url || path, 'http://internal.local')
     const normalizedPath = (url.pathname.replace(/\/+$/, '') || '/') === '/' ? '' : url.pathname.replace(/\/+$/, '')
-    url.pathname = `/${shop.slug}${normalizedPath}`
+    let suffix = normalizedPath
+    if (suffix === '/cart' || suffix.endsWith('/cart')) {
+      suffix = suffix.replace(/\/cart$/, '/checkout')
+      if (!url.searchParams.has('step')) url.searchParams.set('step', '1')
+    }
+    url.pathname = `/${shop.slug}${suffix}`
     event.node.req.url = `${url.pathname}${url.search}`
   }
 })
@@ -204,6 +261,7 @@ function derivePrimaryVariants(brandPrimary: string) {
 function deriveTenantThemeFromStyle(cfg: {
   tokens: {
     brandPrimary: string
+    textOnPrimary: string
     brandSecondary: string
     brandAccent: string
     surfaceBackground: string
@@ -217,6 +275,7 @@ function deriveTenantThemeFromStyle(cfg: {
 }) {
   return {
     ...derivePrimaryVariants(cfg.tokens.brandPrimary),
+    on_primary: cfg.tokens.textOnPrimary,
     secondary: cfg.tokens.brandSecondary,
     accent: cfg.tokens.brandAccent,
     surface_background: cfg.tokens.surfaceBackground,

@@ -1,5 +1,6 @@
 import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import type { LocationQueryValue } from 'vue-router'
 
 type TenantTheme = Record<string, string>
 type TenantState = {
@@ -11,10 +12,14 @@ type TenantState = {
   theme: TenantTheme
   isCustomDomain: boolean
   logoUrl: string | null
+  logoLargeUrl: string | null
   description: string | null
   legalName: string | null
   inn: string | null
   ogrn: string | null
+  organizationTimezone: string | null
+  organizationWorkingHours: Record<string, any> | null
+  effectiveWorkingHours: Record<string, any> | null
 }
 
 function normalizeTheme(input: unknown): TenantTheme {
@@ -37,6 +42,17 @@ function getStringSetting(input: Record<string, unknown> | null | undefined, ...
   return null
 }
 
+function getObjectSetting(input: Record<string, unknown> | null | undefined, ...keys: string[]): Record<string, any> | null {
+  if (!input) return null
+  for (const key of keys) {
+    const value = input[key]
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, any>
+    }
+  }
+  return null
+}
+
 function buildCssVars(theme: TenantTheme): Record<string, string> {
   const vars: Record<string, string> = {}
   const mapping: Record<string, string> = {
@@ -45,6 +61,7 @@ function buildCssVars(theme: TenantTheme): Record<string, string> {
     primary_100: '--color-primary-100',
     primary_600: '--color-primary-600',
     primary_700: '--color-primary-700',
+    on_primary: '--color-on-primary',
     secondary: '--color-secondary',
     accent: '--color-accent',
     surface_background: '--color-surface-bg',
@@ -71,12 +88,22 @@ function buildCssVars(theme: TenantTheme): Record<string, string> {
   return vars
 }
 
+function normalizeRouteQueryParam(value: LocationQueryValue | LocationQueryValue[] | undefined): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (Array.isArray(value)) {
+    const found = value.find((x): x is string => typeof x === 'string' && !!x.trim())
+    if (found) return found.trim()
+  }
+  return null
+}
+
 const GLOBAL_THEME_VAR_KEYS = [
   '--color-primary',
   '--color-primary-50',
   '--color-primary-100',
   '--color-primary-600',
   '--color-primary-700',
+  '--color-on-primary',
   '--color-secondary',
   '--color-accent',
   '--color-surface-bg',
@@ -127,10 +154,14 @@ export function useTenant() {
     theme: {},
     isCustomDomain: false,
     logoUrl: null,
+    logoLargeUrl: null,
     description: null,
     legalName: null,
     inn: null,
     ogrn: null,
+    organizationTimezone: null,
+    organizationWorkingHours: null,
+    effectiveWorkingHours: null,
   }))
 
   function applyTenant(payload: {
@@ -147,10 +178,14 @@ export function useTenant() {
     state.value.theme = normalizedTheme
     state.value.isCustomDomain = !!payload.isCustomDomain
     state.value.logoUrl = getStringSetting(payload.uiSettings ?? null, 'logo_url', 'logoUrl')
+    state.value.logoLargeUrl = getStringSetting(payload.uiSettings ?? null, 'logo_large_url', 'logoLargeUrl')
     state.value.description = getStringSetting(payload.uiSettings ?? null, 'description', 'shop_description', 'shopDescription')
     state.value.legalName = typeof payload.shop?.legalName === 'string' ? payload.shop.legalName : null
     state.value.inn = typeof payload.shop?.inn === 'string' ? payload.shop.inn : null
     state.value.ogrn = typeof payload.shop?.ogrn === 'string' ? payload.shop.ogrn : null
+    state.value.organizationTimezone = getStringSetting(payload.uiSettings ?? null, 'organization_timezone')
+    state.value.organizationWorkingHours = getObjectSetting(payload.uiSettings ?? null, 'organization_working_hours')
+    state.value.effectiveWorkingHours = getObjectSetting(payload.uiSettings ?? null, 'effective_working_hours')
     state.value.loaded = true
     state.value.loading = false
   }
@@ -191,11 +226,11 @@ export function useTenant() {
     state.value.isCustomDomain
       ? (state.value.shopId
           || state.value.tenantSlug
-          || (typeof route.query.shop_id === 'string' ? route.query.shop_id : null))
+          || normalizeRouteQueryParam(route.query.shop_id))
       : (routeTenantSlug.value
           || state.value.shopId
           || state.value.tenantSlug
-          || (typeof route.query.shop_id === 'string' ? route.query.shop_id : null)),
+          || normalizeRouteQueryParam(route.query.shop_id)),
   )
 
   const routePrefix = computed(() => {
@@ -206,6 +241,14 @@ export function useTenant() {
     if (routeCitySlug.value) return `/${routeCitySlug.value}/${slug}`
     return `/${slug}`
   })
+
+  /** Стабильный примитив для watch: без нового массива на каждый запуск геттера */
+  const branchScopeSignature = computed(() =>
+    JSON.stringify([
+      normalizeRouteQueryParam(route.query.branch_id),
+      normalizeRouteQueryParam(route.query.restaurant_id),
+    ]),
+  )
 
   const cssVars = computed<Record<string, string>>(() => {
     return buildCssVars(state.value.theme)
@@ -239,31 +282,45 @@ export function useTenant() {
 
   async function loadTenantSettings() {
     if (state.value.loading || state.value.loaded) return
-    const explicitTenantFromQuery = typeof route.query.shop_id === 'string' && route.query.shop_id.trim()
-      ? route.query.shop_id.trim()
-      : ''
+    const explicitTenantFromQuery = normalizeRouteQueryParam(route.query.shop_id)
     if ((isDashboardRoute.value || isNonTenantRoute.value) && !explicitTenantFromQuery) {
+      state.value.loaded = true
+      state.value.loading = false
+      return
+    }
+    const tenantRef = tenantKey.value || undefined
+    // Клиентский $fetch на /api/tenant без shop_id / x-shop-id не резолвит витрину по пути страницы
+    // (middleware не парсит tenant из document URL для /api). Тогда middleware отвечает 404.
+    if (!tenantRef && !state.value.isCustomDomain) {
       state.value.loaded = true
       state.value.loading = false
       return
     }
     state.value.loading = true
     try {
-      const tenantRef = tenantKey.value || undefined
-      const query = tenantRef ? { shop_id: tenantRef } : undefined
-      const res = await $fetch<{
-        ok: boolean
-        shopId: string
-        tenantSlug?: string
-        isCustomDomain?: boolean
-        shop?: { name?: string; legalName?: string | null; inn?: string | null; ogrn?: string | null }
-        uiSettings?: Record<string, unknown>
-      }>('/api/tenant', {
-        query,
-        headers: tenantRef ? { 'x-shop-id': tenantRef } : undefined,
-      })
-      if (res?.ok) {
-        applyTenant(res)
+      const branchFromQuery = normalizeRouteQueryParam(route.query.branch_id)
+      const restaurantFromQuery = normalizeRouteQueryParam(route.query.restaurant_id)
+      const query: Record<string, string> = {}
+      if (tenantRef) query.shop_id = tenantRef
+      if (branchFromQuery) query.branch_id = branchFromQuery
+      else if (restaurantFromQuery) query.restaurant_id = restaurantFromQuery
+      try {
+        const res = await $fetch<{
+          ok: boolean
+          shopId: string
+          tenantSlug?: string
+          isCustomDomain?: boolean
+          shop?: { name?: string; legalName?: string | null; inn?: string | null; ogrn?: string | null }
+          uiSettings?: Record<string, unknown>
+        }>('/api/tenant', {
+          query: Object.keys(query).length ? query : undefined,
+          headers: tenantRef ? { 'x-shop-id': tenantRef } : undefined,
+        })
+        if (res?.ok) {
+          applyTenant(res)
+        }
+      } catch {
+        // Нет контекста магазина, 404 из middleware и т.п. — не рвём навигацию.
       }
     } finally {
       if (!state.value.loaded) {
@@ -285,10 +342,14 @@ export function useTenant() {
       state.value.shopId = null
       state.value.shopName = null
       state.value.logoUrl = null
+      state.value.logoLargeUrl = null
       state.value.description = null
       state.value.legalName = null
       state.value.inn = null
       state.value.ogrn = null
+      state.value.organizationTimezone = null
+      state.value.organizationWorkingHours = null
+      state.value.effectiveWorkingHours = null
       state.value.theme = {}
       try {
         await loadTenantSettings()
@@ -296,6 +357,16 @@ export function useTenant() {
         // Если загрузка не удалась — оставим default theme, но сбросим loading флаг.
         state.value.loading = false
       }
+    },
+    { immediate: false },
+  )
+  watch(
+    branchScopeSignature,
+    async (next, prev) => {
+      if (next === prev) return
+      if (isDashboardRoute.value || isNonTenantRoute.value) return
+      state.value.loaded = false
+      await loadTenantSettings()
     },
     { immediate: false },
   )

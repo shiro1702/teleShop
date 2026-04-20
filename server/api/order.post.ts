@@ -11,6 +11,7 @@ import {
   type TenantRestaurant,
   type TenantRestaurantZone,
 } from '~/server/utils/tenant'
+import { getOrganizationSettings } from '~/server/utils/organizationStyle'
 import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
 import type { CartItemPayload } from '~/server/utils/orderLinePricing'
 import { loadTenantProductsForOrder, sumCartLines } from '~/server/utils/orderLinePricing'
@@ -20,37 +21,22 @@ import {
   fetchShopLoyaltySettings,
   getCustomerBalance,
 } from '~/server/utils/pricingPromoBonus'
+import { evaluateMenuAvailability, normalizeTimeWindows } from '~/server/utils/menuAvailability'
+import { isOpenNowBySchedule, normalizeWeeklyWorkingHours, resolveEffectiveWorkingHours } from '~/utils/workingHours'
+import { dispatchNotificationEvent } from '~/server/utils/notifications'
+import { resolveDeliveryForPoint } from '~/server/utils/resolveDeliveryForPoint'
+import { enqueueQuickRestoOrderOutbox, getQuickRestoClient } from '~/server/utils/quickresto'
+import {
+  getMaxBotTokenForShop,
+  validateWebAppInitData,
+  type WebAppInitUser,
+} from '~/server/utils/messengerInitData'
 
 interface TelegramUser {
   id: number
   first_name?: string
   last_name?: string
   username?: string
-}
-
-function validateInitData(initData: string, botToken: string): TelegramUser | null {
-  const params = new URLSearchParams(initData)
-  const hash = params.get('hash')
-  if (!hash) return null
-
-  params.delete('hash')
-  const dataCheckString = [...params.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
-    .join('\n')
-
-  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest()
-  const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
-
-  if (computedHash !== hash) return null
-
-  const userStr = params.get('user')
-  if (!userStr) return null
-  try {
-    return JSON.parse(decodeURIComponent(userStr)) as TelegramUser
-  } catch {
-    return null
-  }
 }
 
 function formatPrice(value: number): string {
@@ -304,13 +290,6 @@ export default defineEventHandler(async (event) => {
   const tenantIntegrationKeys = tenantShop.integration_keys ?? {}
   const tenant = event.context.tenant
   const botToken = tenant?.telegramBotToken || (config.botToken as string)
-  const managerChatId = (
-    typeof tenantShop.manager_chat_id === 'string' && tenantShop.manager_chat_id.trim()
-      ? tenantShop.manager_chat_id
-      : typeof tenantIntegrationKeys.manager_chat_id === 'string'
-        ? tenantIntegrationKeys.manager_chat_id
-        : config.managerChatId
-  ) as string
   const tenantFulfillmentRaw = typeof tenantIntegrationKeys.fulfillment_types === 'string'
     ? tenantIntegrationKeys.fulfillment_types
     : (config.public?.fulfillmentTypes as string | undefined)
@@ -325,8 +304,8 @@ export default defineEventHandler(async (event) => {
   const availableFulfillmentTypes = parseAvailableFulfillmentTypes(tenantFulfillment)
   const globallyAllowed = await applyGlobalFulfillmentPolicy(event, tenantShopId, availableFulfillmentTypes)
 
-  if (!botToken || !managerChatId) {
-    throw createError({ statusCode: 500, message: 'Server config: bot token or manager chat ID missing' })
+  if (!botToken) {
+    throw createError({ statusCode: 500, message: 'Server config: bot token missing' })
   }
 
   const body = await readBody<{
@@ -336,10 +315,13 @@ export default defineEventHandler(async (event) => {
     items: CartItemPayload[]
     initData?: string | null
     address?: {
+      customerAddressId?: string | null
       line?: string | null
       flat?: string | null
       comment?: string | null
       zone?: DeliveryZoneProperties | null
+      lat?: number | null
+      lon?: number | null
     } | null
     pickupPoint?: {
       id?: string | null
@@ -351,6 +333,10 @@ export default defineEventHandler(async (event) => {
     changeFrom?: number | null
     promoCode?: string | null
     bonusPointsToSpend?: number | null
+    /** Клиент: web | telegram_mini | max_mini */
+    orderClientChannel?: string | null
+    /** Сессия после моста с сайта */
+    orderContinuation?: string | null
   } | null>(event)
   if (!body?.items?.length) {
     throw createError({ statusCode: 400, message: 'Expected { items }' })
@@ -366,24 +352,135 @@ export default defineEventHandler(async (event) => {
     tenantShopId,
   )
 
-  const restaurantId = typeof body.restaurantId === 'string' ? body.restaurantId.trim() : ''
-  const restaurant: TenantRestaurant = await requireRestaurantForShop(event, tenantShopId, restaurantId)
+  const fulfillmentType: FulfillmentType =
+    body.fulfillmentType === 'pickup'
+      ? 'pickup'
+      : body.fulfillmentType === 'qr-menu'
+        ? 'qr-menu'
+        : 'delivery'
 
+  const bodyLatRaw = body.address?.lat
+  const bodyLonRaw = body.address?.lon
+  let deliveryLat = typeof bodyLatRaw === 'number' ? bodyLatRaw : Number(bodyLatRaw)
+  let deliveryLon = typeof bodyLonRaw === 'number' ? bodyLonRaw : Number(bodyLonRaw)
+  let hasDeliveryCoords =
+    fulfillmentType === 'delivery'
+    && Number.isFinite(deliveryLat)
+    && Number.isFinite(deliveryLon)
+  const customerAddressId = typeof body.address?.customerAddressId === 'string'
+    ? body.address.customerAddressId.trim()
+    : ''
   const serviceClient = await serverSupabaseServiceRole(event)
 
-  let user: TelegramUser | null = null
-  let customerProfileId: string | null = null
-  if (body.initData && typeof body.initData === 'string') {
-    user = validateInitData(body.initData, botToken)
-    if (!user) {
-      throw createError({ statusCode: 401, message: 'Invalid initData' })
-    }
-    const { data: tmaProfile } = await serviceClient
-      .from('profiles')
-      .select('id')
-      .eq('telegram_id', user.id)
+  // In mini apps, saved address can be selected while body lat/lon are temporarily absent.
+  // Fallback to persisted address coordinates to avoid false 400 "zone required".
+  if (fulfillmentType === 'delivery' && !hasDeliveryCoords && customerAddressId) {
+    const { data: savedAddressCoords } = await serviceClient
+      .from('customer_delivery_addresses')
+      .select('lat,lon')
+      .eq('shop_id', tenantShopId)
+      .eq('id', customerAddressId)
       .maybeSingle()
-    customerProfileId = tmaProfile?.id ? String(tmaProfile.id) : null
+    const savedLat = typeof savedAddressCoords?.lat === 'number' ? savedAddressCoords.lat : Number(savedAddressCoords?.lat)
+    const savedLon = typeof savedAddressCoords?.lon === 'number' ? savedAddressCoords.lon : Number(savedAddressCoords?.lon)
+    if (Number.isFinite(savedLat) && Number.isFinite(savedLon)) {
+      deliveryLat = savedLat
+      deliveryLon = savedLon
+      hasDeliveryCoords = true
+    }
+  }
+
+  let deliveryZoneValidated: DeliveryZoneProperties | null = null
+
+  let restaurant: TenantRestaurant
+  if (hasDeliveryCoords) {
+    const resolved = await resolveDeliveryForPoint(event, tenantShopId, deliveryLat, deliveryLon)
+    if (!resolved.selected) {
+      const msg =
+        resolved.reason === 'all_closed'
+          ? 'Сейчас нет открытых филиалов с доставкой по этому адресу'
+          : resolved.reason === 'out_of_zone'
+            ? 'Мы не доставляем по этому адресу'
+            : 'Не удалось определить зону доставки'
+      throw createError({ statusCode: 400, message: msg })
+    }
+    restaurant = await requireRestaurantForShop(event, tenantShopId, resolved.selected.restaurantId)
+    deliveryZoneValidated = {
+      slug: resolved.selected.zoneId,
+      name: resolved.selected.zoneName,
+      minOrderAmount: resolved.selected.minOrderAmount,
+      deliveryCost: resolved.selected.deliveryCost,
+      freeDeliveryThreshold: resolved.selected.freeDeliveryThreshold,
+    }
+  } else {
+    const restaurantId = typeof body.restaurantId === 'string' ? body.restaurantId.trim() : ''
+    restaurant = await requireRestaurantForShop(event, tenantShopId, restaurantId)
+  }
+
+  const orgSettings = await getOrganizationSettings(event, tenantShopId)
+  const branchWorkingHours = normalizeWeeklyWorkingHours(restaurant.working_hours, orgSettings.ops.workingHours)
+  const effectiveWorkingHours = resolveEffectiveWorkingHours(orgSettings.ops.workingHours, {
+    useOrganizationHours: restaurant.use_organization_working_hours !== false,
+    workingHours: branchWorkingHours,
+  })
+  const openStatus = isOpenNowBySchedule(effectiveWorkingHours, orgSettings.locale.timezone)
+  if (!openStatus.isOpen) {
+    throw createError({
+      statusCode: 409,
+      message: `Restaurant is closed now (${openStatus.nowHHMM}, ${orgSettings.locale.timezone})`,
+    })
+  }
+
+  type MiniChannel = 'telegram_mini' | 'max_mini'
+  let user: WebAppInitUser
+  let customerProfileId: string | null = null
+  let customerTelegramIdForInsert: number | null = null
+  let miniChannel: MiniChannel | null = null
+  let maxConversationId: string | null = null
+  /** Веб-заказ с профилем, привязанным только к MAX (для actorContext уведомлений). */
+  let webMaxUserIdForActor: string | null = null
+
+  if (body.initData && typeof body.initData === 'string') {
+    const requested: MiniChannel = body.orderClientChannel === 'max_mini' ? 'max_mini' : 'telegram_mini'
+    miniChannel = requested
+
+    if (requested === 'max_mini') {
+      const maxTok = getMaxBotTokenForShop(tenantIntegrationKeys as Record<string, unknown>, {
+        maxMiniAppBotToken: config.maxMiniAppBotToken as string | undefined,
+        maxApiToken: config.maxApiToken as string | undefined,
+      })
+      if (!maxTok) {
+        throw createError({ statusCode: 500, message: 'Server config: MAX bot token missing' })
+      }
+      const parsed = validateWebAppInitData(body.initData, maxTok)
+      if (!parsed) {
+        throw createError({ statusCode: 401, message: 'Invalid initData' })
+      }
+      user = parsed
+      const maxId = String(parsed.id)
+      const { data: maxProfile } = await serviceClient
+        .from('profiles')
+        .select('id, max_conversation_id')
+        .eq('max_user_id', maxId)
+        .maybeSingle()
+      customerProfileId = maxProfile?.id ? String(maxProfile.id) : null
+      const rawConv = (maxProfile as { max_conversation_id?: string | null } | null)?.max_conversation_id
+      maxConversationId = typeof rawConv === 'string' && rawConv.trim() ? rawConv.trim() : null
+      customerTelegramIdForInsert = null
+    } else {
+      const parsed = validateWebAppInitData(body.initData, botToken)
+      if (!parsed) {
+        throw createError({ statusCode: 401, message: 'Invalid initData' })
+      }
+      user = parsed
+      const { data: tmaProfile } = await serviceClient
+        .from('profiles')
+        .select('id')
+        .eq('telegram_id', user.id)
+        .maybeSingle()
+      customerProfileId = tmaProfile?.id ? String(tmaProfile.id) : null
+      customerTelegramIdForInsert = user.id
+    }
   } else {
     const supabaseUser = await serverSupabaseUser(event)
     if (!supabaseUser) {
@@ -403,17 +500,52 @@ export default defineEventHandler(async (event) => {
     customerProfileId = userId
     const { data: profile, error: profileError } = await serviceClient
       .from('profiles')
-      .select('telegram_id')
+      .select('telegram_id, max_user_id, max_conversation_id')
       .eq('id', userId)
       .maybeSingle()
     if (profileError) {
       console.error('Error querying profile for order (WEB):', profileError)
       throw createError({ statusCode: 500, message: 'Failed to read profile' })
     }
-    if (!profile || profile.telegram_id == null) {
-      throw createError({ statusCode: 409, message: 'Telegram not linked' })
+    const tgRaw = profile?.telegram_id
+    const hasTelegram =
+      tgRaw !== null && tgRaw !== undefined && String(tgRaw).trim() !== ''
+    const maxRaw = (profile as { max_user_id?: string | null } | null)?.max_user_id
+    const maxIdStr = typeof maxRaw === 'string' ? maxRaw.trim() : ''
+    const convRaw = (profile as { max_conversation_id?: string | null } | null)?.max_conversation_id
+    if (hasTelegram) {
+      const tid = typeof tgRaw === 'number' ? tgRaw : Number(tgRaw)
+      if (!Number.isFinite(tid)) {
+        throw createError({ statusCode: 500, message: 'Invalid telegram_id on profile' })
+      }
+      user = { id: tid }
+      customerTelegramIdForInsert = user.id
+    } else if (maxIdStr) {
+      webMaxUserIdForActor = maxIdStr
+      maxConversationId =
+        typeof convRaw === 'string' && convRaw.trim() ? convRaw.trim() : null
+      customerTelegramIdForInsert = null
+      const numericMax = Number(maxIdStr)
+      user = { id: Number.isFinite(numericMax) ? numericMax : 0 }
+    } else {
+      throw createError({
+        statusCode: 409,
+        message: 'Messenger not linked',
+      })
     }
-    user = { id: profile.telegram_id as number }
+  }
+
+  const orderClientStored: 'web' | 'telegram_mini' | 'max_mini' =
+    body.initData && typeof body.initData === 'string'
+      ? miniChannel === 'max_mini'
+        ? 'max_mini'
+        : 'telegram_mini'
+      : 'web'
+
+  let orderContinuationStored: string | null = null
+  const oc = body.orderContinuation
+  if (oc === 'web_to_telegram' || oc === 'web_to_max') {
+    orderContinuationStored = oc
   }
 
   const uniqueProductIds = Array.from(new Set(body.items.map((item) => item.id)))
@@ -472,43 +604,55 @@ export default defineEventHandler(async (event) => {
 
   const payableGoods = Math.max(0, subtotalAfterPromo - bonusSpent)
 
-  const fulfillmentType: FulfillmentType =
-    body.fulfillmentType === 'pickup'
-      ? 'pickup'
-      : body.fulfillmentType === 'qr-menu'
-        ? 'qr-menu'
-        : 'delivery'
   if (!globallyAllowed.includes(fulfillmentType)) {
     throw createError({ statusCode: 400, message: `Fulfillment type "${fulfillmentType}" is disabled` })
   }
+
+  for (const item of body.items) {
+    const product = productMap.get(item.id)
+    if (!product) {
+      throw createError({ statusCode: 400, message: `Product ${item.id} not found in current shop` })
+    }
+    const availability = evaluateMenuAvailability({
+      fulfillmentType,
+      productDeliveryRestricted: product.deliveryRestrictedOverride,
+      categoryDeliveryRestricted: product.categoryDeliveryRestricted,
+      productTimeWindows: normalizeTimeWindows(product.availabilityWindows),
+      categoryTimeWindows: normalizeTimeWindows(product.categoryAvailabilityWindows),
+    })
+    if (!availability.isOrderable) {
+      throw createError({
+        statusCode: 400,
+        message: `Товар "${product.name}" недоступен: ${availability.reason || 'ограничение меню'}`,
+      })
+    }
+  }
+
   if (fulfillmentType === 'delivery' && !restaurant.supports_delivery) {
     throw createError({ statusCode: 400, message: 'Delivery is not available for selected restaurant' })
   }
   if (fulfillmentType === 'pickup' && !restaurant.supports_pickup) {
     throw createError({ statusCode: 400, message: 'Pickup is not available for selected restaurant' })
   }
-  // QR-меню управляется настройками ops.fulfillmentTypes (глобально/для организации),
-  // а не колонкой supports_qr_menu у конкретного ресторана.
+  if (fulfillmentType === 'qr-menu' && orgSettings.ops.dineInHallMode === 'qr-menu-browse') {
+    throw createError({
+      statusCode: 400,
+      message: 'Оформление заказа «в зале» недоступно в режиме только просмотра меню',
+    })
+  }
 
-  const deliveryZone: DeliveryZoneProperties | null =
-    fulfillmentType === 'delivery'
-      ? (() => {
-          // address.zone is required only for delivery
-          const incomingZone: DeliveryZoneProperties | null = body.address?.zone ?? null
-          const incomingZoneId = typeof incomingZone?.slug === 'string' ? incomingZone.slug.trim() : ''
-          return incomingZoneId ? incomingZone : null
-        })()
-      : null
-
-  let deliveryZoneValidated: DeliveryZoneProperties | null = null
-  if (fulfillmentType === 'delivery') {
-    if (!deliveryZone) {
+  if (fulfillmentType === 'delivery' && !hasDeliveryCoords) {
+    const incomingZone: DeliveryZoneProperties | null = body.address?.zone ?? null
+    const incomingZoneId = typeof incomingZone?.slug === 'string' ? incomingZone.slug.trim() : ''
+    if (!incomingZoneId) {
       throw createError({ statusCode: 400, message: 'Delivery zone is required for selected restaurant' })
     }
-    const incomingZoneId = typeof deliveryZone.slug === 'string' ? deliveryZone.slug.trim() : ''
-    const serverZone: TenantRestaurantZone | null = incomingZoneId
-      ? await requireRestaurantZoneForShop(event, tenantShopId, restaurant.id, incomingZoneId)
-      : null
+    const serverZone: TenantRestaurantZone | null = await requireRestaurantZoneForShop(
+      event,
+      tenantShopId,
+      restaurant.id,
+      incomingZoneId,
+    )
     deliveryZoneValidated = serverZone
       ? {
           slug: serverZone.id,
@@ -520,15 +664,65 @@ export default defineEventHandler(async (event) => {
       : null
   }
 
+  if (
+    fulfillmentType === 'delivery'
+    && deliveryZoneValidated
+    && subtotalAfterPromo < deliveryZoneValidated.minOrderAmount
+  ) {
+    throw createError({
+      statusCode: 400,
+      message: `Минимальная сумма заказа для зоны — ${deliveryZoneValidated.minOrderAmount} ₽`,
+    })
+  }
+
   const deliveryCost: number = (() => {
     if (fulfillmentType === 'pickup' || fulfillmentType === 'qr-menu') return 0
     if (!deliveryZoneValidated) return 0
     return subtotalAfterPromo >= deliveryZoneValidated.freeDeliveryThreshold ? 0 : deliveryZoneValidated.deliveryCost
   })()
 
-  const addressLine = body.address?.line?.trim() || null
-  const flat = body.address?.flat?.trim() || null
+  let addressLine = body.address?.line?.trim() || null
+  let flat = body.address?.flat?.trim() || null
   const comment = body.address?.comment?.trim() || null
+  if (fulfillmentType === 'delivery' && customerAddressId) {
+    if (!customerProfileId) {
+      // Mini app user can select a previously synced UUID address before profile binding is restored.
+      // In this case rely on request payload address fields instead of failing the whole order.
+      customerProfileId = null
+    } else {
+    const { data: savedAddress, error: savedAddressError } = await serviceClient
+      .from('customer_delivery_addresses')
+      .select('id,address_line,flat,comment,lat,lon')
+      .eq('id', customerAddressId)
+      .eq('shop_id', tenantShopId)
+      .eq('customer_profile_id', customerProfileId)
+      .maybeSingle()
+      if (savedAddressError) {
+        throw createError({ statusCode: 400, message: 'Выберите корректный адрес доставки' })
+      }
+      // MAX/Telegram mini app can pass a local temporary address id before server sync.
+      // Keep request address fallback instead of hard-failing the whole order.
+      if (!savedAddress) {
+        if (!addressLine?.trim()) {
+          throw createError({ statusCode: 400, message: 'Выберите корректный адрес доставки' })
+        }
+      } else {
+        addressLine = savedAddress.address_line ? String(savedAddress.address_line).trim() : addressLine
+        flat = savedAddress.flat ? String(savedAddress.flat).trim() : flat
+        const savedLat = typeof savedAddress.lat === 'number' ? savedAddress.lat : Number(savedAddress.lat)
+        const savedLon = typeof savedAddress.lon === 'number' ? savedAddress.lon : Number(savedAddress.lon)
+        if (
+          !hasDeliveryCoords
+          && Number.isFinite(savedLat)
+          && Number.isFinite(savedLon)
+        ) {
+          deliveryLat = savedLat
+          deliveryLon = savedLon
+          hasDeliveryCoords = true
+        }
+      }
+    }
+  }
   const pickupPoint: PickupPoint | null =
     fulfillmentType === 'pickup' &&
     body.pickupPoint?.id &&
@@ -582,50 +776,7 @@ export default defineEventHandler(async (event) => {
       ? generatedOrderNumber.trim()
       : orderId.slice(0, 8)
 
-  const text = buildOrderMessage(
-    orderNumber,
-    itemsWithServerPrice,
-    payableGoods,
-    deliveryCost,
-    fulfillmentType === 'delivery' ? deliveryZoneValidated : null,
-    user,
-    {
-      fulfillmentType,
-      pickupPoint,
-      addressLine,
-      flat,
-      comment,
-      paymentMethod,
-      changeFrom,
-      promo: promoBreakdown,
-    },
-  )
-
-  const callbackData = `work_${user.id}_${orderId}`
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-ignore — Buffer может быть не типизирован без @types/node
-  if (Buffer.byteLength(callbackData, 'utf8') > 64) {
-    throw createError({ statusCode: 500, message: 'callback_data too long' })
-  }
-
-  const payload: any = {
-    chat_id: managerChatId,
-    text,
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '✅ Принять в работу', callback_data: callbackData },
-          { text: '⏱ Задержка (кухня)', callback_data: `delayWork_${user.id}_${orderId}` },
-        ],
-        [
-          { text: '✉️ Написать клиенту', url: `tg://user?id=${user.id}` },
-        ],
-      ],
-    },
-  }
-
   // Persist order for dashboard & kitchen.
-  // Note: WEB/TMA modes are normalized to `user.id` (Telegram id) above.
   const initialMetadata = {
     timeline: [
       {
@@ -638,14 +789,21 @@ export default defineEventHandler(async (event) => {
         comment: null,
       },
     ],
+    order_client_source: {
+      channel: orderClientStored,
+      continuation: orderContinuationStored,
+    },
   }
 
   const { error: insertError } = await serviceClient.from('orders').insert({
     id: orderId,
     shop_id: tenantShopId,
     restaurant_id: restaurant.id,
-    customer_telegram_id: user.id,
+    city_id: restaurant.city_id,
+    customer_telegram_id: customerTelegramIdForInsert,
     customer_profile_id: customerProfileId,
+    order_client_channel: orderClientStored,
+    order_continuation: orderContinuationStored,
     order_number: orderNumber,
     status: 'new',
     fulfillment_type: fulfillmentType,
@@ -719,61 +877,61 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const url = `https://api.telegram.org/bot${botToken}/sendMessage`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+  // Notifications should not delay API response and client redirect.
+  void dispatchNotificationEvent(event, {
+    eventId: crypto.randomUUID(),
+    eventType: 'ORDER_CREATED',
+    occurredAt: orderCreatedAtIso,
+    tenantContext: {
+      shopId: tenantShopId,
+      restaurantId: restaurant.id,
+      cityId: restaurant.city_id,
+    },
+    orderContext: {
+      orderId,
+      orderNumber,
+      totalAmount: grandTotal,
+      status: 'new',
+    },
+    actorContext: {
+      customerTelegramId: customerTelegramIdForInsert,
+      customerMaxUserId:
+        miniChannel === 'max_mini' ? String(user.id) : webMaxUserIdForActor,
+      customerMaxConversationId: maxConversationId,
+    },
+  }).catch((notifyError) => {
+    console.error('dispatchNotificationEvent (ORDER_CREATED) failed:', notifyError)
   })
 
-  if (!res.ok) {
-    const err = await res.text()
-    console.error('Telegram sendMessage error:', res.status, err)
-    throw createError({ statusCode: 502, message: 'Failed to send message to manager' })
-  }
-
-  // Дополнительное уведомление клиента о создании заказа (ошибки не критичны)
   try {
-    const clientText = buildClientOrderMessage(
-      orderNumber,
-      itemsWithServerPrice,
-      payableGoods,
-      deliveryCost,
-      fulfillmentType === 'delivery' ? deliveryZoneValidated : null,
-      {
-        fulfillmentType,
-        pickupPoint,
-        addressLine,
-        flat,
-        comment,
-        paymentMethod,
-        changeFrom,
-        promo: promoBreakdown,
-      },
-    )
-    const clientPayload: any = {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: user.id,
-        text: clientText,
-      }),
+    const { data: shopRow } = await serviceClient
+      .from('shops')
+      .select('integration_keys')
+      .eq('id', tenantShopId)
+      .maybeSingle()
+    const integrationKeys = (shopRow as any)?.integration_keys ?? {}
+    const { config } = getQuickRestoClient(integrationKeys)
+    if (integrationKeys?.quickresto) {
+      await enqueueQuickRestoOrderOutbox(serviceClient, {
+        shopId: tenantShopId,
+        restaurantId: restaurant.id,
+        orderId,
+        orderNumber,
+        total: grandTotal,
+        items: itemsWithServerPrice.map((line) => ({
+          externalId: typeof line.id === 'string' ? line.id : null,
+          quantity: Math.max(1, Math.floor(Number(line.quantity || 1))),
+          price: Math.max(0, Math.floor(Number(line.price || 0))),
+        })),
+      })
+      await serviceClient
+        .from('orders')
+        .update({ external_status: config.strictMode ? 'queued_strict' : 'queued' })
+        .eq('id', orderId)
+        .eq('shop_id', tenantShopId)
     }
-
-    // Кнопка "написать менеджеру" ведёт в чат с ботом
-    const config = useRuntimeConfig()
-    const telegramBotName = (config.public?.telegramBotName as string | undefined) || ''
-    if (telegramBotName) {
-      const payloadBody = JSON.parse(clientPayload.body as string)
-      payloadBody.reply_markup = {
-        inline_keyboard: [[{ text: '✉️ Написать менеджеру', url: `https://t.me/${telegramBotName}` }]],
-      }
-      clientPayload.body = JSON.stringify(payloadBody)
-    }
-
-    await fetch(url, clientPayload)
-  } catch (notifyErr) {
-    console.error('Telegram notify client error:', notifyErr)
+  } catch (error) {
+    console.error('quickresto outbox enqueue failed:', error)
   }
 
   return { ok: true, orderId, orderNumber }

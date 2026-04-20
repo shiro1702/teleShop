@@ -1,6 +1,8 @@
+import { setOrderContinuationHint } from '~/composables/useTelegram'
+
 export default defineNuxtPlugin(() => {
   const cartStore = useCartStore()
-  const { webApp, isTelegram, hideMainButton } = useTelegram()
+  const { webApp, isTelegram, hideMainButton, expandMessengerViewport } = useTelegram()
 
   if (!isTelegram.value || !webApp.value) return
 
@@ -9,30 +11,38 @@ export default defineNuxtPlugin(() => {
   console.log('[TMA][Bridge] initDataUnsafe:', webApp.value.initDataUnsafe)
   console.log('[TMA][Bridge] start_param:', startParam)
   if (startParam) {
-    $fetch<{ ok: boolean; shopId?: string | null; items: any[] }>('/api/cart-bridge', {
+    if (startParam.startsWith('order_')) {
+      $fetch<{ ok: boolean; orderId?: string; shopId?: string }>('/api/order-bridge', {
+        method: 'GET',
+        params: { token: startParam },
+      })
+        .then((res) => {
+          if (!res?.ok || !res.orderId) return
+          const query = new URLSearchParams({ orderId: res.orderId })
+          if (typeof res.shopId === 'string' && res.shopId.trim()) query.set('shop_id', res.shopId.trim())
+          void navigateTo(`/orders?${query.toString()}`)
+        })
+        .catch((err) => {
+          console.error('[TMA][Bridge] Failed to resolve order token:', err)
+        })
+      return
+    }
+
+    $fetch<{ ok: boolean; shopId?: string | null; scopeKey?: string | null; items: any[] }>('/api/cart-bridge', {
       method: 'GET',
       params: { token: startParam },
     })
       .then((res) => {
         if (res?.ok && Array.isArray(res.items) && res.items.length > 0) {
-          if (typeof res.shopId === 'string' && res.shopId.trim()) {
-            cartStore.setScope(res.shopId.trim())
-          }
+          const fallbackScopeKey = typeof res.shopId === 'string' && res.shopId.trim()
+            ? res.shopId.trim()
+            : null
+          cartStore.mergeBridgePayload(
+            { scopeKey: res.scopeKey || fallbackScopeKey, items: res.items },
+            fallbackScopeKey,
+          )
+          setOrderContinuationHint('web_to_telegram')
           console.log('[TMA][Bridge] Restoring cart from token, items:', res.items.length)
-          cartStore.clear()
-          res.items.forEach((item) => {
-            cartStore.addItem(
-              {
-                id: item.id,
-                name: item.name,
-                price: item.price,
-                image: item.image,
-                description: item.description ?? undefined,
-                category: item.category,
-              },
-              item.quantity,
-            )
-          })
         }
       })
       .catch((err) => {
@@ -41,6 +51,7 @@ export default defineNuxtPlugin(() => {
   }
 
   webApp.value.ready()
+  expandMessengerViewport()
   // По текущему ТЗ в TMA не оформляем заказ и не используем MainButton
   hideMainButton()
 })

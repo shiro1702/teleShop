@@ -41,6 +41,10 @@ export interface ProductRow {
   name: string
   price: number
   parameters: any[]
+  deliveryRestrictedOverride: boolean | null
+  categoryDeliveryRestricted: boolean
+  availabilityWindows: any[]
+  categoryAvailabilityWindows: any[]
 }
 
 export async function loadTenantProductsForOrder(
@@ -50,7 +54,7 @@ export async function loadTenantProductsForOrder(
 ): Promise<Map<string, ProductRow>> {
   const { data, error } = await serviceClient
     .from('products')
-    .select('id,name,price,category_id')
+    .select('id,name,price,category_id,delivery_restricted_override,availability_windows,categories(delivery_restricted,availability_windows)')
     .eq('shop_id', shopId)
     .in('id', productIds)
 
@@ -70,6 +74,10 @@ export async function loadTenantProductsForOrder(
       name: row.name,
       price: row.price,
       parameters: groups ? catalogGroupsToOrderValidationShape(groups) : [],
+      deliveryRestrictedOverride: row.delivery_restricted_override === null ? null : !!row.delivery_restricted_override,
+      categoryDeliveryRestricted: !!row.categories?.delivery_restricted,
+      availabilityWindows: Array.isArray(row.availability_windows) ? row.availability_windows : [],
+      categoryAvailabilityWindows: Array.isArray(row.categories?.availability_windows) ? row.categories.availability_windows : [],
     })
   }
   return map

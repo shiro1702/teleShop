@@ -29,26 +29,31 @@
     </header>
 
     <main class="mx-auto max-w-2xl px-4 py-8 sm:px-6">
-      <div v-if="!user" class="rounded-2xl border p-6" :style="cardStyle">
+      <div v-if="!canViewBonuses" class="rounded-2xl border p-6" :style="cardStyle">
         <p class="text-sm" :style="{ color: mutedTextColor }">
-          Войдите через Telegram, чтобы видеть баланс бонусов в этом ресторане.
+          Откройте мини-приложение из бота или войдите на сайте, чтобы видеть баланс бонусов в этом ресторане.
         </p>
       </div>
 
       <template v-else>
         <div class="rounded-2xl border p-6 sm:p-8" :style="cardStyle">
-          <p v-if="tenantLoading" class="text-sm" :style="{ color: mutedTextColor }">
-            Загрузка…
-          </p>
+          <div v-if="tenantLoading || balanceLoading" class="animate-pulse space-y-4" aria-hidden="true">
+            <div class="h-4 w-40 rounded" :style="skeletonBlockStyle" />
+            <div class="h-9 w-52 rounded-lg" :style="skeletonBlockStyle" />
+            <div class="space-y-2">
+              <div class="h-3 w-full rounded" :style="skeletonBlockStyle" />
+              <div class="h-3 w-5/6 rounded" :style="skeletonBlockStyle" />
+            </div>
+          </div>
           <template v-else-if="shopId">
             <p class="text-sm" :style="{ color: mutedTextColor }">
               {{ shopDisplayName }}
             </p>
             <p class="mt-3 text-3xl font-bold tabular-nums" :style="{ color: mainTextColor }">
-              {{ balanceDisplay }} ₽
+              {{ balanceDisplay }}
             </p>
             <p class="mt-2 text-sm" :style="{ color: mutedTextColor }">
-              1 бонус = 1 ₽. Начисляются после успешной онлайн-оплаты заказа. Списать бонусы можно при оформлении заказа.
+              1 бонус = 1 р. Начисляются после успешной доставки или выдачи заказа. Списать бонусы можно при оформлении заказа.
             </p>
           </template>
           <p v-else class="text-sm" :style="{ color: mutedTextColor }">
@@ -56,7 +61,7 @@
           </p>
         </div>
 
-        <p class="mt-6 text-center text-sm">
+        <p v-if="!isMessengerMiniApp" class="mt-6 text-center text-sm">
           <NuxtLink
             to="/profile"
             class="font-medium underline decoration-dotted underline-offset-2"
@@ -74,9 +79,16 @@
 import { computed, ref, watch } from 'vue'
 import { useSupabaseUser } from '#imports'
 import { useTenant } from '~/composables/useTenant'
+import { useTelegram } from '~/composables/useTelegram'
 
 const user = useSupabaseUser()
 const { tenant, tenantPath } = useTenant()
+const { isMessengerMiniApp, messengerInitData, buildMessengerAuthHeaders } = useTelegram()
+
+/** Сайт: Supabase. Mini App (Telegram / MAX): сессия через initData (без отдельного «ЛК») */
+const canViewBonuses = computed(
+  () => !!user.value || (!!isMessengerMiniApp.value && !!messengerInitData.value),
+)
 
 const theme = computed(() => tenant.value.theme || {})
 const pageBgColor = computed(() => theme.value.surface_background || 'var(--color-surface-bg)')
@@ -101,6 +113,11 @@ const cardStyle = computed(() => ({
   color: mainTextColor.value,
 }))
 
+const skeletonBlockStyle = computed(() => ({
+  backgroundColor: borderColor.value,
+  opacity: 0.7,
+}))
+
 const tenantLoading = computed(() => tenant.value.loading && !tenant.value.loaded)
 const shopId = computed(() => tenant.value.shopId)
 const shopDisplayName = computed(() => tenant.value.shopName || 'Ресторан')
@@ -108,21 +125,35 @@ const shopDisplayName = computed(() => tenant.value.shopName || 'Рестора�
 const balance = ref<number | null>(null)
 const balanceLoading = ref(false)
 
+function formatBonuses(value: number): string {
+  const abs = Math.abs(value) % 100
+  const lastDigit = abs % 10
+
+  if (abs >= 11 && abs <= 14) return `${value} бонусов`
+  if (lastDigit === 1) return `${value} бонус`
+  if (lastDigit >= 2 && lastDigit <= 4) return `${value} бонуса`
+  return `${value} бонусов`
+}
+
 const balanceDisplay = computed(() => {
   if (balanceLoading.value) return '…'
-  if (balance.value === null) return '0'
-  return String(balance.value)
+  if (balance.value === null) return formatBonuses(0)
+  return formatBonuses(balance.value)
 })
 
+function balanceRequestHeaders() {
+  return buildMessengerAuthHeaders(shopId.value ? { 'x-shop-id': shopId.value } : undefined)
+}
+
 async function loadBalance() {
-  if (!user.value || !shopId.value) {
+  if (!shopId.value || !canViewBonuses.value) {
     balance.value = null
     return
   }
   balanceLoading.value = true
   try {
     const res = await $fetch<{ ok: boolean; balance: number }>('/api/loyalty/balance', {
-      headers: { 'x-shop-id': shopId.value },
+      headers: balanceRequestHeaders(),
     })
     balance.value = res.balance
   } catch {
@@ -132,7 +163,11 @@ async function loadBalance() {
   }
 }
 
-watch([user, shopId], () => {
-  void loadBalance()
-}, { immediate: true })
+watch(
+  [user, shopId, canViewBonuses, isMessengerMiniApp, () => (isMessengerMiniApp.value ? messengerInitData.value : '')],
+  () => {
+    void loadBalance()
+  },
+  { immediate: true },
+)
 </script>

@@ -68,12 +68,17 @@ export default defineEventHandler(async (event) => {
   const maxBonusForOrder = Math.min(balance, capByPct, subtotalAfterPromo)
 
   const payableGoods = Math.max(0, subtotalAfterPromo - bonusSpent)
-  const earnPercent = loyalty.bonuses_enabled ? Math.max(0, loyalty.earn_percent_of_subtotal) : 0
+  const bonusEarnBlockedBySpend = bonusSpent > 0 && !loyalty.allow_simultaneous_bonus_spend_and_earn
+  const earnPercent = loyalty.bonuses_enabled && !bonusEarnBlockedBySpend
+    ? Math.max(0, loyalty.earn_percent_of_subtotal)
+    : 0
   const bonusEarnEstimate = Math.max(0, Math.floor((subtotalAfterPromo * earnPercent) / 100))
 
   return {
     ok: true,
     bonusesEnabled: loyalty.bonuses_enabled,
+    allowSimultaneousBonusSpendAndEarn: loyalty.allow_simultaneous_bonus_spend_and_earn,
+    bonusEarnBlockedBySpend,
     loyaltyEarnPercent: earnPercent,
     bonusEarnEstimate,
     subtotalAfterPromo,

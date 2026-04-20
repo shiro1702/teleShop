@@ -1,9 +1,18 @@
 <template>
-  <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+  <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6" :style="pageStyle">
     <header class="mb-6">
-      <h1 class="text-2xl font-bold text-gray-900">Мои заказы</h1>
-      <p class="mt-1 text-sm text-gray-600">
-        История заказов по разным ресторанам, с выделением активных.
+      <h1 class="text-2xl font-bold" :style="{ color: mainTextColor }">Мои заказы</h1>
+      <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">
+        {{ isTenantOrdersPage ? 'История заказов в этом ресторане.' : 'История заказов по разным ресторанам, с выделением активных.' }}
+      </p>
+      <p v-if="isTenantOrdersPage && cityOrdersPath" class="mt-2 text-sm">
+        <NuxtLink
+          :to="cityOrdersPath"
+          class="font-medium underline decoration-dotted underline-offset-2"
+          :style="{ color: mainTextColor }"
+        >
+          Перейти ко всем заказам по городу
+        </NuxtLink>
       </p>
     </header>
 
@@ -26,11 +35,7 @@
         </span>
       </div>
 
-      <div v-if="detailPending" class="mt-4 text-sm text-gray-600">
-        Загружаем статус…
-      </div>
-
-      <div v-else-if="detailErrorMessage" class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      <div v-if="detailErrorMessage" class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
         {{ detailErrorMessage }}
       </div>
 
@@ -54,8 +59,18 @@
       </div>
     </section>
 
-    <div v-if="pending" class="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
-      Загружаем заказы...
+    <div
+      v-if="pending"
+      class="rounded-xl border p-4"
+      :style="cardStyle"
+      aria-hidden="true"
+    >
+      <div class="animate-pulse space-y-3">
+        <div class="h-4 w-40 rounded" :style="skeletonBlockStyle" />
+        <div class="h-16 w-full rounded-xl" :style="skeletonBlockStyle" />
+        <div class="h-16 w-full rounded-xl" :style="skeletonBlockStyle" />
+        <div class="h-16 w-full rounded-xl" :style="skeletonBlockStyle" />
+      </div>
     </div>
 
     <div v-else-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -63,23 +78,25 @@
     </div>
 
     <template v-else>
-      <section class="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <label class="text-sm">
-            <span class="mb-1 block text-gray-600">Поиск ресторана</span>
+      <section class="mb-4 rounded-xl border p-4" :style="cardStyle">
+        <div class="grid grid-cols-1 gap-3" :class="isTenantOrdersPage ? 'sm:grid-cols-2' : 'sm:grid-cols-3'">
+          <label v-if="!isTenantOrdersPage" class="text-sm">
+            <span class="mb-1 block" :style="{ color: mutedTextColor }">Поиск ресторана</span>
             <input
               v-model.trim="query"
               type="text"
               placeholder="Например: Суши"
-              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              class="w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-1"
+              :style="inputStyle"
             >
           </label>
 
           <label class="text-sm">
-            <span class="mb-1 block text-gray-600">Статус</span>
+            <span class="mb-1 block" :style="{ color: mutedTextColor }">Статус</span>
             <select
               v-model="statusFilter"
-              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              class="w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-1"
+              :style="inputStyle"
             >
               <option value="all">Все</option>
               <option value="active">Только активные</option>
@@ -88,10 +105,11 @@
           </label>
 
           <label class="text-sm">
-            <span class="mb-1 block text-gray-600">Сортировка</span>
+            <span class="mb-1 block" :style="{ color: mutedTextColor }">Сортировка</span>
             <select
               v-model="sortBy"
-              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              class="w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-1"
+              :style="inputStyle"
             >
               <option value="newest">Сначала новые</option>
               <option value="oldest">Сначала старые</option>
@@ -102,12 +120,13 @@
       </section>
 
       <section v-if="activeOrders.length" class="mb-6">
-        <h2 class="mb-3 text-lg font-semibold text-gray-900">Активные заказы</h2>
+        <h2 class="mb-3 text-lg font-semibold" :style="{ color: mainTextColor }">Активные заказы</h2>
         <ul class="space-y-3">
           <li
             v-for="order in activeOrders"
             :key="order.id"
-            class="rounded-xl border border-emerald-200 bg-emerald-50 p-4"
+            class="rounded-xl border p-4"
+            :style="activeOrderCardStyle"
           >
             <OrderCard :order="order" />
           </li>
@@ -115,15 +134,16 @@
       </section>
 
       <section>
-        <h2 class="mb-3 text-lg font-semibold text-gray-900">Все заказы</h2>
-        <div v-if="!filteredOrders.length" class="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
+        <h2 class="mb-3 text-lg font-semibold" :style="{ color: mainTextColor }">Все заказы</h2>
+        <div v-if="!filteredOrders.length" class="rounded-xl border p-4 text-sm" :style="cardStyle">
           По выбранным фильтрам заказов не найдено.
         </div>
         <ul v-else class="space-y-3">
           <li
             v-for="order in filteredOrders"
             :key="order.id"
-            class="rounded-xl border border-gray-200 bg-white p-4"
+            class="rounded-xl border p-4"
+            :style="orderCardStyle"
           >
             <OrderCard :order="order" />
           </li>
@@ -149,6 +169,7 @@ type ClientOrder = {
   total: number
   deliveryCost: number
   itemsCount: number
+  itemsPreview?: Array<{ name: string; quantity: number }>
   createdAt: string
 }
 
@@ -161,8 +182,64 @@ const errorMessage = ref('')
 const data = ref<{ ok: boolean; items: ClientOrder[] }>({ ok: true, items: [] })
 
 const route = useRoute()
-const { tenantKey } = useTenant()
-const { isTelegram, webApp } = useTelegram()
+const { tenant, tenantKey } = useTenant()
+const { buildMessengerAuthHeaders, isMessengerMiniApp, messengerInitData } = useTelegram()
+
+const isTenantOrdersPage = computed(() => !!(tenantKey.value && tenantKey.value.trim()))
+const cityOrdersPath = computed(() => {
+  const city = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  if (!city) return ''
+  return `/${city}/orders`
+})
+
+const theme = computed(() => tenant.value.theme || {})
+const pageBgColor = computed(() => theme.value.surface_background || 'var(--color-surface-bg)')
+const cardBgColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
+const mainTextColor = computed(() => theme.value.text_primary || 'var(--color-text-primary)')
+const mutedTextColor = computed(() => theme.value.text_muted || 'var(--color-text-muted)')
+const borderColor = computed(() => theme.value.primary_100 || '#e5e7eb')
+const inputBgColor = computed(() => theme.value.surface_input || cardBgColor.value)
+const inputBorderColor = computed(() => theme.value.surface_input_border || borderColor.value)
+const activeBgColor = computed(() => theme.value.primary_50 || '#ecfdf5')
+const activeBorderColor = computed(() => theme.value.primary_200 || '#a7f3d0')
+
+const pageStyle = computed(() => ({
+  backgroundColor: pageBgColor.value,
+  color: mainTextColor.value,
+}))
+
+const cardStyle = computed(() => ({
+  borderColor: borderColor.value,
+  backgroundColor: cardBgColor.value,
+  color: mainTextColor.value,
+}))
+
+const activeCardStyle = computed(() => ({
+  borderColor: activeBorderColor.value,
+  backgroundColor: activeBgColor.value,
+}))
+
+const orderCardStyle = computed(() => ({
+  borderColor: borderColor.value,
+  backgroundColor: '#ffffff',
+}))
+
+const activeOrderCardStyle = computed(() => ({
+  borderColor: activeBorderColor.value,
+  backgroundColor: '#ffffff',
+}))
+
+const inputStyle = computed(() => ({
+  borderColor: inputBorderColor.value,
+  backgroundColor: inputBgColor.value,
+  color: mainTextColor.value,
+  '--tw-ring-color': borderColor.value,
+} as Record<string, string>))
+
+const skeletonBlockStyle = computed(() => ({
+  backgroundColor: borderColor.value,
+  opacity: 0.7,
+}))
 
 const selectedOrderId = computed(() => {
   const raw = route.query.orderId
@@ -182,20 +259,49 @@ type ClientOrderStatusDetail = {
   timeline: Array<{ at: string; label: string }>
 }
 
-const detailPending = ref(false)
 const detailErrorMessage = ref('')
 const detailOrder = ref<ClientOrderStatusDetail | null>(null)
 let detailPollHandle: number | null = null
+type NormalizedOrder = ClientOrder & {
+  statusText: string
+  paymentText: string
+  fulfillmentText: string
+  createdAtText: string
+  totalText: string
+}
 
 function requestHeaders() {
-  const headers: Record<string, string> = {}
-  if (typeof tenantKey.value === 'string' && tenantKey.value.trim()) {
-    headers['x-shop-id'] = tenantKey.value.trim()
+  const shopFromTenant =
+    typeof tenantKey.value === 'string' && tenantKey.value.trim() ? tenantKey.value.trim() : ''
+  const shopFromQuery =
+    typeof route.query.shop_id === 'string' && route.query.shop_id.trim() ? route.query.shop_id.trim() : ''
+  const shop = shopFromTenant || shopFromQuery
+  return buildMessengerAuthHeaders(shop ? { 'x-shop-id': shop } : undefined)
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function waitForMessengerInitData(timeoutMs = 2500) {
+  if (!isMessengerMiniApp.value || messengerInitData.value) return
+  const startedAt = Date.now()
+  while (!messengerInitData.value && Date.now() - startedAt < timeoutMs) {
+    await sleep(150)
   }
-  if (isTelegram.value && webApp.value?.initData) {
-    headers['x-telegram-init-data'] = webApp.value.initData
+}
+
+async function fetchOrders(): Promise<{ ok: boolean; items: ClientOrder[] }> {
+  const res = await fetch('/api/client-orders', {
+    method: 'GET',
+    headers: requestHeaders(),
+  })
+  if (!res.ok) {
+    const errJson = (await res.json().catch(() => null)) as any
+    throw new Error(errJson?.statusMessage || errJson?.message || 'Не удалось загрузить заказы')
   }
-  return headers
+  const json = (await res.json()) as { ok: boolean; items: ClientOrder[] }
+  return json ?? { ok: true, items: [] }
 }
 
 function detailStatusClass(status: string) {
@@ -210,7 +316,6 @@ function detailStatusClass(status: string) {
 
 async function loadDetailOrderStatus() {
   if (!selectedOrderId.value) return
-  detailPending.value = true
   detailErrorMessage.value = ''
   try {
     const res = await fetch(
@@ -238,8 +343,6 @@ async function loadDetailOrderStatus() {
     }
   } catch (e: any) {
     detailErrorMessage.value = e?.message || 'Не удалось загрузить статус заказа'
-  } finally {
-    detailPending.value = false
   }
 }
 
@@ -247,17 +350,21 @@ onMounted(async () => {
   pending.value = true
   errorMessage.value = ''
   try {
-    const res = await fetch('/api/client-orders', {
-      method: 'GET',
-      headers: requestHeaders(),
-    })
-    if (!res.ok) {
-      throw new Error('Не удалось загрузить заказы')
-    }
-    const json = await res.json() as { ok: boolean; items: ClientOrder[] }
-    data.value = json ?? { ok: true, items: [] }
+    await waitForMessengerInitData()
+    data.value = await fetchOrders()
   } catch (error: any) {
-    errorMessage.value = error?.statusMessage || error?.message || 'Не удалось загрузить заказы'
+    const maybeUnauthorized = String(error?.message || '').toLowerCase().includes('unauthorized')
+    if (isMessengerMiniApp.value && maybeUnauthorized && !messengerInitData.value) {
+      try {
+        await waitForMessengerInitData(4000)
+        data.value = await fetchOrders()
+        errorMessage.value = ''
+      } catch (retryError: any) {
+        errorMessage.value = retryError?.statusMessage || retryError?.message || 'Не удалось загрузить заказы'
+      }
+    } else {
+      errorMessage.value = error?.statusMessage || error?.message || 'Не удалось загрузить заказы'
+    }
   } finally {
     pending.value = false
   }
@@ -276,7 +383,7 @@ onBeforeUnmount(() => {
   }
 })
 
-watch(selectedOrderId, async (nextId) => {
+watch(selectedOrderId, async (nextId: string) => {
   if (detailPollHandle != null) {
     window.clearInterval(detailPollHandle)
     detailPollHandle = null
@@ -306,7 +413,9 @@ function paymentLabel(method: string) {
 }
 
 function fulfillmentLabel(type: string) {
-  return type === 'pickup' ? 'Самовывоз' : 'Доставка'
+  if (type === 'pickup') return 'Самовывоз'
+  if (type === 'qr-menu') return 'В\u00A0ресторане'
+  return 'Доставка'
 }
 
 function formatDate(value: string) {
@@ -330,7 +439,7 @@ function formatPrice(value: number) {
   }).format(value)
 }
 
-const normalizedOrders = computed(() => (data.value?.items || []).map((order) => ({
+const normalizedOrders = computed<NormalizedOrder[]>(() => (data.value?.items || []).map((order: ClientOrder) => ({
   ...order,
   statusText: statusLabel(order.status),
   paymentText: paymentLabel(order.paymentMethod),
@@ -341,12 +450,16 @@ const normalizedOrders = computed(() => (data.value?.items || []).map((order) =>
 
 const filteredOrders = computed(() => {
   const q = query.value.toLowerCase()
-  let list = normalizedOrders.value.filter((order) => order.restaurantName.toLowerCase().includes(q))
+  let list = normalizedOrders.value
+
+  if (!isTenantOrdersPage.value) {
+    list = list.filter((order: NormalizedOrder) => order.restaurantName.toLowerCase().includes(q))
+  }
 
   if (statusFilter.value === 'active') {
-    list = list.filter((order) => order.isActive)
+    list = list.filter((order: NormalizedOrder) => order.isActive)
   } else if (statusFilter.value === 'history') {
-    list = list.filter((order) => !order.isActive)
+    list = list.filter((order: NormalizedOrder) => !order.isActive)
   }
 
   if (sortBy.value === 'oldest') {
@@ -360,7 +473,7 @@ const filteredOrders = computed(() => {
   return list
 })
 
-const activeOrders = computed(() => normalizedOrders.value.filter((order) => order.isActive))
+const activeOrders = computed(() => normalizedOrders.value.filter((order: NormalizedOrder) => order.isActive))
 
 const OrderCard = defineComponent({
   props: {
@@ -369,7 +482,7 @@ const OrderCard = defineComponent({
       required: true,
     },
   },
-  setup(props) {
+  setup(props: { order: NormalizedOrder }) {
     return () => h('div', { class: 'space-y-2 text-sm text-gray-700' }, [
       h('div', { class: 'flex flex-wrap items-center justify-between gap-2' }, [
         h('p', { class: 'font-semibold text-gray-900' }, props.order.restaurantName),
@@ -390,6 +503,20 @@ const OrderCard = defineComponent({
         h('span', { class: 'text-xs text-gray-600' }, `Позиций: ${props.order.itemsCount}`),
         h('span', { class: 'font-semibold text-primary' }, props.order.totalText),
       ]),
+      ...(Array.isArray(props.order.itemsPreview) && props.order.itemsPreview.length
+        ? [
+            h('div', { class: 'pt-1' }, [
+              h('p', { class: 'text-xs font-medium text-gray-700' }, 'Состав:'),
+              h(
+                'p',
+                { class: 'text-xs text-gray-600' },
+                props.order.itemsPreview
+                  .map((item: { name: string; quantity: number }) => `${item.name} × ${item.quantity}`)
+                  .join(', '),
+              ),
+            ]),
+          ]
+        : []),
     ])
   },
 })

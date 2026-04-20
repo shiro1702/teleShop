@@ -2,10 +2,13 @@ import { createError } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
 import type {
+  OrganizationDineInHallMode,
   OrganizationStyleAuditEntry,
   OrganizationStyleConfig,
   OrganizationSettings,
   OrganizationStylePreset,
+  WeeklyWorkingHours,
+  WorkingDayKey,
 } from '~/types/organization-style'
 
 type PersistedStyleRecord = {
@@ -32,6 +35,7 @@ const TABLE_NAME = 'organization_style_settings'
 const PRESETS_TABLE_NAME = 'organization_style_presets'
 const MAX_AUDIT_ITEMS = 25
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/
+const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
 const memoryStoreKey = '__organization_style_memory_store__'
 const presetsMemoryStoreKey = '__organization_style_presets_memory_store__'
 
@@ -43,6 +47,7 @@ export const SYSTEM_STYLE_PRESETS: OrganizationStylePreset[] = [
     config: {
       tokens: {
         brandPrimary: '#B3472A',
+        textOnPrimary: '#FFFFFF',
         brandSecondary: '#D9A441',
         brandAccent: '#6E3B2A',
         surfaceBackground: '#FFF9F5',
@@ -63,6 +68,7 @@ export const SYSTEM_STYLE_PRESETS: OrganizationStylePreset[] = [
     config: {
       tokens: {
         brandPrimary: '#1F6FEB',
+        textOnPrimary: '#FFFFFF',
         brandSecondary: '#7AA2F7',
         brandAccent: '#0EA5E9',
         surfaceBackground: '#F7FAFC',
@@ -83,6 +89,7 @@ export const SYSTEM_STYLE_PRESETS: OrganizationStylePreset[] = [
     config: {
       tokens: {
         brandPrimary: '#F97316',
+        textOnPrimary: '#111827',
         brandSecondary: '#FDBA74',
         brandAccent: '#FB7185',
         surfaceBackground: '#111827',
@@ -103,6 +110,7 @@ export const SYSTEM_STYLE_PRESETS: OrganizationStylePreset[] = [
     config: {
       tokens: {
         brandPrimary: '#8B5CF6',
+        textOnPrimary: '#FFFFFF',
         brandSecondary: '#C4B5FD',
         brandAccent: '#F472B6',
         surfaceBackground: '#FDF4FF',
@@ -125,7 +133,9 @@ export function getDefaultStyleConfig(): OrganizationStyleConfig {
       name: 'My Restaurant',
       shortDescription: '',
       fullDescription: '',
+      logoSmallUrl: '',
       logoUrl: '',
+      logoLargeUrl: '',
       faviconUrl: '',
       restaurantCardImageUrl: '',
       heroImageUrl: '',
@@ -174,7 +184,9 @@ async function getIdentityFromExistingData(event: any, shopId: string): Promise<
       name: restaurantName || shopName || base.identity.name,
       shortDescription: description,
       fullDescription: description,
+      logoSmallUrl: logoUrl,
       logoUrl,
+      logoLargeUrl: logoUrl,
       faviconUrl: '',
       restaurantCardImageUrl: '',
       heroImageUrl: '',
@@ -185,6 +197,15 @@ async function getIdentityFromExistingData(event: any, shopId: string): Promise<
 }
 
 export function getDefaultOrganizationSettings(): OrganizationSettings {
+  const defaultWorkingHours: WeeklyWorkingHours = {
+    mon: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    tue: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    wed: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    thu: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    fri: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    sat: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+    sun: { isOpen: true, openAt: '09:00', closeAt: '22:00' },
+  }
   return {
     slug: '',
     displayName: '',
@@ -203,10 +224,12 @@ export function getDefaultOrganizationSettings(): OrganizationSettings {
       deliveryFee: 150,
       freeDeliveryFrom: 1000,
       fulfillmentTypes: ['delivery', 'pickup'],
-      showcaseOrderFulfillment: 'to-table',
+      dineInHallMode: 'to-table',
+      dineInStaffButtons: { waiter: true, hookah: false },
       orderAcceptanceMode: 'manual',
       ordersPaused: false,
       ordersPausedReason: '',
+      workingHours: defaultWorkingHours,
     },
     locale: {
       currency: 'RUB',
@@ -255,12 +278,17 @@ function normalizeAuditEntry(raw: any): OrganizationStyleAuditEntry | null {
 function normalizeConfig(raw: any): OrganizationStyleConfig {
   const defaults = getDefaultStyleConfig()
   const config = raw && typeof raw === 'object' ? raw : {}
+  const legacyLogoUrl = typeof config.identity?.logoUrl === 'string' ? config.identity.logoUrl : ''
+  const nextLogoSmall = typeof config.identity?.logoSmallUrl === 'string' ? config.identity.logoSmallUrl : legacyLogoUrl
+  const nextLogoLarge = typeof config.identity?.logoLargeUrl === 'string' ? config.identity.logoLargeUrl : legacyLogoUrl
   return {
     identity: {
       name: typeof config.identity?.name === 'string' ? config.identity.name : defaults.identity.name,
       shortDescription: typeof config.identity?.shortDescription === 'string' ? config.identity.shortDescription : defaults.identity.shortDescription,
       fullDescription: typeof config.identity?.fullDescription === 'string' ? config.identity.fullDescription : defaults.identity.fullDescription,
-      logoUrl: typeof config.identity?.logoUrl === 'string' ? config.identity.logoUrl : defaults.identity.logoUrl,
+      logoSmallUrl: nextLogoSmall || defaults.identity.logoSmallUrl,
+      logoUrl: legacyLogoUrl || nextLogoSmall || nextLogoLarge || defaults.identity.logoUrl,
+      logoLargeUrl: nextLogoLarge || nextLogoSmall || defaults.identity.logoLargeUrl,
       faviconUrl: typeof config.identity?.faviconUrl === 'string' ? config.identity.faviconUrl : defaults.identity.faviconUrl,
       restaurantCardImageUrl: typeof config.identity?.restaurantCardImageUrl === 'string'
         ? config.identity.restaurantCardImageUrl
@@ -271,6 +299,7 @@ function normalizeConfig(raw: any): OrganizationStyleConfig {
     },
     tokens: {
       brandPrimary: typeof config.tokens?.brandPrimary === 'string' ? config.tokens.brandPrimary : defaults.tokens.brandPrimary,
+      textOnPrimary: typeof config.tokens?.textOnPrimary === 'string' ? config.tokens.textOnPrimary : defaults.tokens.textOnPrimary,
       brandSecondary: typeof config.tokens?.brandSecondary === 'string' ? config.tokens.brandSecondary : defaults.tokens.brandSecondary,
       brandAccent: typeof config.tokens?.brandAccent === 'string' ? config.tokens.brandAccent : defaults.tokens.brandAccent,
       surfaceBackground: typeof config.tokens?.surfaceBackground === 'string' ? config.tokens.surfaceBackground : defaults.tokens.surfaceBackground,
@@ -319,14 +348,62 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
   const legal = source.legal && typeof source.legal === 'object' ? source.legal : {}
   const status = ['open', 'closed', 'coming_soon', 'temporarily_unavailable'].includes(ops.status) ? ops.status : defaults.ops.status
   const orderAcceptanceMode = ['auto', 'manual'].includes(ops.orderAcceptanceMode) ? ops.orderAcceptanceMode : defaults.ops.orderAcceptanceMode
-  const showcaseOrderFulfillment = ['to-table', 'pickup-point'].includes(ops.showcaseOrderFulfillment)
-    ? ops.showcaseOrderFulfillment
-    : defaults.ops.showcaseOrderFulfillment
   const vatMode = ['none', 'included', 'excluded'].includes(tax.vatMode) ? tax.vatMode : defaults.tax.vatMode
   const fulfillmentRaw = Array.isArray(ops.fulfillmentTypes) ? ops.fulfillmentTypes : defaults.ops.fulfillmentTypes
-  const fulfillmentTypes = fulfillmentRaw.filter(
-    (item: unknown) => ['delivery', 'pickup', 'dine-in', 'qr-menu', 'showcase-order'].includes(String(item)),
-  ) as Array<'delivery' | 'pickup' | 'dine-in' | 'qr-menu' | 'showcase-order'>
+  const legacyList = fulfillmentRaw
+    .map((item: unknown) => String(item))
+    .filter((item: string) =>
+      ['delivery', 'pickup', 'dine-in', 'qr-menu', 'showcase-order'].includes(item),
+    )
+  const hadShowcase = legacyList.includes('showcase-order')
+  const hadQrMenu = legacyList.includes('qr-menu')
+  const hadDineIn = legacyList.includes('dine-in')
+  const nextFulfillment = new Set<'delivery' | 'pickup' | 'dine-in'>()
+  for (const item of legacyList) {
+    if (item === 'delivery' || item === 'pickup') nextFulfillment.add(item)
+    if (item === 'dine-in' || item === 'qr-menu' || item === 'showcase-order') nextFulfillment.add('dine-in')
+  }
+  const fulfillmentTypes =
+    nextFulfillment.size > 0
+      ? Array.from(nextFulfillment)
+      : [...defaults.ops.fulfillmentTypes]
+
+  const HALL: OrganizationDineInHallMode[] = ['qr-menu-browse', 'to-table', 'pickup-point']
+  let dineInHallMode: OrganizationDineInHallMode = defaults.ops.dineInHallMode
+  const rawHall = ops.dineInHallMode
+  if (typeof rawHall === 'string' && HALL.includes(rawHall as OrganizationDineInHallMode)) {
+    dineInHallMode = rawHall as OrganizationDineInHallMode
+  } else {
+    const legacyShowcaseFf =
+      ops.showcaseOrderFulfillment === 'pickup-point' ? 'pickup-point' : 'to-table'
+    if (hadShowcase) {
+      dineInHallMode = legacyShowcaseFf
+    } else if (hadQrMenu && !hadShowcase) {
+      dineInHallMode = 'to-table'
+    } else if (hadDineIn && !hadQrMenu && !hadShowcase) {
+      dineInHallMode = 'to-table'
+    }
+  }
+
+  const staffRaw = ops.dineInStaffButtons && typeof ops.dineInStaffButtons === 'object' ? ops.dineInStaffButtons : null
+  const dineInStaffButtons = {
+    waiter: typeof staffRaw?.waiter === 'boolean' ? staffRaw.waiter : defaults.ops.dineInStaffButtons.waiter,
+    hookah: typeof staffRaw?.hookah === 'boolean' ? staffRaw.hookah : defaults.ops.dineInStaffButtons.hookah,
+  }
+  const dayKeys: WorkingDayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+  const sourceWorkingHours = ops.workingHours && typeof ops.workingHours === 'object' ? ops.workingHours : {}
+  const workingHours = dayKeys.reduce((acc, day) => {
+    const rawDay = sourceWorkingHours[day] && typeof sourceWorkingHours[day] === 'object'
+      ? sourceWorkingHours[day]
+      : {}
+    const fallback = defaults.ops.workingHours[day]
+    acc[day] = {
+      isOpen: typeof rawDay.isOpen === 'boolean' ? rawDay.isOpen : fallback.isOpen,
+      openAt: typeof rawDay.openAt === 'string' ? rawDay.openAt : fallback.openAt,
+      closeAt: typeof rawDay.closeAt === 'string' ? rawDay.closeAt : fallback.closeAt,
+    }
+    return acc
+  }, {} as WeeklyWorkingHours)
   return {
     slug: asString(source.slug, defaults.slug),
     displayName: asString(source.displayName, defaults.displayName),
@@ -344,11 +421,13 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
       prepTimeMinutes: asNullableNumber(ops.prepTimeMinutes),
       deliveryFee: asNullableNumber(ops.deliveryFee),
       freeDeliveryFrom: asNullableNumber(ops.freeDeliveryFrom),
-      fulfillmentTypes: fulfillmentTypes.length ? fulfillmentTypes : defaults.ops.fulfillmentTypes,
-      showcaseOrderFulfillment,
+      fulfillmentTypes,
+      dineInHallMode,
+      dineInStaffButtons,
       orderAcceptanceMode,
       ordersPaused: Boolean(ops.ordersPaused),
       ordersPausedReason: asString(ops.ordersPausedReason, defaults.ops.ordersPausedReason),
+      workingHours,
     },
     locale: {
       currency: asString(locale.currency, defaults.locale.currency).toUpperCase().slice(0, 3) || defaults.locale.currency,
@@ -629,7 +708,8 @@ export function getSystemPresets(): OrganizationStylePreset[] {
   return SYSTEM_STYLE_PRESETS.map((item) => ({ ...item, isSystem: true }))
 }
 
-export function validateOrganizationSettings(settings: OrganizationSettings): string[] {
+/** Публичные поля, ops, locale, tax — без контактов и реквизитов (для PUT operations). */
+export function validateOrganizationOperationsSettings(settings: OrganizationSettings): string[] {
   const errors: string[] = []
   const slug = settings.slug.trim().toLowerCase()
   if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
@@ -640,9 +720,6 @@ export function validateOrganizationSettings(settings: OrganizationSettings): st
   }
   if (settings.tagline.trim().length > 120) errors.push('Короткий слоган под названием не должен превышать 120 символов.')
   if (settings.cuisine.trim().length > 300) errors.push('Категория кухни не должна превышать 300 символов.')
-  if (settings.contacts.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.contacts.email)) {
-    errors.push('Некорректный email в контактах.')
-  }
   const numericChecks: Array<[string, number | null]> = [
     ['minOrderAmount', settings.ops.minOrderAmount],
     ['prepTimeMinutes', settings.ops.prepTimeMinutes],
@@ -652,8 +729,32 @@ export function validateOrganizationSettings(settings: OrganizationSettings): st
   for (const [key, value] of numericChecks) {
     if (value !== null && value < 0) errors.push(`Поле ${key} не может быть отрицательным.`)
   }
+  const dayKeys: WorkingDayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+  for (const day of dayKeys) {
+    const row = settings.ops.workingHours?.[day]
+    if (!row) {
+      errors.push(`Не заполнен график для дня ${day}.`)
+      continue
+    }
+    if (!HHMM_RE.test(row.openAt) || !HHMM_RE.test(row.closeAt)) {
+      errors.push(`Время для дня ${day} должно быть в формате HH:MM.`)
+      continue
+    }
+    if (row.isOpen && row.openAt >= row.closeAt) {
+      errors.push(`Для дня ${day} время открытия должно быть раньше закрытия.`)
+    }
+  }
   if (settings.locale.languages.length === 0) {
     errors.push('Нужен минимум один язык витрины.')
+  }
+  return errors
+}
+
+/** Контакты и реквизиты футера — для PUT contacts. */
+export function validateOrganizationContactsSettings(settings: OrganizationSettings): string[] {
+  const errors: string[] = []
+  if (settings.contacts.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.contacts.email)) {
+    errors.push('Некорректный email в контактах.')
   }
   const legalName = settings.legal.legalName.trim()
   const inn = settings.legal.inn.trim()
@@ -668,6 +769,10 @@ export function validateOrganizationSettings(settings: OrganizationSettings): st
     errors.push('ОГРН/ОГРНИП должен содержать 13 или 15 цифр.')
   }
   return errors
+}
+
+export function validateOrganizationSettings(settings: OrganizationSettings): string[] {
+  return [...validateOrganizationOperationsSettings(settings), ...validateOrganizationContactsSettings(settings)]
 }
 
 export function validateStyleConfig(config: OrganizationStyleConfig): string[] {

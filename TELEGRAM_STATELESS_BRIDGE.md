@@ -4,6 +4,9 @@
 из внешнего веб‑сайта в Telegram Mini App через компактный токен, передаваемый
 в `startapp` (deep link) и `start_param` (внутри Mini App).
 
+См. также общий план мультитенантных омниканальных уведомлений:
+- `docs/OMNICHANNEL_MULTITENANT_PLAN_RU.md`
+
 ---
 
 ## 1. Задача
@@ -158,6 +161,12 @@ export default defineEventHandler(async (event) => {
 
 В текущей версии переход «Продолжить в Telegram» вызывается из `checkout.vue`.
 Клиент отправляет `items` + tenant context (`shop_id`) в `POST /api/cart-bridge`.
+
+Контекст storefront для веб-потока считается каноничным только в tenant URL:
+- `/:city_slug/:tenant_slug/cart`
+- `/:city_slug/:tenant_slug/checkout`
+
+Legacy путь `/checkout?shop_id=...` не используется как целевой маршрут и редиректится на tenant корзину.
 
 **Итого:** пользователь на сайте нажимает «Продолжить в Telegram» → генерируется токен →
 браузер открывает `https://t.me/<bot>?startapp=<token>`.

@@ -8,18 +8,11 @@
         <img
           :src="tenantLogoUrl"
           :alt="tenantName"
-          class="h-10 w-10 shrink-0 rounded-full object-cover"
+          class="h-10 w-auto shrink-0 object-cover"
         />
         <div class="min-w-0">
           <span class="block truncate text-sm font-semibold tracking-wide sm:text-base">
             {{ tenantName }}
-          </span>
-          <span
-            v-if="tenantDescription"
-            class="hidden truncate text-xs md:block"
-            :style="{ color: mutedTextColor }"
-          >
-            {{ tenantDescription }}
           </span>
         </div>
       </NuxtLink>
@@ -39,8 +32,63 @@
         </select>
       </div>
 
+      <!-- Miniapp (Telegram / MAX): без «ЛК» — заказы и бонусы в выпадающем меню как у авторизованного на сайте -->
       <div
-        v-if="!isTelegram"
+        v-if="isMessengerMiniApp && showMiniappCustomerLinks"
+        ref="miniappMenuRootRef"
+        class="relative z-[51] shrink-0"
+      >
+        <button
+          type="button"
+          class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm"
+          :style="ghostButtonStyle"
+          :aria-expanded="showMiniappMenu"
+          aria-label="Меню заказов"
+          @click="showMiniappMenu = !showMiniappMenu"
+        >
+          <span class="hidden sm:inline">Заказы и бонусы</span>
+          <span class="sm:hidden">Меню</span>
+          <svg class="h-3 w-3 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <Transition name="dropdown">
+          <div
+            v-if="showMiniappMenu"
+            class="absolute right-0 mt-2 w-52 rounded-lg py-1 text-sm shadow-lg dropdown-panel"
+            :style="menuStyle"
+          >
+            <NuxtLink
+              :to="ordersLink"
+              class="block px-3 py-2"
+              :style="{ color: mainTextColor }"
+              @click="showMiniappMenu = false"
+            >
+              История заказов
+            </NuxtLink>
+            <NuxtLink
+              v-if="bonusesMenuVisible"
+              :to="bonusesLink"
+              class="block px-3 py-2"
+              :style="{ color: mainTextColor }"
+              @click="showMiniappMenu = false"
+            >
+              Бонусы
+            </NuxtLink>
+            <NuxtLink
+              to="/profile"
+              class="block px-3 py-2"
+              :style="{ color: mainTextColor }"
+              @click="showMiniappMenu = false"
+            >
+              Профиль
+            </NuxtLink>
+          </div>
+        </Transition>
+      </div>
+
+      <div
+        v-if="!isMessengerMiniApp"
         class="flex items-center gap-2 sm:gap-3" 
       >
         <NuxtLink
@@ -77,65 +125,96 @@
             :aria-expanded="showUserMenu"
             @click="toggleUserMenu"
           >
-            <span class="hidden md:inline">Вошли через Telegram</span>
-            <span class="md:hidden">Профиль</span>
+            <span>Профиль</span>
             <svg class="h-3 w-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>
           </button>
 
-          <div
-            v-if="showUserMenu"
-            class="absolute right-0 mt-2 w-48 rounded-lg py-1 text-sm shadow-lg"
-            :style="menuStyle"
-          >
-            <NuxtLink
-              :to="ordersLink"
-              class="block px-3 py-2"
-              :style="{ color: mainTextColor }"
-              @click="showUserMenu = false"
+          <Transition name="dropdown">
+            <div
+              v-if="showUserMenu"
+              class="absolute right-0 mt-2 w-48 rounded-lg py-1 text-sm shadow-lg dropdown-panel"
+              :style="menuStyle"
             >
-              История заказов
-            </NuxtLink>
-            <NuxtLink
-              v-if="bonusesMenuVisible"
-              :to="bonusesLink"
-              class="block px-3 py-2"
-              :style="{ color: mainTextColor }"
-              @click="showUserMenu = false"
-            >
-              Бонусы
-            </NuxtLink>
-            <NuxtLink
-              to="/profile"
-              class="block px-3 py-2"
-              :style="{ color: mainTextColor }"
-              @click="showUserMenu = false"
-            >
-              Профиль
-            </NuxtLink>
-            <button
-              type="button"
-              class="block w-full px-3 py-2 text-left text-red-600 hover:bg-red-50"
-              @click="logout"
-            >
-              Выйти
-            </button>
-          </div>
+              <NuxtLink
+                :to="ordersLink"
+                class="block px-3 py-2"
+                :style="{ color: mainTextColor }"
+                @click="showUserMenu = false"
+              >
+                История заказов
+              </NuxtLink>
+              <NuxtLink
+                v-if="bonusesMenuVisible"
+                :to="bonusesLink"
+                class="block px-3 py-2"
+                :style="{ color: mainTextColor }"
+                @click="showUserMenu = false"
+              >
+                Бонусы
+              </NuxtLink>
+              <NuxtLink
+                to="/profile"
+                class="block px-3 py-2"
+                :style="{ color: mainTextColor }"
+                @click="showUserMenu = false"
+              >
+                Профиль
+              </NuxtLink>
+              <button
+                type="button"
+                class="block w-full px-3 py-2 text-left text-red-600 hover:bg-red-50"
+                @click="logout"
+              >
+                Выйти
+              </button>
+            </div>
+          </Transition>
         </div>
 
         <!-- Не авторизован: на мобилке — компактно, на десктопе — текст -->
         <button
-          v-else-if="telegramBotUrl"
+          v-else-if="telegramBotUrl || maxBotUrl"
           type="button"
           class="rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100 sm:rounded-lg"
-          @click="openTelegramAuth"
+          @click="openAuthModal"
         >
           <span class="sm:hidden">Войти</span>
-          <span class="hidden sm:inline">Войти через Telegram</span>
+          <span class="hidden sm:inline">Войти</span>
         </button>
       </div>
     </div>
+
+    <Teleport to="body">
+      <Transition name="modal-fade">
+        <div v-if="showAuthModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/40" @click="closeAuthModal" />
+          <div class="relative w-full max-w-sm rounded-2xl p-5 shadow-xl modal-panel" :style="menuStyle">
+            <h3 class="text-base font-semibold" :style="{ color: mainTextColor }">Выберите способ входа</h3>
+            <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">Доступна авторизация через Telegram или MAX.</p>
+            <div class="mt-4 space-y-2">
+              <button
+                v-if="telegramBotUrl"
+                type="button"
+                class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-600"
+                @click="openTelegramAuth"
+              >
+                Войти через Telegram
+              </button>
+              <button
+                v-if="maxBotUrl"
+                type="button"
+                class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50"
+                @click="openMaxAuth"
+              >
+                Войти через MAX
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </header>
 </template>
 
@@ -151,7 +230,7 @@ declare const useSupabaseClient: any
 declare const useSupabaseUser: any
 declare const useRuntimeConfig: any
 
-const { isTelegram } = useTelegram()
+const { isMessengerMiniApp } = useTelegram()
 const user = useSupabaseUser()
 const config = useRuntimeConfig()
 const route = useRoute()
@@ -163,6 +242,11 @@ const telegramBotName = (config.public.telegramBotName as string | undefined) ||
 const telegramBotUrl = computed(() =>
   telegramBotName ? `https://t.me/${telegramBotName}` : null,
 )
+const maxBotUrl = computed(() => {
+  const raw = (config.public.maxBotUrl as string | undefined) || ''
+  const trimmed = raw.trim()
+  return trimmed || null
+})
 const homeLink = computed(() => tenantPath('/'))
 const ordersLink = computed(() => {
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
@@ -182,8 +266,16 @@ const bonusesMenuVisible = computed(() => {
   const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
   return !!(citySlug && tenantSlug) || !!tenant.value.tenantSlug
 })
+
+/** Показываем miniapp-меню на витрине ресторана и на городской странице агрегатора. */
+const showMiniappCustomerLinks = computed(() => {
+  if (isNonTenantRoute.value || isDashboardRoute.value) return false
+  const routeCitySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const routeTenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  return !!(routeCitySlug || routeTenantSlug || tenant.value.tenantSlug)
+})
 const tenantName = computed(() => tenant.value.shopName || 'PocketMenu')
-const tenantLogoUrl = computed(() => tenant.value.logoUrl || '/logo.webp')
+const tenantLogoUrl = computed(() => tenant.value.logoUrl || tenant.value.logoLargeUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
 const defaultCitySlug = computed(() =>
   (typeof config.public?.defaultCitySlug === 'string' && config.public.defaultCitySlug.trim())
@@ -210,6 +302,7 @@ const isNonTenantRoute = computed(() => {
     '/partners',
     '/platform',
     '/link-telegram',
+    '/link-max',
   ]
   return nonTenantPrefixes.some((prefix) => routePath.startsWith(prefix))
 })
@@ -252,24 +345,111 @@ const menuStyle = computed(() => ({
 }))
 
 const showUserMenu = ref(false)
+const showMiniappMenu = ref(false)
+const showAuthModal = ref(false)
 const userMenuRootRef = ref<HTMLElement | null>(null)
+const miniappMenuRootRef = ref<HTMLElement | null>(null)
 
 function onDocumentClickCapture(e: MouseEvent) {
-  if (!showUserMenu.value) return
-  const root = userMenuRootRef.value
   const target = e.target as Node | null
-  if (!root || !target) return
-  if (!root.contains(target)) {
-    showUserMenu.value = false
+  if (!target) return
+  if (showUserMenu.value) {
+    const root = userMenuRootRef.value
+    if (root && !root.contains(target)) showUserMenu.value = false
+  }
+  if (showMiniappMenu.value) {
+    const miniRoot = miniappMenuRootRef.value
+    if (miniRoot && !miniRoot.contains(target)) showMiniappMenu.value = false
   }
 }
 
-function openTelegramAuth() {
-  if (!telegramBotUrl.value) return
-  if (typeof window !== 'undefined') {
-    const url = `${telegramBotUrl.value}?start=auth_link${tenantKey.value ? `_${encodeURIComponent(tenantKey.value)}` : ''}`
-    window.open(url, '_blank', 'noopener')
+async function openTelegramAuth() {
+  showAuthModal.value = false
+  if (!telegramBotUrl.value || typeof window === 'undefined') return
+  const shopRef = tenantKey.value?.trim() || ''
+  if (!shopRef) {
+    window.alert('Откройте вход из страницы ресторана.')
+    return
   }
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  try {
+    const res = await $fetch<{ ok: boolean; token: string; botStartParam: string }>(
+      '/api/auth/request-telegram-link',
+      {
+        method: 'POST',
+        headers: { 'x-shop-id': shopRef },
+        body: {
+          shopId: shopRef,
+          citySlug: citySlug || undefined,
+          redirectPath: `${tenantPath('/checkout')}?step=1`,
+        },
+      },
+    )
+    if (!res?.ok || !res.token || !res.botStartParam) {
+      throw new Error('bad_response')
+    }
+    const tgUrl = `${telegramBotUrl.value}?start=${encodeURIComponent(res.botStartParam)}`
+    window.open(tgUrl, '_blank', 'noopener')
+    await router.push({
+      path: '/link-telegram',
+      query: {
+        token: res.token,
+        redirect: `${tenantPath('/checkout')}?step=1`,
+        shop_id: shopRef,
+      },
+    })
+  } catch {
+    window.alert('Не удалось начать вход через Telegram. Попробуйте ещё раз.')
+  }
+}
+
+async function openMaxAuth() {
+  showAuthModal.value = false
+  if (!maxBotUrl.value || typeof window === 'undefined') return
+  const shopRef = tenantKey.value?.trim() || ''
+  if (!shopRef) {
+    window.alert('Откройте вход из страницы ресторана.')
+    return
+  }
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  try {
+    const res = await $fetch<{ ok: boolean; token: string; botStartParam: string }>(
+      '/api/auth/request-max-link',
+      {
+        method: 'POST',
+        headers: { 'x-shop-id': shopRef },
+        body: {
+          shopId: shopRef,
+          citySlug: citySlug || undefined,
+          redirectPath: `${tenantPath('/checkout')}?step=1`,
+        },
+      },
+    )
+    if (!res?.ok || !res.token || !res.botStartParam) {
+      throw new Error('bad_response')
+    }
+    const hasQuery = maxBotUrl.value.includes('?')
+    const maxUrl = `${maxBotUrl.value}${hasQuery ? '&' : '?'}start=${encodeURIComponent(res.botStartParam)}`
+    window.open(maxUrl, '_blank', 'noopener')
+    await router.push({
+      path: '/link-max',
+      query: {
+        token: res.token,
+        redirect: `${tenantPath('/checkout')}?step=1`,
+        shop_id: shopRef,
+      },
+    })
+  } catch {
+    window.alert('Не удалось начать вход через MAX. Попробуйте ещё раз.')
+  }
+}
+
+function openAuthModal() {
+  showAuthModal.value = true
+}
+
+function closeAuthModal() {
+  showAuthModal.value = false
 }
 
 function toggleUserMenu() {
@@ -278,6 +458,13 @@ function toggleUserMenu() {
 
 async function logout() {
   showUserMenu.value = false
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const routeTenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  const currentTenantSlug = routeTenantSlug || (typeof tenant.value.tenantSlug === 'string' ? tenant.value.tenantSlug.trim() : '')
+  const fallbackCitySlug = selectedCitySlug.value || defaultCitySlug.value
+  const aggregatorPath = citySlug ? `/${citySlug}` : `/${fallbackCitySlug}`
+  const redirectPath = currentTenantSlug && citySlug ? `/${citySlug}/${currentTenantSlug}` : aggregatorPath
+
   try {
     const { error } = await supabase.auth.signOut()
     if (error) {
@@ -285,6 +472,8 @@ async function logout() {
     }
   } catch (e) {
     console.error('Logout error:', e)
+  } finally {
+    await router.push(redirectPath)
   }
 }
 
@@ -330,4 +519,34 @@ function onCityChange() {
   router.push(`/${selectedCitySlug.value}/${tenantSlug}`)
 }
 </script>
+
+<style scoped>
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+}
+
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.22s ease;
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+.modal-fade-enter-active .modal-panel,
+.modal-fade-leave-active .modal-panel {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.modal-fade-enter-from .modal-panel,
+.modal-fade-leave-to .modal-panel {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+</style>
 

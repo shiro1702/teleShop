@@ -1,5 +1,4 @@
-import crypto from 'node:crypto'
-import { createError, defineEventHandler, getHeader, getQuery } from 'h3'
+import { createError, defineEventHandler, getQuery } from 'h3'
 import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
 import type { H3Event } from 'h3'
 import {
@@ -7,38 +6,11 @@ import {
   normalizeDashboardStatus,
   type TimelineEntry,
 } from '~/server/utils/dashboardOrders'
-
-type TelegramUser = {
-  id: number
-  first_name?: string
-  last_name?: string
-  username?: string
-}
-
-function validateInitData(initData: string, botToken: string): TelegramUser | null {
-  const params = new URLSearchParams(initData)
-  const hash = params.get('hash')
-  if (!hash) return null
-
-  params.delete('hash')
-  const dataCheckString = [...params.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
-    .join('\n')
-
-  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest()
-  const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
-
-  if (computedHash !== hash) return null
-
-  const userStr = params.get('user')
-  if (!userStr) return null
-  try {
-    return JSON.parse(decodeURIComponent(userStr)) as TelegramUser
-  } catch {
-    return null
-  }
-}
+import {
+  getMessengerInitDataFromEvent,
+  getMaxBotTokenForShop,
+  validateWebAppInitData,
+} from '~/server/utils/messengerInitData'
 
 export default defineEventHandler(async (event: H3Event) => {
   const config = useRuntimeConfig()
@@ -69,18 +41,38 @@ export default defineEventHandler(async (event: H3Event) => {
           : null
   }
 
-  // Try Telegram auth
-  const initDataHeader = getHeader(event, 'x-telegram-init-data')
+  const initData = getMessengerInitDataFromEvent(event)
   let telegramUserId: number | null = null
-  if (typeof initDataHeader === 'string' && initDataHeader.trim()) {
-      const botToken = tenant?.telegramBotToken || (config.botToken as string | undefined)
+  let maxProfileId: string | null = null
+
+  if (initData) {
+    const botToken = tenant?.telegramBotToken || (config.botToken as string | undefined)
     if (typeof botToken === 'string' && botToken.trim()) {
-      const tgUser = validateInitData(initDataHeader, botToken)
-      telegramUserId = tgUser?.id ?? null
+      const tgUser = validateWebAppInitData(initData, botToken)
+      if (tgUser) {
+        telegramUserId = tgUser.id
+      } else {
+        const tenantKeys = (tenant as { integrationKeys?: Record<string, unknown> } | undefined)?.integrationKeys
+        const maxTok = getMaxBotTokenForShop(tenantKeys, {
+          maxMiniAppBotToken: config.maxMiniAppBotToken as string | undefined,
+          maxApiToken: config.maxApiToken as string | undefined,
+        })
+        if (maxTok) {
+          const mx = validateWebAppInitData(initData, maxTok)
+          if (mx) {
+            const { data: prof } = await client
+              .from('profiles')
+              .select('id')
+              .eq('max_user_id', String(mx.id))
+              .maybeSingle()
+            if (prof?.id) maxProfileId = String(prof.id)
+          }
+        }
+      }
     }
   }
 
-  if (!profileUserId && !telegramUserId) {
+  if (!profileUserId && telegramUserId == null && !maxProfileId) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
@@ -107,6 +99,7 @@ export default defineEventHandler(async (event: H3Event) => {
 
   if (profileUserId) query = query.eq('customer_profile_id', profileUserId)
   else if (telegramUserId != null) query = query.eq('customer_telegram_id', telegramUserId)
+  else if (maxProfileId) query = query.eq('customer_profile_id', maxProfileId)
 
   const { data, error } = await query.maybeSingle()
   if (error) {

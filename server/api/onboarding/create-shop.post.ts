@@ -100,6 +100,18 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  const memberInsert = await client
+    .from('shop_members')
+    .upsert(
+      { shop_id: shopData.id, user_id: userId, role: 'owner' },
+      { onConflict: 'shop_id,user_id' },
+    )
+
+  // Keep compatibility with DBs where shop_members isn't created yet.
+  if (memberInsert.error && !/relation .*shop_members.* does not exist/i.test(memberInsert.error.message)) {
+    throw createError({ statusCode: 500, statusMessage: 'Failed to attach shop member' })
+  }
+
   return {
     ok: true,
     shopId: shopData.id as string,

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
@@ -9,6 +10,8 @@ import {
   type TimelineEntry,
 } from '~/server/utils/dashboardOrders'
 import { dashboardOrderStatusLabels } from '~/utils/dashboardOrderStatus'
+import { dispatchNotificationEvent } from '~/server/utils/notifications'
+import { accrueLoyaltyEarnForPaidOrder } from '~/server/utils/pricingPromoBonus'
 
 type Body = {
   nextStatus?: string
@@ -55,7 +58,7 @@ export default defineEventHandler(async (event) => {
 
   const { data: existing, error: loadError } = await client
     .from('orders')
-    .select('id,status,metadata,fulfillment_type')
+    .select('id,order_number,status,metadata,fulfillment_type,total,restaurant_id,city_id,customer_telegram_id,customer_profile_id')
     .eq('id', id)
     .eq('shop_id', access.shopId)
     .maybeSingle()
@@ -102,6 +105,47 @@ export default defineEventHandler(async (event) => {
     console.error('dashboard order status update:', updateError)
     throw createError({ statusCode: 500, statusMessage: 'Failed to update order' })
   }
+
+  if (nextStatus === 'handed_to_customer') {
+    await accrueLoyaltyEarnForPaidOrder(client, String((existing as any).id), access.shopId)
+  }
+
+  const customerProfileId = (existing as any)?.customer_profile_id ? String((existing as any).customer_profile_id) : ''
+  let customerMaxUserId: string | null = null
+  let customerMaxConversationId: string | null = null
+  if (customerProfileId) {
+    const { data: profile } = await client
+      .from('profiles')
+      .select('max_user_id,max_conversation_id')
+      .eq('id', customerProfileId)
+      .maybeSingle()
+    const rawUserId = (profile as any)?.max_user_id
+    const rawConversationId = (profile as any)?.max_conversation_id
+    customerMaxUserId = typeof rawUserId === 'string' && rawUserId.trim() ? rawUserId.trim() : null
+    customerMaxConversationId = typeof rawConversationId === 'string' && rawConversationId.trim() ? rawConversationId.trim() : null
+  }
+
+  await dispatchNotificationEvent(event, {
+    eventId: crypto.randomUUID(),
+    eventType: 'ORDER_STATUS_CHANGED',
+    occurredAt: now,
+    tenantContext: {
+      shopId: access.shopId,
+      restaurantId: String((existing as any).restaurant_id || ''),
+      cityId: (existing as any).city_id ? String((existing as any).city_id) : null,
+    },
+    orderContext: {
+      orderId: String((existing as any).id),
+      orderNumber: String((existing as any).order_number || (existing as any).id).slice(0, 32),
+      totalAmount: Number((existing as any).total || 0),
+      status: nextStatus,
+    },
+    actorContext: {
+      customerTelegramId: (existing as any).customer_telegram_id ?? null,
+      customerMaxUserId,
+      customerMaxConversationId,
+    },
+  })
 
   return { ok: true, status: nextStatus }
 })

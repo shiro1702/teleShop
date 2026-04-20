@@ -1,7 +1,10 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import type { DeliveryZoneFeature } from '~/utils/deliveryZones'
+import { useTelegram } from '~/composables/useTelegram'
+import { useTenantRestaurantsCache } from '~/composables/useTenantRestaurantsCache'
 
 export type FulfillmentType = 'delivery' | 'pickup' | 'qr-menu'
+export type DineInHallMode = 'qr-menu-browse' | 'to-table' | 'pickup-point'
 
 export type PickupPoint = {
   id: string
@@ -13,14 +16,19 @@ export type RestaurantItem = {
   id: string
   name: string
   address: string
+  lat?: number | null
+  lon?: number | null
   supports_delivery: boolean
   supports_pickup: boolean
   supports_qr_menu: boolean
+  effective_working_hours?: Record<string, any>
 }
 
 type RestaurantZoneApiItem = {
   id: string
   name: string
+  /** При запросе с all=1 приходит для группировки по филиалу. */
+  restaurant_id?: string
   polygon_geojson: {
     type?: 'Feature' | 'Polygon'
     geometry?: { type: 'Polygon'; coordinates: number[][][] }
@@ -29,6 +37,37 @@ type RestaurantZoneApiItem = {
   min_order_amount: number
   delivery_cost: number
   free_delivery_threshold: number
+  priority?: number | null
+}
+
+function mapRestaurantZonesFromApiItems(items: RestaurantZoneApiItem[]): DeliveryZoneFeature[] {
+  return items
+    .map((zone): DeliveryZoneFeature | null => {
+      const raw = zone.polygon_geojson
+      const geometry = raw?.type === 'Feature'
+        ? raw.geometry
+        : raw?.type === 'Polygon'
+          ? { type: 'Polygon' as const, coordinates: raw.coordinates ?? [] }
+          : raw?.geometry
+      if (!geometry || geometry.type !== 'Polygon' || !Array.isArray(geometry.coordinates)) return null
+
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: geometry.coordinates,
+        },
+        properties: {
+          slug: zone.id,
+          name: zone.name,
+          minOrderAmount: zone.min_order_amount,
+          deliveryCost: zone.delivery_cost,
+          freeDeliveryThreshold: zone.free_delivery_threshold,
+          priority: typeof zone.priority === 'number' && Number.isFinite(zone.priority) ? zone.priority : 0,
+        },
+      }
+    })
+    .filter((z): z is DeliveryZoneFeature => z !== null)
 }
 
 type UseCheckoutTenantRestaurantsParams = {
@@ -37,19 +76,71 @@ type UseCheckoutTenantRestaurantsParams = {
   fulfillmentTypesConfigRaw: string
   currentFulfillmentType: Ref<FulfillmentType>
   setDeliveryZones: (zones: DeliveryZoneFeature[]) => void
+  resolveFallbackFulfillmentType?: (ctx: {
+    allowed: FulfillmentType[]
+    current: FulfillmentType
+  }) => FulfillmentType | null
+  /** When true, next zone reload after branch change will not clear delivery zone / error (server resolve will refresh) */
+  skipNextDeliveryZoneReset?: Ref<boolean>
 }
 
 export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurantsParams) {
   const cartStore = useCartStore()
+  const { buildMessengerAuthHeaders, messengerInitData } = useTelegram()
   const selectedPickupPointId = ref<string>('')
+  function buildTenantHeaders(shopId: string | null): Record<string, string> | undefined {
+    const base: Record<string, string> = shopId ? { 'x-shop-id': shopId } : {}
+    const headers = buildMessengerAuthHeaders(base)
+    return Object.keys(headers).length ? headers : undefined
+  }
+
   const selectedRestaurantId = ref<string>('')
   const restaurants = ref<RestaurantItem[]>([])
   const restaurantsLoaded = ref(false)
   const restaurantZones = ref<DeliveryZoneFeature[]>([])
+  const allRestaurantZones = ref<Record<string, DeliveryZoneFeature[]>>({})
+  const organizationTimezone = ref<string>('Asia/Irkutsk')
+  const dineInHallMode = ref<DineInHallMode>('to-table')
+  const { loadRestaurants: loadTenantRestaurants } = useTenantRestaurantsCache<RestaurantItem>()
+
+  let lastRestaurantsLoadedKey: string | null = null
+  let restaurantsLoadInFlightKey: string | null = null
+  let restaurantsLoadInFlightPromise: Promise<void> | null = null
+
+  function getRestaurantsLoadKey(): string {
+    const shop = typeof params.shopIdFromRoute.value === 'string' ? params.shopIdFromRoute.value.trim() : ''
+    const init = messengerInitData.value ? '1' : '0'
+    return `${shop}\t${init}`
+  }
+
+  function applyRestaurantZonesUi(mapped: DeliveryZoneFeature[]) {
+    restaurantZones.value = mapped
+    params.setDeliveryZones(mapped)
+    if (params.skipNextDeliveryZoneReset?.value) {
+      params.skipNextDeliveryZoneReset.value = false
+    } else {
+      cartStore.setDeliveryZone(null)
+      if (params.currentFulfillmentType.value === 'delivery') {
+        cartStore.setDeliveryError('Укажите адрес доставки, чтобы рассчитать доставку')
+      }
+    }
+  }
 
   const selectedRestaurant = computed(() =>
     restaurants.value.find((r) => r.id === selectedRestaurantId.value) ?? null,
   )
+  const selectedRestaurantWorkingHours = computed(() =>
+    selectedRestaurant.value?.effective_working_hours ?? null,
+  )
+
+  function getRestaurantFulfillmentTypes(restaurant: RestaurantItem | null | undefined): FulfillmentType[] {
+    if (!restaurant) return []
+    const fromFlags: FulfillmentType[] = []
+    if (restaurant.supports_delivery) fromFlags.push('delivery')
+    if (restaurant.supports_pickup) fromFlags.push('pickup')
+    if (restaurant.supports_qr_menu) fromFlags.push('qr-menu')
+    return fromFlags
+  }
 
   const pickupPoints = computed<PickupPoint[]>(() => {
     if (selectedRestaurant.value) {
@@ -90,35 +181,16 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
   )
 
   const availableFulfillmentTypes = computed<FulfillmentType[]>(() => {
-    if (selectedRestaurant.value) {
-      const fromFlags: FulfillmentType[] = []
-      if (selectedRestaurant.value.supports_delivery) fromFlags.push('delivery')
-      if (selectedRestaurant.value.supports_pickup) fromFlags.push('pickup')
-      if (selectedRestaurant.value.supports_qr_menu) fromFlags.push('qr-menu')
-      // Важно: если у ресторана не включены delivery/pickup,
-      // не делаем fallback на глобальную конфигурацию.
-      return fromFlags
-    }
-
-    // Пока не загрузились рестораны (и, соответственно, не выбран ресторан),
-    // не показываем delivery/pickup из fallback runtime-конфигурации,
-    // иначе получится “неверный” UI до прихода данных.
+    // До загрузки филиалов не показываем способы получения, чтобы не мигал неверный UI.
     if (!restaurantsLoaded.value) return []
 
-    // После загрузки ресторанов — всё равно нет выбранного ресторана,
-    // поэтому delivery/pickup скрываем, чтобы не показывать неверные режимы.
-    return []
-
-    const parsed = params.fulfillmentTypesConfigRaw
-      .split(',')
-      .map((x) => x.trim().toLowerCase())
-      .filter((x): x is FulfillmentType => x === 'delivery' || x === 'pickup')
-
-    if (parsed.length) {
-      return Array.from(new Set(parsed))
+    const aggregated = new Set<FulfillmentType>()
+    for (const restaurant of restaurants.value) {
+      for (const type of getRestaurantFulfillmentTypes(restaurant)) {
+        aggregated.add(type)
+      }
     }
-
-    return ['delivery', 'pickup']
+    return Array.from(aggregated)
   })
 
   const hasDeliveryOption = computed(() =>
@@ -172,8 +244,14 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
         return
       }
 
+      const batch = allRestaurantZones.value
+      if (restaurantId in batch) {
+        applyRestaurantZonesUi(batch[restaurantId] ?? [])
+        return
+      }
+
       try {
-        const headers = params.shopIdFromRoute.value ? { 'x-shop-id': params.shopIdFromRoute.value } : undefined
+        const headers = buildTenantHeaders(params.shopIdFromRoute.value)
         const query: Record<string, string> = { restaurant_id: restaurantId }
         if (params.shopIdFromRoute.value) query.shop_id = params.shopIdFromRoute.value
         const res = await $fetch<{ ok: boolean; items: RestaurantZoneApiItem[] }>('/api/restaurant-zones', {
@@ -187,40 +265,12 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
           return
         }
 
-        const mapped: DeliveryZoneFeature[] = res.items
-          .map((zone): DeliveryZoneFeature | null => {
-            const raw = zone.polygon_geojson
-            const geometry = raw?.type === 'Feature'
-              ? raw.geometry
-              : raw?.type === 'Polygon'
-                ? { type: 'Polygon' as const, coordinates: raw.coordinates ?? [] }
-                : raw?.geometry
-            if (!geometry || geometry.type !== 'Polygon' || !Array.isArray(geometry.coordinates)) return null
-
-            return {
-              type: 'Feature',
-              geometry: {
-                type: 'Polygon',
-                coordinates: geometry.coordinates,
-              },
-              properties: {
-                slug: zone.id,
-                name: zone.name,
-                minOrderAmount: zone.min_order_amount,
-                deliveryCost: zone.delivery_cost,
-                freeDeliveryThreshold: zone.free_delivery_threshold,
-              },
-            }
-          })
-          .filter((z): z is DeliveryZoneFeature => z !== null)
-
-        restaurantZones.value = mapped
-        params.setDeliveryZones(mapped)
-        cartStore.setDeliveryZone(null)
-        if (params.currentFulfillmentType.value === 'delivery') {
-          cartStore.setDeliveryError('Укажите адрес доставки, чтобы рассчитать доставку')
-        }
+        const mapped = mapRestaurantZonesFromApiItems(res.items)
+        applyRestaurantZonesUi(mapped)
       } catch {
+        if (params.skipNextDeliveryZoneReset?.value) {
+          params.skipNextDeliveryZoneReset.value = false
+        }
         restaurantZones.value = []
         params.setDeliveryZones([])
         cartStore.setDeliveryZone(null)
@@ -244,28 +294,146 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
     (types) => {
       if (!types.length) return
       if (types.includes(params.currentFulfillmentType.value)) return
-      params.currentFulfillmentType.value = types[0]
+      const resolved = params.resolveFallbackFulfillmentType?.({
+        allowed: types,
+        current: params.currentFulfillmentType.value,
+      })
+      params.currentFulfillmentType.value = resolved && types.includes(resolved)
+        ? resolved
+        : types[0]
     },
     { immediate: true },
   )
 
-  async function loadRestaurants() {
+  watch(
+    [() => params.currentFulfillmentType.value, restaurants],
+    ([type, items]) => {
+      if (!items.length) return
+      const current = items.find((restaurant) => restaurant.id === selectedRestaurantId.value) ?? null
+      if (getRestaurantFulfillmentTypes(current).includes(type)) return
+      const firstMatching = items.find((restaurant) => getRestaurantFulfillmentTypes(restaurant).includes(type)) ?? null
+      if (firstMatching) {
+        selectedRestaurantId.value = firstMatching.id
+      }
+    },
+    { immediate: true, deep: true },
+  )
+
+  async function loadRestaurants(options?: { force?: boolean }) {
+    const loadKey = getRestaurantsLoadKey()
+
+    if (
+      !options?.force
+      && loadKey === lastRestaurantsLoadedKey
+      && restaurantsLoaded.value
+    ) {
+      return
+    }
+
+    if (!options?.force && restaurantsLoadInFlightPromise && restaurantsLoadInFlightKey === loadKey) {
+      await restaurantsLoadInFlightPromise
+      return
+    }
+
+    const run = async () => {
+      try {
+        const res = await loadTenantRestaurants({
+          shopId: params.shopIdFromRoute.value,
+          force: options?.force,
+        })
+        if (res?.ok && Array.isArray(res.items)) {
+          await loadAllRestaurantZones(res.items)
+          restaurants.value = res.items
+          lastRestaurantsLoadedKey = loadKey
+          if (typeof res.organizationTimezone === 'string' && res.organizationTimezone.trim()) {
+            organizationTimezone.value = res.organizationTimezone
+          }
+          if (
+            res.dineInHallMode === 'qr-menu-browse'
+            || res.dineInHallMode === 'to-table'
+            || res.dineInHallMode === 'pickup-point'
+          ) {
+            dineInHallMode.value = res.dineInHallMode
+          }
+        }
+      } catch {
+        // keep fallback behavior for local/dev
+      } finally {
+        restaurantsLoaded.value = true
+      }
+    }
+
+    const p = run()
+    restaurantsLoadInFlightKey = loadKey
+    restaurantsLoadInFlightPromise = p
+    void p.finally(() => {
+      if (restaurantsLoadInFlightKey === loadKey) {
+        restaurantsLoadInFlightKey = null
+        restaurantsLoadInFlightPromise = null
+      }
+    })
+    await p
+  }
+
+  async function loadAllRestaurantZones(items: RestaurantItem[]) {
+    const headers = buildTenantHeaders(params.shopIdFromRoute.value)
+    const result: Record<string, DeliveryZoneFeature[]> = {}
+    for (const r of items) {
+      result[r.id] = []
+    }
+
+    const deliveryBranches = items.filter(r => r.supports_delivery)
+    if (deliveryBranches.length === 0) {
+      allRestaurantZones.value = result
+      return
+    }
+
+    let bulkOk = false
     try {
-      const headers = params.shopIdFromRoute.value ? { 'x-shop-id': params.shopIdFromRoute.value } : undefined
-      const query = params.shopIdFromRoute.value ? { shop_id: params.shopIdFromRoute.value } : undefined
-      const res = await $fetch<{ ok: boolean; items: RestaurantItem[] }>('/api/restaurants', {
+      const query: Record<string, string> = { all: '1' }
+      if (params.shopIdFromRoute.value) query.shop_id = params.shopIdFromRoute.value
+      const res = await $fetch<{ ok: boolean; items: RestaurantZoneApiItem[] }>('/api/restaurant-zones', {
         headers,
         query,
       })
+
       if (res?.ok && Array.isArray(res.items)) {
-        restaurants.value = res.items
+        const byRestaurant = new Map<string, RestaurantZoneApiItem[]>()
+        for (const row of res.items) {
+          const rid = typeof row.restaurant_id === 'string' ? row.restaurant_id.trim() : ''
+          if (!rid) continue
+          const list = byRestaurant.get(rid) ?? []
+          list.push(row)
+          byRestaurant.set(rid, list)
+        }
+        for (const restaurant of deliveryBranches) {
+          result[restaurant.id] = mapRestaurantZonesFromApiItems(byRestaurant.get(restaurant.id) ?? [])
+        }
+        bulkOk = true
       }
     } catch {
-      // keep fallback behavior for local/dev
+      bulkOk = false
     }
-    finally {
-      restaurantsLoaded.value = true
+
+    if (!bulkOk) {
+      await Promise.all(deliveryBranches.map(async (restaurant) => {
+        try {
+          const query: Record<string, string> = { restaurant_id: restaurant.id }
+          if (params.shopIdFromRoute.value) query.shop_id = params.shopIdFromRoute.value
+          const res = await $fetch<{ ok: boolean; items: RestaurantZoneApiItem[] }>('/api/restaurant-zones', {
+            headers,
+            query,
+          })
+          result[restaurant.id] = Array.isArray(res?.items)
+            ? mapRestaurantZonesFromApiItems(res.items)
+            : []
+        } catch {
+          result[restaurant.id] = []
+        }
+      }))
     }
+
+    allRestaurantZones.value = result
   }
 
   return {
@@ -273,13 +441,19 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
     selectedRestaurantId,
     selectedPickupPoint,
     restaurants,
+    restaurantsLoaded,
     restaurantZones,
+    allRestaurantZones,
     pickupPoints,
+    organizationTimezone,
+    dineInHallMode,
+    selectedRestaurantWorkingHours,
     availableFulfillmentTypes,
     hasDeliveryOption,
     hasPickupOption,
     hasQrMenuOption,
     pickupIntroText,
+    getRestaurantFulfillmentTypes,
     loadRestaurants,
   }
 }

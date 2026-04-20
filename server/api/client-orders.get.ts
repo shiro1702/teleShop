@@ -1,6 +1,7 @@
 import { createError, defineEventHandler } from 'h3'
-import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
+import { serverSupabaseServiceRole } from '#supabase/server'
 import { normalizeDashboardStatus, type DashboardOrderStatus } from '~/utils/dashboardOrderStatus'
+import { resolveCustomerProfileId } from '~/server/utils/customerProfile'
 
 type OrderRow = {
   id: string
@@ -16,20 +17,27 @@ type OrderRow = {
   created_at: string
 }
 
+type ClientOrderItemPreview = {
+  name: string
+  quantity: number
+}
+
 export default defineEventHandler(async (event) => {
-  const supabaseUser = await serverSupabaseUser(event)
-  if (!supabaseUser) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  const config = useRuntimeConfig()
+  const tenant = event.context?.tenant as { telegramBotToken?: string } | undefined
+  const botToken =
+    typeof tenant?.telegramBotToken === 'string' && tenant.telegramBotToken.trim()
+      ? tenant.telegramBotToken.trim()
+      : String(config.botToken || '')
+
+  if (!botToken) {
+    throw createError({ statusCode: 500, statusMessage: 'Bot token missing' })
   }
 
-  const rawUser = supabaseUser as any
-  const userId = typeof rawUser.id === 'string'
-    ? rawUser.id
-    : typeof rawUser.sub === 'string'
-      ? rawUser.sub
-      : null
-
-  if (!userId) {
+  let profileId: string
+  try {
+    profileId = await resolveCustomerProfileId(event, botToken)
+  } catch {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
@@ -38,7 +46,7 @@ export default defineEventHandler(async (event) => {
   const { data: ordersData, error: ordersError } = await client
     .from('orders')
     .select('id,shop_id,restaurant_id,status,fulfillment_type,payment_method,subtotal,delivery_cost,total,items,created_at')
-    .eq('customer_profile_id', userId)
+    .eq('customer_profile_id', profileId)
     .order('created_at', { ascending: false })
     .limit(200)
 
@@ -80,6 +88,12 @@ export default defineEventHandler(async (event) => {
     const status = normalizeDashboardStatus(row.status)
     const safeItems = Array.isArray(row.items) ? row.items : []
     const itemsCount = safeItems.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0)
+    const itemsPreview: ClientOrderItemPreview[] = safeItems
+      .slice(0, 5)
+      .map((item) => ({
+        name: typeof item?.name === 'string' && item.name.trim() ? item.name.trim() : 'Позиция',
+        quantity: Number(item?.quantity) > 0 ? Number(item.quantity) : 1,
+      }))
     const title = restaurantsMap.get(row.restaurant_id || '') || shopsMap.get(row.shop_id) || 'Ресторан'
 
     return {
@@ -95,6 +109,7 @@ export default defineEventHandler(async (event) => {
       deliveryCost: row.delivery_cost || 0,
       total: row.total || 0,
       itemsCount,
+      itemsPreview,
       createdAt: row.created_at,
     }
   })

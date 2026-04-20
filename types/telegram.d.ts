@@ -18,6 +18,10 @@ declare global {
         }
         showAlert: (message: string) => void
         close: () => void
+        CloudStorage?: {
+          setItem: (key: string, value: string, callback?: () => void) => void
+          getItem: (key: string, callback: (err: unknown, value: string | null) => void) => void
+        }
       }
     }
   }
