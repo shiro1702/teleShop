@@ -2279,6 +2279,7 @@ function goToStep(step: 1 | 2) {
 watch(
   () => [route.fullPath, cartStore.items.length] as const,
   () => {
+    if (isPlacing.value) return
     const next = deriveEffectiveStep()
     if (next !== state.currentStep) {
       stepDirection.value = next > state.currentStep ? 'forward' : 'backward'
