@@ -342,6 +342,22 @@
                   />
                 </div>
               </div>
+              <p v-if="upsellError" class="text-xs text-amber-700">
+                {{ upsellError }}
+              </p>
+              <p v-else-if="isUpsellLoading && !upsellItems.length" class="text-xs" :style="{ color: mutedTextColor }">
+                Подбираем рекомендации...
+              </p>
+              <CartUpsellStrip
+                v-if="upsellItems.length > 0"
+                :items="upsellItems"
+                :loading-item-ids="upsellAddingItemIds"
+                :remaining-rub="upsellRemainingRub"
+                :border-color="borderColor"
+                :main-text-color="mainTextColor"
+                :muted-text-color="mutedTextColor"
+                @add="onUpsellAdd"
+              />
               <button
                 type="button"
                 class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
@@ -1094,6 +1110,7 @@ import {
 import { useWorkingHoursStatus } from '~/composables/useWorkingHoursStatus'
 import type { Product, ModifierGroup, ModifierOption } from '~/data/products'
 import type { CartItem, SelectedModifier, SelectedParameter } from '~/stores/cart'
+import CartUpsellStrip from '~/components/checkout/CartUpsellStrip.vue'
 
 const cartStore = useCartStore()
 const route = useRoute()
@@ -1210,6 +1227,21 @@ const isPromoApplyLoading = ref(false)
 const isPromoPreviewLoading = ref(false)
 let promoPreviewSeq = 0
 let promoPreviewTimer: ReturnType<typeof setTimeout> | null = null
+type UpsellItem = {
+  id: string
+  name: string
+  price: number
+  image: string
+  category: string
+}
+const upsellItems = ref<UpsellItem[]>([])
+const upsellError = ref('')
+const isUpsellLoading = ref(false)
+const upsellAddingItemIds = ref<string[]>([])
+let upsellRequestSeq = 0
+let upsellTimer: ReturnType<typeof setTimeout> | null = null
+let upsellInFlightSignature: string | null = null
+let upsellLastLoadedSignature: string | null = null
 
 const changeFrom = ref<string>('')
 const showClearCartModal = ref(false)
@@ -1928,6 +1960,107 @@ const deliveryProgress = computed(() => {
   }
 })
 
+const upsellRemainingRub = computed(() => {
+  const remaining = deliveryProgress.value?.remaining
+  if (typeof remaining !== 'number' || !Number.isFinite(remaining) || remaining <= 0) return null
+  return Math.floor(remaining)
+})
+const upsellRestaurantId = computed(() =>
+  selectedRestaurantId.value
+  || selectedPickupPointId.value
+  || restaurants.value[0]?.id
+  || '',
+)
+
+async function runUpsellRecommendations() {
+  const signature = upsellRequestSignature.value
+  if (signature && (signature === upsellInFlightSignature || signature === upsellLastLoadedSignature)) {
+    return
+  }
+  const requestSeq = ++upsellRequestSeq
+  upsellError.value = ''
+  if (!cartStore.items.length) {
+    upsellItems.value = []
+    isUpsellLoading.value = false
+    upsellLastLoadedSignature = null
+    upsellInFlightSignature = null
+    return
+  }
+  if (!upsellRestaurantId.value) {
+    isUpsellLoading.value = false
+    return
+  }
+
+  isUpsellLoading.value = true
+  upsellInFlightSignature = signature
+  try {
+    const res = await $fetch<{
+      ok: boolean
+      error?: string
+      items?: Array<{
+        id: string
+        name: string
+        price: number
+        image?: string
+        category?: string
+      }>
+    }>('/api/cart/recommendations', {
+      method: 'POST',
+      headers: checkoutXShopIdHeaders(),
+      body: {
+        restaurantId: upsellRestaurantId.value,
+        fulfillmentType: state.fulfillmentType,
+        cartProductIds: cartStore.items.map((item) => item.id),
+        remainingToFreeDeliveryRub: upsellRemainingRub.value,
+        limit: 6,
+      },
+    })
+
+    if (requestSeq !== upsellRequestSeq) return
+    if (!res?.ok) {
+      upsellError.value = res?.error || 'Не удалось загрузить рекомендации'
+      return
+    }
+
+    upsellItems.value = (res.items ?? []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      image: item.image || '',
+      category: item.category || 'Без категории',
+    }))
+    upsellLastLoadedSignature = signature
+  } catch (error: any) {
+    if (requestSeq !== upsellRequestSeq) return
+    upsellError.value = error?.data?.statusMessage || error?.message || 'Не удалось загрузить рекомендации'
+  } finally {
+    if (requestSeq === upsellRequestSeq) {
+      upsellInFlightSignature = null
+    }
+    if (requestSeq === upsellRequestSeq) {
+      isUpsellLoading.value = false
+    }
+  }
+}
+
+async function onUpsellAdd(item: UpsellItem) {
+  if (upsellAddingItemIds.value.includes(item.id)) return
+  upsellAddingItemIds.value = [...upsellAddingItemIds.value, item.id]
+  const product: Product = {
+    id: item.id,
+    name: item.name,
+    price: item.price,
+    image: item.image,
+    category: item.category,
+  }
+  try {
+    await Promise.resolve(cartStore.addItem(product, 1, [], []))
+    pushPromoToast('success', `«${item.name}» добавлен в корзину`)
+  } finally {
+    upsellAddingItemIds.value = upsellAddingItemIds.value.filter((id) => id !== item.id)
+  }
+}
+
 async function runPromoApply() {
   promoError.value = ''
   promoSuccess.value = ''
@@ -2172,6 +2305,25 @@ watch(promoPreviewWatchSignature, () => {
   promoPreviewTimer = setTimeout(() => {
     void runPromoPreview()
   }, 450)
+}, { immediate: true })
+
+const upsellRequestSignature = computed(() => JSON.stringify({
+  items: cartStore.items.map((item) => item.id).sort(),
+  restaurantId: upsellRestaurantId.value || '',
+  fulfillmentType: state.fulfillmentType,
+}))
+
+const upsellWatchSignature = computed(() => JSON.stringify({
+  request: upsellRequestSignature.value,
+  remaining: upsellRemainingRub.value ?? null,
+  shopId: checkoutXShopId.value || '',
+}))
+
+watch(upsellWatchSignature, () => {
+  if (upsellTimer) clearTimeout(upsellTimer)
+  upsellTimer = setTimeout(() => {
+    void runUpsellRecommendations()
+  }, 400)
 }, { immediate: true })
 
 const step1NextButtonLabel = computed(() =>
@@ -2604,6 +2756,10 @@ onBeforeUnmount(() => {
   if (promoPreviewTimer) {
     clearTimeout(promoPreviewTimer)
     promoPreviewTimer = null
+  }
+  if (upsellTimer) {
+    clearTimeout(upsellTimer)
+    upsellTimer = null
   }
   cleanupInlineNavObservers?.()
   cleanupInlineNavObservers = null
