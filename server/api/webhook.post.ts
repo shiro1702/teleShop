@@ -74,6 +74,15 @@ type ChatLinkTokenRow = {
   used_at: string | null
 }
 
+function formatOrderRef(orderNumber: unknown, fallbackOrderId: string): string {
+  const raw = typeof orderNumber === 'string' && orderNumber.trim()
+    ? orderNumber.trim()
+    : fallbackOrderId.trim()
+  const normalized = raw.replace(/\s+/g, '')
+  const short = normalized.length > 8 ? normalized.slice(0, 8) : normalized
+  return `#${short || '—'}`
+}
+
 function parseCallbackData(
   data: string,
 ): { kind: CallbackKind; status: 'work' | 'courier' | 'done'; userId: string | null; orderId: string } | null {
@@ -115,20 +124,20 @@ function parseBindToken(text: string): string | null {
   return null
 }
 
-const CLIENT_MESSAGES: Record<'work' | 'courier' | 'done', (orderId: string) => string> = {
-  work: (orderId) =>
-    `👨‍🍳 Ваш заказ #${orderId} принят в работу. Кухня уже готовит ваш заказ.`,
-  courier: (orderId) =>
-    `🚚 Ваш заказ #${orderId} передан курьеру и уже в пути.`,
-  done: (orderId) =>
-    `✅ Ваш заказ #${orderId} доставлен. Спасибо, что выбрали нас! Приятного аппетита 🥘🍣🍜`,
+const CLIENT_MESSAGES: Record<'work' | 'courier' | 'done', (orderRef: string) => string> = {
+  work: (orderRef) =>
+    `👨‍🍳 Ваш заказ ${orderRef} принят в работу. Кухня уже готовит ваш заказ.`,
+  courier: (orderRef) =>
+    `🚚 Ваш заказ ${orderRef} передан курьеру и уже в пути.`,
+  done: (orderRef) =>
+    `✅ Ваш заказ ${orderRef} доставлен. Спасибо, что выбрали нас! Приятного аппетита 🥘🍣🍜`,
 }
 
-const CLIENT_DELAY_MESSAGES: Record<Exclude<'work' | 'courier' | 'done', 'done'>, (orderId: string) => string> = {
-  work: (orderId) =>
-    `⏱ Небольшая задержка по заказу #${orderId}: кухня готовит ваше блюдо чуть дольше обычного. Спасибо за ожидание 👨‍🍳👩‍🍳`,
-  courier: (orderId) =>
-    `⏱ Небольшая задержка по доставке заказа #${orderId}: курьер уже в пути, но может приехать чуть позже. Спасибо за терпение 🚚🚛📦`,
+const CLIENT_DELAY_MESSAGES: Record<Exclude<'work' | 'courier' | 'done', 'done'>, (orderRef: string) => string> = {
+  work: (orderRef) =>
+    `⏱ Небольшая задержка по заказу ${orderRef}: кухня готовит ваше блюдо чуть дольше обычного. Спасибо за ожидание 👨‍🍳👩‍🍳`,
+  courier: (orderRef) =>
+    `⏱ Небольшая задержка по доставке заказа ${orderRef}: курьер уже в пути, но может приехать чуть позже. Спасибо за терпение 🚚🚛📦`,
 }
 
 function withStatusLine(baseText: string, statusLabel: string): string {
@@ -650,7 +659,7 @@ export default defineEventHandler(async (event) => {
       chat_id: managerChatId,
       text: [
         '⚠️ Клиент сообщил о задержке',
-        `📦 Заказ #${String((order as any).order_number || orderId)}`,
+        `📦 Заказ ${formatOrderRef((order as any).order_number, orderId)}`,
         `🏪 Филиал: ${String((branch as any)?.name || '—')}`,
         `👤 Клиент: id:${query.from.id}`,
       ].join('\n'),
@@ -703,6 +712,7 @@ export default defineEventHandler(async (event) => {
     })
     return { ok: true }
   }
+  const orderRef = formatOrderRef((orderDetails as any)?.order_number, orderId)
 
   const customerProfileId = (orderDetails as any)?.customer_profile_id ? String((orderDetails as any).customer_profile_id) : ''
   let maxUserId: string | null = null
@@ -739,7 +749,7 @@ export default defineEventHandler(async (event) => {
 
   if (kind === 'delay') {
     const baseStatus: 'work' | 'courier' = status === 'courier' ? 'courier' : 'work'
-    const clientDelayText = CLIENT_DELAY_MESSAGES[baseStatus]?.(orderId)
+    const clientDelayText = CLIENT_DELAY_MESSAGES[baseStatus]?.(orderRef)
     if (clientDelayText) {
       if (customerTelegramId) {
         await telegram(botToken, 'sendMessage', {
@@ -765,7 +775,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // kind === 'status'
-  const clientText = CLIENT_MESSAGES[status]?.(orderId)
+  const clientText = CLIENT_MESSAGES[status]?.(orderRef)
   if (clientText) {
     if (customerTelegramId) {
       await telegram(botToken, 'sendMessage', {
@@ -779,7 +789,7 @@ export default defineEventHandler(async (event) => {
     if ((maxUserId || maxConversationId) && maxApiBaseUrl && maxApiToken) {
       const maxButtons: Array<Array<Record<string, string>>> = []
       if (status !== 'done' && maxBotUrl) {
-        const maxDelayUrl = `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(`orderdelay_${orderId}`)}`
+        const maxDelayUrl = `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(`orderdelay_${orderId}`)}`
         maxButtons.push([{ type: 'link', text: 'Сообщить о задержке', url: maxDelayUrl }])
       }
       await sendMaxMessage(maxApiBaseUrl, maxApiToken, {

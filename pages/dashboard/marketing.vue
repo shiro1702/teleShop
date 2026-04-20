@@ -142,6 +142,13 @@
           <input v-model.number="loyalty.max_order_percent_payable_with_bonus" type="number" min="0" max="100" class="mt-1 w-full rounded border px-2 py-1.5">
         </label>
         <label class="flex items-center gap-2 text-sm sm:col-span-2">
+          <input v-model="loyalty.allow_simultaneous_bonus_spend_and_earn" type="checkbox">
+          Разрешить одновременно списывать и начислять бонусы в одном заказе
+        </label>
+        <p class="text-xs text-gray-500 sm:col-span-2">
+          По умолчанию в заказе работает только один сценарий: либо списание, либо начисление.
+        </p>
+        <label class="flex items-center gap-2 text-sm sm:col-span-2">
           <input v-model="loyalty.expiry_enabled" type="checkbox">
           Сгорание при неактивности (настройка; авто-списание — позже)
         </label>
@@ -207,6 +214,7 @@ const form = reactive({
 
 const loyalty = reactive({
   bonuses_enabled: true,
+  allow_simultaneous_bonus_spend_and_earn: false,
   earn_percent_of_subtotal: 5,
   max_order_percent_payable_with_bonus: 25,
   expiry_enabled: false,
@@ -227,6 +235,7 @@ async function loadLoyalty() {
   const s = res.settings
   if (!s) return
   loyalty.bonuses_enabled = s.bonuses_enabled !== false
+  loyalty.allow_simultaneous_bonus_spend_and_earn = s.allow_simultaneous_bonus_spend_and_earn === true
   loyalty.earn_percent_of_subtotal = s.earn_percent_of_subtotal ?? 5
   loyalty.max_order_percent_payable_with_bonus = s.max_order_percent_payable_with_bonus ?? 25
   loyalty.expiry_enabled = !!s.expiry_enabled

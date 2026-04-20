@@ -62,7 +62,7 @@ export default defineEventHandler(async (event) => {
   const botName = String((config.public as any).telegramBotName || '').trim()
   const maxBotUrl = String((config.public as any).maxBotUrl || '').trim()
   const deepLink = channel === 'max'
-    ? (maxBotUrl ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(token)}` : '')
+    ? (maxBotUrl ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(token)}` : '')
     : (botName ? `https://t.me/${botName}?startapp=${encodeURIComponent(token)}` : '')
 
   return {

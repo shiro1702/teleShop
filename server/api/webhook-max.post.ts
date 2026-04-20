@@ -26,6 +26,27 @@ type MaxUpdate = {
   message?: MaxMessage
 }
 
+function formatOrderRef(orderNumber: unknown, fallbackOrderId: string): string {
+  const raw = typeof orderNumber === 'string' && orderNumber.trim() ? orderNumber.trim() : fallbackOrderId.trim()
+  const normalized = raw.replace(/\s+/g, '')
+  const short = normalized.length > 8 ? normalized.slice(0, 8) : normalized
+  return `#${short || '—'}`
+}
+
+function extractStartPayload(update: MaxUpdate): string {
+  const direct = typeof update.payload === 'string' && update.payload.trim()
+    ? update.payload.trim()
+    : typeof update.start_payload === 'string' && update.start_payload.trim()
+      ? update.start_payload.trim()
+      : ''
+  if (direct) return direct
+
+  const text = typeof update.message?.body?.text === 'string' ? update.message.body.text.trim() : ''
+  if (!text) return ''
+  const match = /^\/start(?:@\S+)?\s+(.+)$/i.exec(text)
+  return match?.[1]?.trim() || ''
+}
+
 function parseNumericId(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string' && value.trim()) {
@@ -241,6 +262,30 @@ async function sendMaxDmPlain(options: {
   }
 }
 
+async function sendMaxToConversation(options: {
+  baseUrl: string
+  token: string
+  conversationId: string
+  text: string
+}): Promise<void> {
+  const base = options.baseUrl.replace(/\/$/, '')
+  const res = await fetch(`${base}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: options.token,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      conversationId: options.conversationId,
+      text: options.text,
+    }),
+  })
+  if (!res.ok) {
+    const bodyText = await res.text()
+    throw new Error(`max_send_conversation_failed:${res.status}:${bodyText}`)
+  }
+}
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const secret = typeof config.maxWebhookSecret === 'string' ? config.maxWebhookSecret.trim() : ''
@@ -277,6 +322,116 @@ export default defineEventHandler(async (event) => {
   }
 
   const actorUserId = extractMaxActorUserId(body)
+  const startPayload = extractStartPayload(body)
+
+  if (actorUserId != null && startPayload.startsWith('orderdelay_')) {
+    const orderId = startPayload.slice('orderdelay_'.length).trim()
+    if (!orderId) return { ok: true }
+
+    const supabaseDelay = await serverSupabaseServiceRole(event)
+    const signalKey = `max_client_delay_signal:${orderId}:${actorUserId}`
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    const { data: existingSignal } = await supabaseDelay
+      .from('notification_events')
+      .select('id,updated_at')
+      .eq('notification_key', signalKey)
+      .gte('updated_at', fiveMinutesAgo)
+      .maybeSingle()
+
+    if (existingSignal?.id) {
+      await sendMaxDmPlain({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        userId: actorUserId,
+        text: 'Сигнал уже отправлен недавно. Повторите чуть позже.',
+      }).catch((e) => console.error('webhook-max: delay duplicate ack failed:', e))
+      return { ok: true }
+    }
+
+    const { data: order } = await supabaseDelay
+      .from('orders')
+      .select('id,order_number,shop_id,restaurant_id')
+      .eq('id', orderId)
+      .maybeSingle()
+    if (!order) {
+      await sendMaxDmPlain({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        userId: actorUserId,
+        text: 'Заказ не найден.',
+      }).catch((e) => console.error('webhook-max: delay order not found ack failed:', e))
+      return { ok: true }
+    }
+
+    const { data: branch } = await supabaseDelay
+      .from('restaurants')
+      .select('name,manager_group_chat_id,manager_max_chat_id')
+      .eq('id', (order as any).restaurant_id)
+      .maybeSingle()
+    const { data: shop } = await supabaseDelay
+      .from('shops')
+      .select('telegram_bot_token')
+      .eq('id', (order as any).shop_id)
+      .maybeSingle()
+
+    const managerTgChatId = typeof (branch as any)?.manager_group_chat_id === 'string'
+      ? String((branch as any).manager_group_chat_id).trim()
+      : ''
+    const managerMaxChatId = typeof (branch as any)?.manager_max_chat_id === 'string'
+      ? String((branch as any).manager_max_chat_id).trim()
+      : ''
+    const telegramBotToken = typeof (shop as any)?.telegram_bot_token === 'string'
+      ? String((shop as any).telegram_bot_token).trim()
+      : ''
+
+    const managerText = [
+      '⚠️ Клиент сообщил о задержке',
+      `📦 Заказ ${formatOrderRef((order as any)?.order_number, orderId)}`,
+      `🏪 Филиал: ${String((branch as any)?.name || '—')}`,
+      `👤 Клиент MAX: id:${actorUserId}`,
+    ].join('\n')
+
+    if (managerTgChatId && telegramBotToken) {
+      await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: managerTgChatId,
+          text: managerText,
+        }),
+      }).catch((e) => console.error('webhook-max: delay notify manager telegram failed:', e))
+    }
+    if (managerMaxChatId) {
+      await sendMaxToConversation({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        conversationId: managerMaxChatId,
+        text: managerText,
+      }).catch((e) => console.error('webhook-max: delay notify manager max failed:', e))
+    }
+
+    await supabaseDelay.from('notification_events').upsert({
+      notification_key: signalKey,
+      event_type: 'ORDER_STATUS_CHANGED',
+      channel: 'max',
+      shop_id: (order as any).shop_id,
+      restaurant_id: (order as any).restaurant_id,
+      conversation_id: managerMaxChatId || managerTgChatId || null,
+      delivery_status: 'sent',
+      attempt_count: 1,
+      payload: { orderId, fromMaxUserId: actorUserId, source: 'client_delay_signal_max' },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'notification_key' })
+
+    await sendMaxDmPlain({
+      baseUrl: maxBaseUrl,
+      token: maxToken,
+      userId: actorUserId,
+      text: 'Сигнал отправлен менеджеру ресторана.',
+    }).catch((e) => console.error('webhook-max: delay ack failed:', e))
+
+    return { ok: true }
+  }
 
   /** Ответ только контактом (без текста link_) — сохраняем телефон в bridge_payload активного токена. */
   if (updateType === 'message_created' && actorUserId != null) {

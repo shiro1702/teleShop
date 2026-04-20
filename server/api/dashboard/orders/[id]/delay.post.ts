@@ -20,6 +20,11 @@ function delayText(orderNumber: string, kind: 'kitchen' | 'delivery') {
   return `⏱ Небольшая задержка по заказу #${orderNumber}: кухня готовит ваше блюдо чуть дольше обычного. Спасибо за ожидание.`
 }
 
+function shortOrderRef(orderNumber: string): string {
+  const normalized = orderNumber.replace(/\s+/g, '')
+  return normalized.length > 8 ? normalized.slice(0, 8) : normalized
+}
+
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
   const id = getRouterParam(event, 'id')
@@ -54,7 +59,7 @@ export default defineEventHandler(async (event) => {
   const botToken = tokenFromShop && tokenFromShop !== 'platform-bot' ? tokenFromShop : String(config.botToken || '')
   if (!botToken) throw createError({ statusCode: 500, statusMessage: 'Telegram bot token is not configured' })
 
-  const orderNumber = (order.order_number && String(order.order_number).trim()) || String(order.id)
+  const orderNumber = shortOrderRef((order.order_number && String(order.order_number).trim()) || String(order.id))
   const text = delayText(orderNumber, kind)
   const telegramRes = await fetch(telegramApi(botToken), {
     method: 'POST',

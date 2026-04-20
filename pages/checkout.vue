@@ -237,7 +237,14 @@
                       @commit="onBonusSliderCommit"
                     />
                   </template>
-                  <p v-else class="text-xs" :style="{ color: mutedTextColor }">
+                  <p
+                    v-if="hasSpendableBonuses && bonusEarnBlockedBySpend"
+                    class="mt-2 text-xs"
+                    :style="{ color: mutedTextColor }"
+                  >
+                    При списании бонусов в этом ресторане начисление по заказу отключено.
+                  </p>
+                  <p v-if="!hasSpendableBonuses" class="text-xs" :style="{ color: mutedTextColor }">
                     Бонусов для списания нет.
                   </p>
                 </div>
@@ -1183,6 +1190,8 @@ const promoPreview = ref<{
   ok?: boolean
   error?: string
   bonusesEnabled?: boolean
+  allowSimultaneousBonusSpendAndEarn?: boolean
+  bonusEarnBlockedBySpend?: boolean
   loyaltyEarnPercent?: number
   bonusEarnEstimate?: number
   subtotalAfterPromo?: number
@@ -1872,6 +1881,9 @@ const bonusEarnEstimate = computed(() => {
   const estimate = promoPreview.value.bonusEarnEstimate
   return typeof estimate === 'number' && Number.isFinite(estimate) ? Math.max(0, Math.floor(estimate)) : 0
 })
+const bonusEarnBlockedBySpend = computed(() =>
+  promoPreview.value?.ok === true && promoPreview.value?.bonusEarnBlockedBySpend === true,
+)
 const loyaltyEarnPercent = computed(() => {
   if (!promoPreview.value?.ok) return 0
   const pct = promoPreview.value.loyaltyEarnPercent
@@ -1993,6 +2005,8 @@ async function runPromoPreview() {
       ok: boolean
       error?: string
       bonusesEnabled?: boolean
+      allowSimultaneousBonusSpendAndEarn?: boolean
+      bonusEarnBlockedBySpend?: boolean
       loyaltyEarnPercent?: number
       bonusEarnEstimate?: number
       subtotalAfterPromo?: number

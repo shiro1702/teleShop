@@ -69,6 +69,19 @@ function getStatusLabel(status: string): string {
   return statusDictionary[normalized] ?? normalized
 }
 
+function formatOrderRef(orderNumber: string | null | undefined, orderId?: string): string {
+  const raw = typeof orderNumber === 'string' && orderNumber.trim()
+    ? orderNumber.trim()
+    : typeof orderId === 'string' && orderId.trim()
+      ? orderId.trim()
+      : ''
+  if (!raw) return '#—'
+
+  const normalized = raw.replace(/\s+/g, '')
+  const short = normalized.length > 8 ? normalized.slice(0, 8) : normalized
+  return `#${short}`
+}
+
 function buildNotificationKey(
   eventType: NotificationEventType,
   orderId: string,
@@ -175,6 +188,7 @@ async function createOrderBridgeToken(event: H3Event, shopId: string, orderId: s
 
 function buildManagerMessage(payload: {
   orderDetails: OrderDetails
+  orderId: string
   brandName: string
   branchName: string
   branchAddress: string
@@ -183,7 +197,7 @@ function buildManagerMessage(payload: {
 }): string {
   const order = payload.orderDetails
   const lines: string[] = [
-    `🔔 Новый заказ #${order.orderNumber}`,
+    `🔔 Новый заказ ${formatOrderRef(order.orderNumber, payload.orderId)}`,
     `🏪 ${payload.brandName} • ${payload.branchName}`,
     `📍 ${payload.branchAddress}, ${payload.cityName}`,
     `Клиент: ${payload.customerHandle}`,
@@ -200,6 +214,7 @@ function buildManagerMessage(payload: {
 
 function buildCustomerMessage(payload: {
   orderDetails: OrderDetails
+  orderId: string
   brandName: string
   branchName: string
   branchAddress: string
@@ -207,7 +222,7 @@ function buildCustomerMessage(payload: {
 }): string {
   const order = payload.orderDetails
   const lines: string[] = [
-    `📦 Заказ #${order.orderNumber}`,
+    `📦 Заказ ${formatOrderRef(order.orderNumber, payload.orderId)}`,
     `Статус: ${getStatusLabel(order.status)}`,
     `🏪 ${payload.brandName} • ${payload.branchName}`,
     `📍 ${payload.branchAddress}, ${payload.cityName}`,
@@ -433,6 +448,7 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
   const orderDetails = await loadOrderDetails(event, input)
   const managerText = buildManagerMessage({
     orderDetails,
+    orderId: input.orderContext.orderId,
     brandName,
     branchName,
     branchAddress,
@@ -441,6 +457,7 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
   })
   const customerText = buildCustomerMessage({
     orderDetails,
+    orderId: input.orderContext.orderId,
     brandName,
     branchName,
     branchAddress,
@@ -535,7 +552,7 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
           try {
             const customerBridgeToken = await createOrderBridgeToken(event, input.tenantContext.shopId, input.orderContext.orderId, 'customer')
             const customerMaxMiniAppUrl = customerBridgeToken && maxBotUrl
-              ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(customerBridgeToken)}`
+              ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(customerBridgeToken)}`
               : ''
             const maxAttachments: Array<Record<string, unknown>> = []
             const buttons: Array<Array<Record<string, string>>> = []
