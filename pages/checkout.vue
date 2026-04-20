@@ -207,34 +207,43 @@
                     {{ promoError || promoSuccess }}
                   </p>
                 </Transition>
-                <div v-if="isAuthorizedForOrder && loyaltyBalance !== null" class="text-sm">
-                  <div v-if="promoPreview?.bonusesEnabled === false" class="text-xs" :style="{ color: mutedTextColor }">
+                <div v-if="isAuthorizedForOrder" class="text-sm">
+                  <div
+                    v-if="loyaltyBalance === null"
+                    class="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-xs"
+                    :style="{ borderColor: borderColor, color: mutedTextColor }"
+                  >
+                    <span>Не удалось загрузить бонусный баланс. Обновите данные или войдите заново.</span>
+                    <button
+                      type="button"
+                      class="shrink-0 rounded-md border px-2 py-1 text-xs font-medium"
+                      :style="{ borderColor: borderColor, color: mainTextColor }"
+                      @click="void loadLoyaltyBalance({ force: true })"
+                    >
+                      Обновить
+                    </button>
+                  </div>
+                  <div v-else-if="promoPreview?.bonusesEnabled === false" class="text-xs" :style="{ color: mutedTextColor }">
                     Бонусная программа временно отключена в настройках ресторана.
                   </div>
                   <template v-else-if="hasSpendableBonuses">
-                    <div class="flex items-center justify-between">
-                      <span :style="{ color: mutedTextColor }">Списать бонусов</span>
-                      <span class="font-medium" :style="{ color: mainTextColor }">
-                        {{ bonusToSpend }} / {{ maxBonusAvailable }}
-                      </span>
-                    </div>
-                    <input
-                      v-model.number="bonusToSpend"
-                      type="range"
-                      min="0"
+                    <CheckoutBonusSpendSlider
+                      v-model="bonusToSpend"
                       :max="maxBonusAvailable"
-                      step="1"
-                      class="mt-2 w-full cursor-pointer accent-primary"
-                      @change="runPromoPreview"
-                    >
-                    <p class="mt-1 text-xs" :style="{ color: mutedTextColor }">
-                      Можно списать до {{ maxBonusAvailable }} бонусов (с учетом лимита заказа и вашего баланса).
-                    </p>
+                      :disabled="isPromoPreviewLoading"
+                      :primary-color="theme.primary || 'var(--color-primary)'"
+                      :muted-text-color="mutedTextColor"
+                      :main-text-color="mainTextColor"
+                      @commit="onBonusSliderCommit"
+                    />
                   </template>
                   <p v-else class="text-xs" :style="{ color: mutedTextColor }">
                     Бонусов для списания нет.
                   </p>
                 </div>
+                <p v-else class="text-xs" :style="{ color: mutedTextColor }">
+                  Войдите в аккаунт, чтобы списывать бонусы в заказе.
+                </p>
               </div>
             </template>
           </div>
@@ -1254,8 +1263,6 @@ if (!hasTenantRouteContext.value && !shopIdFromRoute.value) {
 
 function applyCartScope() {
   const scope = resolveFulfillmentScopeFromRoute(route, shopIdFromRoute.value)
-  console.log('applyCartScope', scope);
-  
   cartStore.setScope(scope)
   cartStore.adoptLegacyShopIdScopeIfEmpty(readShopIdFromQuery(route))
 }
@@ -1843,6 +1850,12 @@ const maxBonusAvailable = computed(() => {
   return Math.max(0, Math.floor(Number.isFinite(resolved) ? resolved : 0))
 })
 const hasSpendableBonuses = computed(() => maxBonusAvailable.value > 0)
+const effectiveBonusToSpend = computed(() => {
+  if (!isAuthorizedForOrder.value) return 0
+  if (!hasSpendableBonuses.value) return 0
+  const normalized = Number.isFinite(bonusToSpend.value) ? Math.floor(bonusToSpend.value) : 0
+  return Math.max(0, Math.min(normalized, maxBonusAvailable.value))
+})
 const hasPromoCodeApplied = computed(() =>
   !!appliedPromoCode.value.trim()
   && !!promoPreview.value?.ok
@@ -2002,7 +2015,7 @@ async function runPromoPreview() {
           selectedParameters: item.selectedParameters ?? [],
         })),
         promoCode: appliedPromoCode.value.trim() || null,
-        bonusPointsToSpend: bonusToSpend.value || 0,
+        bonusPointsToSpend: effectiveBonusToSpend.value,
       },
     })
     if (requestSeq !== promoPreviewSeq) return
@@ -2035,11 +2048,36 @@ watch(maxBonusAvailable, (nextMax: number) => {
   }
 })
 
+watch(
+  () => bonusToSpend.value,
+  (nextValue) => {
+    const normalized = Number.isFinite(nextValue) ? Math.floor(nextValue) : 0
+    const clamped = Math.max(0, Math.min(normalized, maxBonusAvailable.value))
+    if (clamped !== nextValue) {
+      bonusToSpend.value = clamped
+    }
+  },
+)
+
+function resolveSupabaseUserId(): string | null {
+  const raw = supabaseUser.value as Record<string, unknown> | null | undefined
+  const byId = typeof raw?.id === 'string' ? raw.id.trim() : ''
+  if (byId) return byId
+  const bySub = typeof raw?.sub === 'string' ? raw.sub.trim() : ''
+  if (bySub) return bySub
+  return null
+}
+
 const loyaltyBalanceContextKey = computed(() => {
-  const uid = supabaseUser.value?.id
+  const uid = resolveSupabaseUserId()
   const shop = checkoutXShopId.value
-  if (!uid || !shop) return null
-  return `${uid}\t${shop}`
+  if (!shop) return null
+  if (uid) return `${uid}\t${shop}`
+  if (messengerInitData.value) {
+    const channel = messengerClientChannel()
+    return `${channel}\t${shop}`
+  }
+  return null
 })
 
 let loyaltyBalanceLastFetchedKey: string | null = null
@@ -2049,6 +2087,10 @@ let loyaltyBalanceInFlightPromise: Promise<void> | null = null
 async function loadLoyaltyBalance(options?: { force?: boolean }) {
   const key = loyaltyBalanceContextKey.value
   const headerShop = checkoutXShopId.value
+  const isMiniAuth = isMessengerMiniApp.value && !!messengerInitData.value
+  const requestHeaders = isMiniAuth
+    ? buildMessengerAuthHeaders({ 'x-shop-id': headerShop || '' })
+    : (headerShop ? { 'x-shop-id': headerShop } : undefined)
   if (!key || !headerShop) {
     loyaltyBalance.value = null
     loyaltyBalanceLastFetchedKey = null
@@ -2065,7 +2107,7 @@ async function loadLoyaltyBalance(options?: { force?: boolean }) {
   const p = (async () => {
     try {
       const res = await $fetch<{ ok: boolean; balance: number }>('/api/loyalty/balance', {
-        headers: { 'x-shop-id': headerShop },
+        headers: requestHeaders,
       })
       if (loyaltyBalanceContextKey.value !== key) return
       loyaltyBalance.value = res.balance
@@ -2108,7 +2150,6 @@ const promoPreviewWatchSignature = computed(() => JSON.stringify({
     selectedParameters: item.selectedParameters ?? [],
   })),
   promoCode: appliedPromoCode.value.trim(),
-  bonusToSpend: bonusToSpend.value || 0,
   shopId: checkoutXShopId.value || '',
 }))
 
@@ -2176,9 +2217,16 @@ const editingItemPrice = computed(() => {
   return Math.round(basePrice * multiplier + delta)
 })
 
+const hasMiniAppOrderAuth = computed(() =>
+  // В мини-приложении считаем авторизацию валидной только при наличии initData.
+  isMessengerMiniApp.value && !!messengerInitData.value,
+)
+
+const hasWebOrderAuth = computed(() => !!resolveSupabaseUserId())
+
 const isAuthorizedForOrder = computed(() => {
-  // В мини-приложении (Telegram / MAX) авторизацию обеспечивает initData, в вебе — Supabase-сессия
-  return isMessengerMiniApp.value || !!supabaseUser.value
+  // Для web — Supabase-сессия, для mini app — только подписанный initData.
+  return hasMiniAppOrderAuth.value || hasWebOrderAuth.value
 })
 
 /** Один канонический путь оформления; шаг задаётся только через ?step=1|2 (см. docs/TODO/CART_CHECKOUT_FETCH_OPTIMIZATION_PLAN_RU.md). */
@@ -2806,7 +2854,7 @@ async function placeOrder() {
         ? Number.parseInt(changeFrom.value, 10)
         : null,
       promoCode: appliedPromoCode.value.trim() || null,
-      bonusPointsToSpend: bonusToSpend.value || 0,
+      bonusPointsToSpend: effectiveBonusToSpend.value,
     }
 
     if (messengerInitData.value) {
@@ -3097,6 +3145,10 @@ function pushPromoToast(kind: 'success' | 'error', message: string, durationMs =
   setTimeout(() => {
     promoToasts.value = promoToasts.value.filter((item) => item.id !== id)
   }, durationMs)
+}
+
+function onBonusSliderCommit() {
+  void runPromoPreview()
 }
 </script>
 
