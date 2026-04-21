@@ -122,12 +122,13 @@ const theme = computed(() => tenant.value.theme || {})
 const cardBgColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
 const mainTextColor = computed(() => theme.value.text_primary || 'var(--color-text-primary)')
 const mutedTextColor = computed(() => theme.value.text_muted || 'var(--color-text-muted)')
-const isConfigurableProduct = computed(() =>
-  Boolean(
-    (props.product.modifiers && props.product.modifiers.length > 0) ||
-      (props.product.parameters && props.product.parameters.length > 0),
-  ),
+const hasRequiredParameters = computed(() =>
+  Boolean(props.product.parameters?.some((group) => group.isRequired)),
 )
+const hasRequiredModifiers = computed(() =>
+  Boolean(props.product.modifiers?.some((group) => group.isRequired || (group.minSelect ?? 0) > 0)),
+)
+const isConfigurableProduct = computed(() => hasRequiredParameters.value || hasRequiredModifiers.value)
 const isUnavailable = computed(() => props.product.availability?.isOrderable === false)
 const unavailableReason = computed(() => props.product.availability?.reason || 'Временно недоступно')
 

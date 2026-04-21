@@ -1107,6 +1107,7 @@ import {
   resolveFulfillmentScopeFromRoute,
   writeCityFulfillmentMode,
 } from '~/utils/fulfillmentPreference'
+import { buildDefaultCartSelections, findProductById } from '~/utils/storyCart'
 import { useWorkingHoursStatus } from '~/composables/useWorkingHoursStatus'
 import type { Product, ModifierGroup, ModifierOption } from '~/data/products'
 import type { CartItem, SelectedModifier, SelectedParameter } from '~/stores/cart'
@@ -1233,6 +1234,7 @@ type UpsellItem = {
   price: number
   image: string
   category: string
+  canAddModifier?: boolean
 }
 const upsellItems = ref<UpsellItem[]>([])
 const upsellError = ref('')
@@ -2028,6 +2030,13 @@ async function runUpsellRecommendations() {
       price: item.price,
       image: item.image || '',
       category: item.category || 'Без категории',
+      canAddModifier: cartStore.items.some((cartItem: CartItem) =>
+        cartItem.id === item.id
+        && (cartItem.selectedModifiers?.length ?? 0) === 0
+        && Boolean(
+          cartStore.products.find((p: Product) => p.id === item.id)?.modifiers?.length,
+        ),
+      ),
     }))
     upsellLastLoadedSignature = signature
   } catch (error: any) {
@@ -2044,17 +2053,27 @@ async function runUpsellRecommendations() {
 }
 
 async function onUpsellAdd(item: UpsellItem) {
+  const catalogProduct = findProductById(cartStore.products, item.id)
+  const cartItemWithoutModifiers = cartStore.items.find((cartItem: CartItem) =>
+    cartItem.id === item.id && (cartItem.selectedModifiers?.length ?? 0) === 0,
+  )
+  const canOfferModifier = Boolean(catalogProduct?.modifiers?.length) && Boolean(cartItemWithoutModifiers)
+  if (canOfferModifier && cartItemWithoutModifiers) {
+    openEditItemModal(cartItemWithoutModifiers)
+    return
+  }
   if (upsellAddingItemIds.value.includes(item.id)) return
   upsellAddingItemIds.value = [...upsellAddingItemIds.value, item.id]
-  const product: Product = {
-    id: item.id,
-    name: item.name,
-    price: item.price,
-    image: item.image,
-    category: item.category,
-  }
   try {
-    await Promise.resolve(cartStore.addItem(product, 1, [], []))
+    const product: Product = catalogProduct ?? {
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      image: item.image,
+      category: item.category,
+    }
+    const { modifiers, parameters } = buildDefaultCartSelections(product)
+    await Promise.resolve(cartStore.addItem(product, 1, modifiers, parameters))
     pushPromoToast('success', `«${item.name}» добавлен в корзину`)
   } finally {
     upsellAddingItemIds.value = upsellAddingItemIds.value.filter((id) => id !== item.id)
@@ -2308,7 +2327,13 @@ watch(promoPreviewWatchSignature, () => {
 }, { immediate: true })
 
 const upsellRequestSignature = computed(() => JSON.stringify({
-  items: cartStore.items.map((item) => item.id).sort(),
+  items: cartStore.items
+    .map((item) => ({
+      id: item.id,
+      cartItemId: item.cartItemId,
+      modifiersCount: item.selectedModifiers?.length ?? 0,
+    }))
+    .sort((a: { cartItemId: string }, b: { cartItemId: string }) => a.cartItemId.localeCompare(b.cartItemId)),
   restaurantId: upsellRestaurantId.value || '',
   fulfillmentType: state.fulfillmentType,
 }))

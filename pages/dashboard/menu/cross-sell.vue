@@ -67,7 +67,7 @@
           <div
             v-for="(row, index) in productLinksDraft"
             :key="`pl-${index}`"
-            class="grid gap-2 rounded-lg border border-gray-100 p-2 md:grid-cols-[1fr,1fr,120px,auto]"
+            class="grid gap-2 rounded-lg border border-gray-100 p-2 md:grid-cols-[minmax(300px,1fr),minmax(300px,1fr),100px,100px]"
           >
             <select
               v-model="row.sourceProductId"
@@ -123,7 +123,7 @@
           <div
             v-for="(row, index) in categoryLinksDraft"
             :key="`cl-${index}`"
-            class="grid gap-2 rounded-lg border border-gray-100 p-2 md:grid-cols-[1fr,1fr,120px,auto]"
+            class="grid gap-2 rounded-lg border border-gray-100 p-2 md:grid-cols-[minmax(300px,1fr),minmax(300px,1fr),100px,100px]"
           >
             <select
               v-model="row.sourceCategoryId"

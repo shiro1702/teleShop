@@ -51,7 +51,7 @@
                 class="pointer-events-none h-full w-full object-cover"
               >
               <video
-                v-else
+                v-else-if="isVideoUrl(currentSlide.mediaUrl)"
                 :key="currentSlide.id"
                 ref="videoRef"
                 class="pointer-events-none h-full w-full object-cover"
@@ -60,10 +60,32 @@
                 playsinline
                 @ended="onVideoEnded"
               />
+              <div
+                v-else
+                class="relative flex h-full w-full items-end px-5 pb-8 pt-20 text-white"
+                :style="fallbackSlideStyle"
+              >
+                <div class="w-full space-y-3">
+                  <h3 class="[animation:storyFadeUp_.35s_ease-out] text-3xl font-bold leading-tight">
+                    {{ fallbackTitle }}
+                  </h3>
+                  <p class="[animation:storyFadeUp_.45s_ease-out] text-sm leading-relaxed text-white/85">
+                    {{ fallbackText }}
+                  </p>
+                  <button
+                    v-if="currentSlide.actionType !== 'none'"
+                    type="button"
+                    class="[animation:storyFadeUp_.55s_ease-out] w-full rounded-xl bg-white py-3 text-base font-semibold text-gray-900"
+                    @click.stop="onActionClick"
+                  >
+                    {{ actionLabel }}
+                  </button>
+                </div>
+              </div>
             </template>
 
             <div
-              v-if="currentSlide && currentSlide.actionType !== 'none'"
+              v-if="currentSlide && currentSlide.actionType !== 'none' && hasRenderableMedia"
               class="pointer-events-auto absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pb-3 pt-16 sm:px-4 sm:pb-4"
             >
               <button
@@ -85,6 +107,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { $fetch } from 'ofetch'
 import type { StoryCampaignDto, StorySlideDto } from '~/types/stories'
+import { useTenant } from '~/composables/useTenant'
 
 const props = withDefaults(
   defineProps<{
@@ -113,6 +136,7 @@ const slideIndex = ref(0)
 const tick = ref(0)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const storySurfaceRef = ref<HTMLElement | null>(null)
+const { tenant } = useTenant()
 
 const dragX = ref(0)
 const pointerDown = ref(false)
@@ -175,8 +199,46 @@ const actionLabel = computed(() => {
 })
 
 function isImageUrl(url: string): boolean {
-  return /\.(png|jpe?g|gif|webp)(\?|$)/i.test(url) || url.includes('/image')
+  return !!url && (/\.(png|jpe?g|gif|webp)(\?|$)/i.test(url) || url.includes('/image'))
 }
+
+function isVideoUrl(url: string): boolean {
+  return !!url && /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url)
+}
+
+const hasRenderableMedia = computed(() => {
+  const url = currentSlide.value?.mediaUrl || ''
+  return isImageUrl(url) || isVideoUrl(url)
+})
+
+const fallbackPalette = computed(() => {
+  const theme = tenant.value.theme || {}
+  return [
+    theme.primary || '#1f2937',
+    theme.secondary || '#7c3aed',
+    theme.accent || '#ea580c',
+    theme.primary_700 || '#111827',
+  ]
+})
+
+const fallbackSlideStyle = computed(() => {
+  const colors = fallbackPalette.value
+  const idx = (navIndex.value + slideIndex.value) % colors.length
+  const base = colors[idx]
+  return { background: `linear-gradient(145deg, ${base} 0%, rgba(15,23,42,0.88) 85%)` }
+})
+
+const fallbackTitle = computed(() => {
+  const title = currentSlide.value?.title?.trim()
+  if (title) return title
+  return activeCampaign.value?.title || 'История'
+})
+
+const fallbackText = computed(() => {
+  const text = currentSlide.value?.text?.trim()
+  if (text) return text
+  return 'Узнайте детали предложения и добавьте его в заказ в один тап.'
+})
 
 function progressWidth(i: number): string {
   const c = activeCampaign.value
@@ -233,7 +295,7 @@ function resumePlayback() {
   const slide = currentSlide.value
   if (!slide || !props.modelValue) return
 
-  if (isImageUrl(slide.mediaUrl)) {
+  if (!isVideoUrl(slide.mediaUrl)) {
     tickAnchorMs = Date.now() - tick.value
     const durMs = Math.max(1000, (slide.durationSeconds ?? 5) * 1000)
     const remaining = Math.max(80, durMs - tick.value)
@@ -310,7 +372,7 @@ function scheduleSlide() {
     tick.value = Date.now() - tickAnchorMs
   }, 50)
 
-  if (isImageUrl(slide.mediaUrl)) {
+  if (!isVideoUrl(slide.mediaUrl)) {
     advanceTimer = setTimeout(() => {
       clearTimers()
       nextSlide()
@@ -584,3 +646,16 @@ onBeforeUnmount(() => {
   clearHoldTimer()
 })
 </script>
+
+<style scoped>
+@keyframes storyFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>

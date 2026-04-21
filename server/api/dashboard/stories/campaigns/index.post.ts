@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
     const rows = slidesInput.map((s, idx) => ({
       campaign_id: campaignId,
       sort_order: typeof s.sortOrder === 'number' ? s.sortOrder : idx,
-      media_url: typeof s.mediaUrl === 'string' ? s.mediaUrl : '',
+      media_url: typeof s.mediaUrl === 'string' ? s.mediaUrl.trim() : '',
       duration_seconds:
         typeof s.durationSeconds === 'number' && s.durationSeconds >= 1
           ? Math.min(120, s.durationSeconds)
@@ -66,11 +66,6 @@ export default defineEventHandler(async (event) => {
       action_type: normalizeActionType(s.actionType),
       action_payload: s.actionPayload && typeof s.actionPayload === 'object' ? s.actionPayload : {},
     }))
-
-    if (rows.some((r) => !r.media_url)) {
-      await client.from('story_campaigns').delete().eq('id', campaignId)
-      throw createError({ statusCode: 400, statusMessage: 'Each slide needs mediaUrl' })
-    }
 
     const { error: slideErr } = await client.from('story_slides').insert(rows)
     if (slideErr) {

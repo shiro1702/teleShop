@@ -588,7 +588,7 @@ const selectedProduct = ref<Product | null>(null)
 const showOrderSuccess = ref(false)
 const lastOrderId = ref<string | null>(null)
 const isCatalogLoading = ref(false)
-const tenantName = computed(() => tenant.value.shopName || 'Наш магазин')
+const tenantName = computed(() => tenant.value.shopName || 'Ресторан')
 const tenantLogoUrl = computed(() => tenant.value.logoLargeUrl || tenant.value.logoUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
 const theme = computed(() => tenant.value.theme || {})
@@ -874,20 +874,28 @@ function openProduct(product: Product) {
   const nextMods: Record<string, Set<string>> = {}
   const nextParams: Record<string, string> = {}
 
-  // Pre-select defaults for modifiers
+  // Pre-select defaults only for required modifier groups.
   if (product.modifiers) {
     product.modifiers.forEach((group) => {
       const s = new Set<string>()
       group.options.forEach((opt) => {
         if (opt.isDefault) s.add(opt.id)
       })
+      if (s.size === 0 && (group.isRequired || group.minSelect > 0)) {
+        const requiredCount = Math.min(group.minSelect || 1, group.options.length)
+        for (let i = 0; i < requiredCount; i++) {
+          const opt = group.options[i]
+          if (opt) s.add(opt.id)
+        }
+      }
       nextMods[group.id] = s
     })
   }
 
-  // Pre-select defaults for parameters
+  // Pre-select defaults only for required parameter groups.
   if (product.parameters) {
     product.parameters.forEach((group) => {
+      if (!group.isRequired) return
       const defaultOpt = group.options.find(opt => opt.isDefault) || group.options[0]
       if (defaultOpt) {
         nextParams[group.id] = defaultOpt.id
