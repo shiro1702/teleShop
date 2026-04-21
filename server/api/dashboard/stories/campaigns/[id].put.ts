@@ -79,11 +79,7 @@ export default defineEventHandler(async (event) => {
           : 5
       const actionType = normalizeActionType(s.actionType)
       const actionPayload = s.actionPayload && typeof s.actionPayload === 'object' ? s.actionPayload : {}
-      const mediaUrl = typeof s.mediaUrl === 'string' ? s.mediaUrl : ''
-
-      if (!mediaUrl) {
-        throw createError({ statusCode: 400, statusMessage: 'Each slide needs mediaUrl' })
-      }
+      const mediaUrl = typeof s.mediaUrl === 'string' ? s.mediaUrl.trim() : ''
 
       if (s.id && oldIds.has(s.id)) {
         const { error: u } = await client

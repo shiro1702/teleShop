@@ -159,15 +159,22 @@ export default defineEventHandler(async (event) => {
     slidesByCampaign.get(cid)!.push(s)
   }
 
-  const mapSlide = (s: Record<string, unknown>) => ({
-    id: s.id as string,
-    campaignId: s.campaign_id as string,
-    sortOrder: s.sort_order as number,
-    mediaUrl: s.media_url as string,
-    durationSeconds: s.duration_seconds as number,
-    actionType: s.action_type as string,
-    actionPayload: (s.action_payload ?? {}) as Record<string, unknown>,
-  })
+  const mapSlide = (s: Record<string, unknown>) => {
+    const actionPayload = (s.action_payload ?? {}) as Record<string, unknown>
+    const title = typeof actionPayload.title === 'string' ? actionPayload.title : null
+    const text = typeof actionPayload.text === 'string' ? actionPayload.text : null
+    return {
+      id: s.id as string,
+      campaignId: s.campaign_id as string,
+      sortOrder: s.sort_order as number,
+      mediaUrl: (s.media_url as string) || '',
+      durationSeconds: s.duration_seconds as number,
+      actionType: s.action_type as string,
+      actionPayload,
+      title,
+      text,
+    }
+  }
 
   const mapCampaign = (c: Record<string, unknown>) => {
     const id = c.id as string

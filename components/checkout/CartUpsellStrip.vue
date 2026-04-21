@@ -46,7 +46,7 @@
               v-if="isItemLoading(item.id)"
               class="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-white/40 border-t-white"
             />
-            {{ isItemLoading(item.id) ? 'Добавляем...' : 'Добавить' }}
+            {{ isItemLoading(item.id) ? 'Добавляем...' : item.canAddModifier ? 'Добавить модификатор' : 'Добавить' }}
           </button>
         </div>
       </article>
@@ -74,6 +74,7 @@ export type UpsellItemView = {
   price: number
   image: string
   category: string
+  canAddModifier?: boolean
 }
 
 const props = withDefaults(defineProps<{

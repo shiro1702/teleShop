@@ -28,7 +28,7 @@
 
         <template v-else>
           <button
-            v-for="c in campaigns"
+            v-for="(c, index) in campaigns"
             :key="c.id"
             type="button"
             class="group relative h-[176px] w-[128px] shrink-0 overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:h-[240px] sm:w-[200px]"
@@ -43,10 +43,14 @@
             >
             <div
               v-else
-              class="flex h-full w-full items-center justify-center px-3 text-center text-sm font-semibold"
-              :style="{ backgroundColor: fallbackBg, color: mainText }"
+              class="flex h-full w-full items-end px-3 pb-4 text-left sm:px-4 sm:pb-5"
+              :style="fallbackStoryStyle(index)"
             >
-              {{ titleWithoutDemo(c.title) }}
+              <div class="w-full">
+                <p class="line-clamp-3 text-sm font-semibold leading-tight sm:text-base" :style="{ color: '#ffffff' }">
+                  {{ titleWithoutDemo(c.title) }}
+                </p>
+              </div>
             </div>
             <div class="pointer-events-none absolute inset-0 rounded-2xl border-0 transition group-hover:border-2" :style="{ borderColor: ringColor }" />
           </button>
@@ -96,6 +100,12 @@ const cardBg = computed(() => theme.value.surface_card || 'var(--color-surface-c
 const ringColor = computed(() => theme.value.primary || 'var(--color-primary)')
 const mainText = computed(() => theme.value.text_primary || '#111827')
 const fallbackBg = computed(() => theme.value.primary_50 || '#f3f4f6')
+const fallbackPalette = computed(() => [
+  theme.value.primary || '#1f2937',
+  theme.value.secondary || '#7c3aed',
+  theme.value.accent || '#ea580c',
+  theme.value.primary_700 || '#111827',
+])
 
 function titleWithoutDemo(title: string): string {
   return title.replace(/^\[DEMO\]\s*/i, '').trim()
@@ -109,6 +119,15 @@ function campaignPreviewUrl(c: StoryCampaignDto): string {
   if (c.previewUrl) return c.previewUrl
   const slide = c.slides?.find((s) => isImageUrl(s.mediaUrl))
   return slide?.mediaUrl ?? ''
+}
+
+function fallbackStoryStyle(index: number): Record<string, string> {
+  const palette = fallbackPalette.value
+  const base = palette[index % palette.length]
+  return {
+    background: `linear-gradient(150deg, ${base} 0%, rgba(15,23,42,0.88) 85%)`,
+    color: '#ffffff',
+  }
 }
 
 function scrollBy(delta: number) {

@@ -10,6 +10,8 @@ export type StorySlideDto = {
   durationSeconds: number
   actionType: StoryActionType
   actionPayload: Record<string, unknown>
+  title?: string | null
+  text?: string | null
 }
 
 export type StoryCampaignDto = {

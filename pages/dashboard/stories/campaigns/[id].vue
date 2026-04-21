@@ -99,6 +99,24 @@
                 <span v-if="slide.mediaUrl" class="mt-1 block truncate text-xs text-gray-500">{{ slide.mediaUrl }}</span>
               </label>
               <label class="block text-sm">
+                <span class="text-gray-700">Заголовок fallback-слайда</span>
+                <input
+                  v-model="slide.payloadTitle"
+                  type="text"
+                  class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  placeholder="Заголовок для режима без картинки"
+                >
+              </label>
+              <label class="block text-sm sm:col-span-2">
+                <span class="text-gray-700">Текст fallback-слайда</span>
+                <textarea
+                  v-model="slide.payloadText"
+                  rows="2"
+                  class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  placeholder="Короткий текст, который покажется на сторис без медиа"
+                />
+              </label>
+              <label class="block text-sm">
                 <span class="text-gray-700">Длительность (сек)</span>
                 <input
                   v-model.number="slide.durationSeconds"
@@ -180,6 +198,8 @@ type SlideForm = {
   payloadQty: number
   payloadCategory: string
   payloadCode: string
+  payloadTitle: string
+  payloadText: string
 }
 
 const route = useRoute()
@@ -219,6 +239,8 @@ function addSlide() {
     payloadQty: 1,
     payloadCategory: '',
     payloadCode: '',
+    payloadTitle: '',
+    payloadText: '',
   })
 }
 
@@ -231,15 +253,28 @@ function slideToPayload(s: SlideForm): Record<string, unknown> {
     const out: Record<string, unknown> = {}
     if (s.payloadItemId.trim()) out.item_id = s.payloadItemId.trim()
     if (s.payloadQty > 0) out.qty = s.payloadQty
+    if (s.payloadTitle.trim()) out.title = s.payloadTitle.trim()
+    if (s.payloadText.trim()) out.text = s.payloadText.trim()
     return out
   }
   if (s.actionType === 'open_category' && s.payloadCategory.trim()) {
-    return { category: s.payloadCategory.trim() }
+    return {
+      category: s.payloadCategory.trim(),
+      ...(s.payloadTitle.trim() ? { title: s.payloadTitle.trim() } : {}),
+      ...(s.payloadText.trim() ? { text: s.payloadText.trim() } : {}),
+    }
   }
   if (s.actionType === 'apply_promo' && s.payloadCode.trim()) {
-    return { code: s.payloadCode.trim() }
+    return {
+      code: s.payloadCode.trim(),
+      ...(s.payloadTitle.trim() ? { title: s.payloadTitle.trim() } : {}),
+      ...(s.payloadText.trim() ? { text: s.payloadText.trim() } : {}),
+    }
   }
-  return {}
+  return {
+    ...(s.payloadTitle.trim() ? { title: s.payloadTitle.trim() } : {}),
+    ...(s.payloadText.trim() ? { text: s.payloadText.trim() } : {}),
+  }
 }
 
 function buildSlidesForSave(): Array<Record<string, unknown>> {
@@ -326,6 +361,8 @@ function hydrateSlide(raw: Record<string, unknown>, clientKey: string): SlideFor
   let payloadQty = 1
   let payloadCategory = ''
   let payloadCode = ''
+  const payloadTitle = typeof ap.title === 'string' ? ap.title : ''
+  const payloadText = typeof ap.text === 'string' ? ap.text : ''
   if (actionType === 'add_to_cart') {
     payloadItemId =
       typeof ap.item_id === 'string'
@@ -350,6 +387,8 @@ function hydrateSlide(raw: Record<string, unknown>, clientKey: string): SlideFor
     payloadQty,
     payloadCategory,
     payloadCode,
+    payloadTitle,
+    payloadText,
   }
 }
 

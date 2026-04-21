@@ -130,7 +130,7 @@ export function getDefaultStyleConfig(): OrganizationStyleConfig {
   const first = SYSTEM_STYLE_PRESETS[0]
   return {
     identity: {
-      name: 'My Restaurant',
+      name: 'Ресторан',
       shortDescription: '',
       fullDescription: '',
       logoSmallUrl: '',
