@@ -19,10 +19,10 @@ jobs:
       name: production
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: npm
@@ -49,17 +49,23 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
           PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
-          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          DEPLOY_REPO_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          AUTH_REPO_URL: https://x-access-token:${{ secrets.DEPLOY_REPO_TOKEN }}@github.com/${{ github.repository }}.git
         run: |
           if [ -z "${PROD_ENV_FILE:-}" ]; then
             echo "PROD_ENV_FILE secret is required"
+            exit 1
+          fi
+          if [ -z "${DEPLOY_REPO_TOKEN:-}" ]; then
+            echo "DEPLOY_REPO_TOKEN secret is required"
             exit 1
           fi
           ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; mkdir -p \"$DEPLOY_PATH\""
           printf '%s\n' "$PROD_ENV_FILE" | ssh "$SSH_USER@$VPS_HOST" "cat > \"$DEPLOY_PATH/../.env.prod\" && chmod 600 \"$DEPLOY_PATH/../.env.prod\" && cp \"$DEPLOY_PATH/../.env.prod\" \"$DEPLOY_PATH/.env\" && chmod 600 \"$DEPLOY_PATH/.env\""
           ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; \
             cd \"$DEPLOY_PATH\"; \
-            if [ ! -d .git ]; then git clone \"$REPO_URL\" .; fi; \
+            if [ ! -d .git ]; then git clone \"$AUTH_REPO_URL\" .; fi; \
+            git remote set-url origin \"$AUTH_REPO_URL\"; \
             git fetch origin production; \
             git checkout production; \
             git reset --hard origin/production; \
