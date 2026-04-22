@@ -17,10 +17,10 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: npm
@@ -47,20 +47,23 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           DEPLOY_PATH: ${{ secrets.PRETEST_DEPLOY_PATH }}
           PRETEST_ENV_FILE: ${{ secrets.PRETEST_ENV_FILE }}
-          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
         run: |
           if [ -z "${PRETEST_ENV_FILE:-}" ]; then
             echo "PRETEST_ENV_FILE secret is required"
             exit 1
           fi
           ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; mkdir -p \"$DEPLOY_PATH\""
-          printf '%s\n' "$PRETEST_ENV_FILE" | ssh "$SSH_USER@$VPS_HOST" "cat > \"$DEPLOY_PATH/../.env.pretest\" && chmod 600 \"$DEPLOY_PATH/../.env.pretest\""
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude '.nuxt' \
+            --exclude '.output' \
+            --exclude '.env' \
+            --exclude '.env.*' \
+            ./ "$SSH_USER@$VPS_HOST:$DEPLOY_PATH/"
+          printf '%s\n' "$PRETEST_ENV_FILE" | ssh "$SSH_USER@$VPS_HOST" "cat > \"$DEPLOY_PATH/../.env.pretest\" && chmod 600 \"$DEPLOY_PATH/../.env.pretest\" && cp \"$DEPLOY_PATH/../.env.pretest\" \"$DEPLOY_PATH/.env\" && chmod 600 \"$DEPLOY_PATH/.env\""
           ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; \
             cd \"$DEPLOY_PATH\"; \
-            if [ ! -d .git ]; then git clone \"$REPO_URL\" .; fi; \
-            git fetch origin main; \
-            git checkout main; \
-            git reset --hard origin/main; \
             docker compose -f docker-compose.pretest.yml pull || true; \
             docker compose -f docker-compose.pretest.yml build --pull; \
             docker compose -f docker-compose.pretest.yml up -d --remove-orphans; \
