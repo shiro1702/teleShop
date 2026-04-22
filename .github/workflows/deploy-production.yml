@@ -56,7 +56,7 @@ jobs:
             exit 1
           fi
           ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; mkdir -p \"$DEPLOY_PATH\""
-          printf '%s\n' "$PROD_ENV_FILE" | ssh "$SSH_USER@$VPS_HOST" "cat > \"$DEPLOY_PATH/../.env.prod\" && chmod 600 \"$DEPLOY_PATH/../.env.prod\""
+          printf '%s\n' "$PROD_ENV_FILE" | ssh "$SSH_USER@$VPS_HOST" "cat > \"$DEPLOY_PATH/../.env.prod\" && chmod 600 \"$DEPLOY_PATH/../.env.prod\" && cp \"$DEPLOY_PATH/../.env.prod\" \"$DEPLOY_PATH/.env\" && chmod 600 \"$DEPLOY_PATH/.env\""
           ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; \
             cd \"$DEPLOY_PATH\"; \
             if [ ! -d .git ]; then git clone \"$REPO_URL\" .; fi; \
