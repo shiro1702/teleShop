@@ -1,0 +1,69 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - production
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Validate build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Setup SSH key
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy on VPS (production)
+        shell: bash
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+          PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          if [ -z "${PROD_ENV_FILE:-}" ]; then
+            echo "PROD_ENV_FILE secret is required"
+            exit 1
+          fi
+          ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; mkdir -p \"$DEPLOY_PATH\""
+          printf '%s\n' "$PROD_ENV_FILE" | ssh "$SSH_USER@$VPS_HOST" "cat > \"$DEPLOY_PATH/../.env.prod\" && chmod 600 \"$DEPLOY_PATH/../.env.prod\""
+          ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; \
+            cd \"$DEPLOY_PATH\"; \
+            if [ ! -d .git ]; then git clone \"$REPO_URL\" .; fi; \
+            git fetch origin production; \
+            git checkout production; \
+            git reset --hard origin/production; \
+            docker compose -f docker-compose.prod.yml pull || true; \
+            docker compose -f docker-compose.prod.yml build --pull; \
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans; \
+            docker image prune -f"
