@@ -28,3 +28,6 @@ lerna-debug.log*
 .idea
 .fleet
 .env.prod
+docs/deploy/DEPLOY_SERVER_REGRU_SINGLE_VPS.md
+docs/deploy/REGRU_DEPLOY_NUXT_NITRO_SUPABASE_CICD_PLAN_RU.md
+docs/deploy/SSH_RUNBOOK_REGRU_SERVER_RU.md
