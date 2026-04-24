@@ -22,6 +22,9 @@ type RestaurantRow = {
   created_at: string
 }
 type RestaurantFallbackRow = Partial<RestaurantRow> & Pick<RestaurantRow, 'id' | 'name' | 'address' | 'is_active' | 'created_at'>
+type RestaurantSelectMode = 'primary' | 'fallback' | 'legacy'
+
+let cachedRestaurantsSelectMode: RestaurantSelectMode = 'primary'
 
 function isMissingColumnError(error: any): boolean {
   if (!error || typeof error !== 'object') return false
@@ -38,38 +41,46 @@ function isMissingColumnError(error: any): boolean {
 
 export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
-  const org = await getOrganizationSettings(event, access.shopId)
+  const [org, client] = await Promise.all([
+    getOrganizationSettings(event, access.shopId),
+    serverSupabaseServiceRole(event),
+  ])
   const allowedModes = await applyGlobalFulfillmentPolicy(event, access.shopId, org.ops.fulfillmentTypes)
   const allowedSet = new Set(allowedModes)
   const hallMode = org.ops.dineInHallMode
   const hallOrderingEnabled = allowedSet.has('dine-in') && hallMode !== 'qr-menu-browse'
-  const client = await serverSupabaseServiceRole(event)
   let data: RestaurantFallbackRow[] | null = null
   let error: any = null
-  const primary = await client
-    .from('restaurants')
-    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,created_at')
-    .eq('shop_id', access.shopId)
-    .order('created_at', { ascending: false })
-  data = primary.data as RestaurantFallbackRow[] | null
-  error = primary.error
-  if (isMissingColumnError(error)) {
-    const fallback = await client
+  const runRestaurantsQuery = async (mode: RestaurantSelectMode) => {
+    const selectByMode: Record<RestaurantSelectMode, string> = {
+      primary: 'id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,created_at',
+      fallback: 'id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active,created_at',
+      legacy: 'id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,is_active,created_at',
+    }
+    return client
       .from('restaurants')
-      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active,created_at')
+      .select(selectByMode[mode])
       .eq('shop_id', access.shopId)
       .order('created_at', { ascending: false })
-    data = fallback.data as RestaurantFallbackRow[] | null
-    error = fallback.error
   }
-  if (isMissingColumnError(error)) {
-    const fallbackLegacy = await client
-      .from('restaurants')
-      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,is_active,created_at')
-      .eq('shop_id', access.shopId)
-      .order('created_at', { ascending: false })
-    data = fallbackLegacy.data as RestaurantFallbackRow[] | null
-    error = fallbackLegacy.error
+
+  const modesInOrder: RestaurantSelectMode[] = ['primary', 'fallback', 'legacy']
+  const startIndex = modesInOrder.indexOf(cachedRestaurantsSelectMode)
+  const modesToTry = [...modesInOrder.slice(startIndex), ...modesInOrder.slice(0, startIndex)]
+
+  for (const mode of modesToTry) {
+    const result = await runRestaurantsQuery(mode)
+    data = result.data as RestaurantFallbackRow[] | null
+    error = result.error
+
+    if (!error) {
+      cachedRestaurantsSelectMode = mode
+      break
+    }
+
+    if (!isMissingColumnError(error)) {
+      break
+    }
   }
 
   if (error) {
