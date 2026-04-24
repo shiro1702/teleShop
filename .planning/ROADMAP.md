@@ -1,8 +1,8 @@
-# Roadmap: teleShop
+# Roadmap: PocketMenu
 
 ## Overview
 
-This roadmap delivers teleShop v1 as a branch-first QR ordering platform for quick-service restaurants: first secure tenant and governance boundaries, then a correct branch storefront and menu publication flow, followed by reliable webhook-based payments, branch order operations, and platform-level oversight with auditability.
+This roadmap delivers PocketMenu v1 as a branch-first QR ordering platform for quick-service restaurants: first secure tenant and governance boundaries, then a correct branch storefront and menu publication flow, followed by reliable webhook-based payments, branch order operations, and platform-level oversight with auditability.
 
 ## Phases
 
