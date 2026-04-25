@@ -69,7 +69,12 @@
                   <h3 class="[animation:storyFadeUp_.35s_ease-out] text-3xl font-bold leading-tight">
                     {{ fallbackTitle }}
                   </h3>
-                  <p class="[animation:storyFadeUp_.45s_ease-out] text-sm leading-relaxed text-white/85">
+                  <div
+                    v-if="fallbackHtml"
+                    class="[animation:storyFadeUp_.45s_ease-out] text-sm leading-relaxed text-white/85 story-html"
+                    v-html="fallbackHtml"
+                  />
+                  <p v-else class="[animation:storyFadeUp_.45s_ease-out] text-sm leading-relaxed text-white/85">
                     {{ fallbackText }}
                   </p>
                   <button
@@ -240,6 +245,19 @@ const fallbackText = computed(() => {
   return 'Узнайте детали предложения и добавьте его в заказ в один тап.'
 })
 
+function sanitizeStoryHtml(input: string): string {
+  return input
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+    .replace(/\son\w+="[^"]*"/gi, '')
+    .replace(/\son\w+='[^']*'/gi, '')
+}
+
+const fallbackHtml = computed(() => {
+  const raw = currentSlide.value?.actionPayload?.html
+  if (typeof raw !== 'string' || !raw.trim()) return ''
+  return sanitizeStoryHtml(raw)
+})
+
 function progressWidth(i: number): string {
   const c = activeCampaign.value
   if (!c?.slides?.length) return '0%'
@@ -395,7 +413,7 @@ function syncNavFromCampaign() {
     navIndex.value = 0
     return
   }
-  const i = list.findIndex((c) => c.id === props.campaign!.id)
+  const i = list.findIndex((c: StoryCampaignDto) => c.id === props.campaign!.id)
   navIndex.value = i >= 0 ? i : 0
 }
 
@@ -590,7 +608,7 @@ watch(
     [
       props.modelValue,
       props.campaign?.id,
-      props.campaigns.map((c) => c.id).join('|'),
+      props.campaigns.map((c: StoryCampaignDto) => c.id).join('|'),
     ] as const,
   () => {
     if (!props.modelValue || !props.campaign) return
@@ -657,5 +675,26 @@ onBeforeUnmount(() => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.story-html :deep(h3) {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.story-html :deep(p) {
+  margin-bottom: 0.5rem;
+}
+
+.story-html :deep(ul) {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1rem;
+  list-style: disc;
+}
+
+.story-html :deep(li) {
+  margin-bottom: 0.25rem;
 }
 </style>

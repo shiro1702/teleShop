@@ -53,50 +53,14 @@
         </div>
       </div>
     </div>
-
+    <StoriesTopBar
+      v-if="isFestivalMode && festivalStoryCampaigns.length"
+      :campaigns="festivalStoryCampaigns"
+      :loading="false"
+      @open="openFestivalStoryCampaign"
+    />
     <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <section
-        v-if="isFestivalMode"
-        class="mb-6 w-full border-b"
-        style="background-color: rgb(20, 22, 43); border-bottom-color: rgb(245, 194, 222);"
-      >
-        <div class="relative mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <button
-            type="button"
-            class="absolute left-1 top-1/2 z-10 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border bg-white/90 text-gray-700 shadow-sm backdrop-blur md:inline-flex"
-            aria-label="Прокрутить сторисы влево"
-            style="border-color: rgb(245, 194, 222);"
-            @click="scrollStoriesBy(-220)"
-          >
-            ←
-          </button>
-          <div ref="festivalStoriesScrollEl" class="flex gap-3 overflow-x-auto [scrollbar-width:none]">
-            <NuxtLink
-              v-for="card in festivalStoryCards"
-              :key="card.id"
-              :to="card.to"
-              class="group relative h-[176px] w-[128px] shrink-0 overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:h-[240px] sm:w-[200px]"
-              style="border-color: rgb(245, 194, 222); background-color: rgb(20, 22, 43);"
-            >
-              <img :src="card.image" :alt="card.title" class="h-full w-full object-cover">
-              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-3">
-                <p class="text-xs font-semibold text-white sm:text-sm">{{ card.title }}</p>
-                <p class="mt-1 line-clamp-2 text-[10px] text-white/80 sm:text-xs">{{ card.subtitle }}</p>
-              </div>
-              <div class="pointer-events-none absolute inset-0 rounded-2xl border-0 transition group-hover:border-2" style="border-color: rgb(220, 50, 146);" />
-            </NuxtLink>
-          </div>
-          <button
-            type="button"
-            class="absolute right-1 top-1/2 z-10 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border bg-white/90 text-gray-700 shadow-sm backdrop-blur md:inline-flex"
-            aria-label="Прокрутить сторисы вправо"
-            style="border-color: rgb(245, 194, 222);"
-            @click="scrollStoriesBy(220)"
-          >
-            →
-          </button>
-        </div>
-      </section>
+
 
       <section
         v-if="isFestivalMode"
@@ -326,6 +290,15 @@
         </div>
       </section>
     </main>
+    <StoryViewer
+      v-model="festivalStoryViewerOpen"
+      :campaign="festivalStoryViewerCampaign"
+      :campaigns="festivalStoryCampaigns"
+      :auto-advance-campaigns="true"
+      :shop-id="null"
+      @action="onFestivalStoryAction"
+      @campaign-change="festivalStoryViewerCampaign = $event"
+    />
   </div>
 </template>
 
@@ -334,6 +307,11 @@ import { computed, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import type { MapPointInput } from '~/composables/useGeocodedMarkers'
+// @ts-ignore Nuxt SFC auto-export
+import StoriesTopBar from '~/components/stories/StoriesTopBar.vue'
+// @ts-ignore Nuxt SFC auto-export
+import StoryViewer from '~/components/stories/StoryViewer.vue'
+import type { StoryCampaignDto, StorySlideDto } from '~/types/stories'
 import {
   readCityFulfillmentMode,
   writeCityFulfillmentMode,
@@ -385,6 +363,13 @@ type CityResponse = {
 type FestivalDto = NonNullable<CityResponse['festival']>
 type ShopsResponse = { ok: boolean, items: ShopItem[] }
 type CachedEntry<T> = { expiresAt: number, data: T }
+type FestivalStoryCard = {
+  id: 'leaderboard' | 'achievements' | 'pulse' | 'schedule'
+  title: string
+  subtitle: string
+  html: string
+  to: string
+}
 
 const route = useRoute()
 const citySlug = computed(() => (typeof route.params.city_slug === 'string' ? route.params.city_slug : ''))
@@ -505,8 +490,9 @@ const isFestivalMode = computed(() => !!festival.value)
 const activeFestivalSlug = computed(() => forcedFestivalSlug.value || festival.value?.slug || '')
 const festivalName = computed(() => festival.value?.name || 'Фестиваль')
 const festivalDescription = computed(() => festival.value?.description || '')
-const festivalStoriesScrollEl = ref<HTMLElement | null>(null)
-const festivalStoryCards = computed(() => {
+const festivalStoryViewerOpen = ref(false)
+const festivalStoryViewerCampaign = ref<StoryCampaignDto | null>(null)
+const festivalStoryCards = computed<FestivalStoryCard[]>(() => {
   const city = citySlug.value || 'ulan-ude'
   const festivalSlug = activeFestivalSlug.value || 'festival'
   const firstTenant = shops.value[0]?.slug
@@ -515,34 +501,109 @@ const festivalStoryCards = computed(() => {
       id: 'leaderboard',
       title: 'Лидерборд фестиваля',
       subtitle: 'Хит фестиваля и Народная любовь в реальном времени.',
+      html: `
+        <h3>Лидерборд фестиваля</h3>
+        <p>Открытые номинации для гостей и сцены:</p>
+        <ul>
+          <li>«Хит фестиваля» — по количеству проданных позиций.</li>
+          <li>«Народная любовь» — по оценкам гостей.</li>
+        </ul>
+      `,
       to: '/dashboard/festival-leaderboard',
-      image: '/pixel-assets/preview-levelup.webp',
     },
     {
       id: 'achievements',
       title: 'Достижения клиента',
       subtitle: 'Прогресс по персональным целям: Гастро-турист, Флэш, Легенда.',
+      html: `
+        <h3>Достижения клиента</h3>
+        <p>Фестивальная геймификация для вовлечения:</p>
+        <ul>
+          <li>«Гастро-турист» — заказы у разных корнеров.</li>
+          <li>«Флэш» — быстрый забор заказа.</li>
+          <li>«Легенда фестиваля» — собрать несколько достижений.</li>
+        </ul>
+      `,
       to: firstTenant
         ? `/${city}/festival/${festivalSlug}/${firstTenant}/achievements`
         : `/${city}/achievements`,
-      image: '/pixel-assets/preview-reviews.webp',
     },
     {
       id: 'pulse',
       title: 'Пульс фестиваля',
       subtitle: 'Съедено позиций, GMV и пиковые минуты заказов.',
+      html: `
+        <h3>Пульс фестиваля</h3>
+        <p>Операционные метрики MVP:</p>
+        <ul>
+          <li>orders_total и items_total</li>
+          <li>gmv_total и avg_prep_time_sec</li>
+          <li>peak_minute_orders</li>
+        </ul>
+      `,
       to: `/${city}/festival/${festivalSlug}`,
-      image: '/pixel-assets/preview-start-game.webp',
     },
     {
       id: 'schedule',
       title: 'Сегодня на фестивале',
       subtitle: 'QR-вход, pickup-only и быстрая выдача без живой очереди.',
+      html: `
+        <h3>Сегодня на фестивале</h3>
+        <p>Путь гостя в MVP:</p>
+        <ul>
+          <li>QR-вход в фестивальный режим.</li>
+          <li>Выбор корнера и оформление заказа.</li>
+          <li>Получение статуса «Готово» и забор без живой очереди.</li>
+        </ul>
+      `,
       to: `/${city}/festival/${festivalSlug}`,
-      image: '/pixel-assets/preview-cashback.webp',
     },
   ]
 })
+
+const festivalStoryCampaigns = computed<StoryCampaignDto[]>(() =>
+  festivalStoryCards.value.map((card: FestivalStoryCard, idx: number) => ({
+    id: card.id,
+    title: card.title,
+    previewUrl: null,
+    placement: 'top_bar' as const,
+    slides: [
+      {
+        id: `${card.id}-slide`,
+        campaignId: card.id,
+        sortOrder: idx,
+        mediaUrl: '',
+        durationSeconds: 7,
+        actionType: 'open_category' as const,
+        actionPayload: { to: card.to, html: card.html },
+        title: card.title,
+        text: card.subtitle,
+      },
+    ],
+  })),
+)
+
+const festivalStoryTargetByCampaignId = computed<Record<string, string>>(() =>
+  festivalStoryCards.value.reduce<Record<string, string>>((acc: Record<string, string>, card: FestivalStoryCard) => {
+    acc[card.id] = card.to
+    return acc
+  }, {}),
+)
+
+function openFestivalStoryCampaign(campaign: StoryCampaignDto) {
+  festivalStoryViewerCampaign.value = campaign
+  festivalStoryViewerOpen.value = true
+}
+
+function onFestivalStoryAction(payload: { slide: StorySlideDto; actionType: string }) {
+  const campaignId = payload.slide.campaignId
+  const payloadTo = payload.slide.actionPayload?.to
+  const targetFromPayload = typeof payloadTo === 'string' ? payloadTo : ''
+  const target = targetFromPayload || festivalStoryTargetByCampaignId.value[campaignId]
+  if (!target) return
+  festivalStoryViewerOpen.value = false
+  void navigateTo(target)
+}
 const pulseStatsList = computed(() => {
   const src = festival.value?.pulseStats || {}
   const entries = Object.entries(src)
@@ -611,10 +672,6 @@ function flattenMarkers(
 
 const pickupMapMarkers = computed(() => flattenMarkers(filteredByMode.value, 'pickup'))
 const dineInMapMarkers = computed(() => flattenMarkers(filteredByMode.value, 'dine-in'))
-
-function scrollStoriesBy(delta: number) {
-  festivalStoriesScrollEl.value?.scrollBy({ left: delta, behavior: 'smooth' })
-}
 
 function shopLink(shop: ShopItem): string {
   if (isFestivalMode.value && activeFestivalSlug.value) {
