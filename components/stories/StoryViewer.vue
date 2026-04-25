@@ -196,6 +196,8 @@ const currentSlide = computed<StorySlideDto | null>(() => {
 })
 
 const actionLabel = computed(() => {
+  const customLabel = currentSlide.value?.actionPayload?.buttonLabel ?? currentSlide.value?.actionPayload?.ctaLabel
+  if (typeof customLabel === 'string' && customLabel.trim()) return customLabel.trim()
   const t = currentSlide.value?.actionType
   if (t === 'add_to_cart') return 'В корзину'
   if (t === 'apply_promo') return 'Применить промокод'

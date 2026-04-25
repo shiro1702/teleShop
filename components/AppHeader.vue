@@ -291,7 +291,7 @@ const bonusesLink = computed(() => {
 const achievementsLink = computed(() => {
   const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
-  if (tenantSlug && festivalPrefix.value) return `${festivalPrefix.value}/${tenantSlug}/achievements`
+  if (festivalPrefix.value) return `${festivalPrefix.value}/achievements`
   if (citySlug && tenantSlug) return `/${citySlug}/${tenantSlug}/achievements`
   if (citySlug) return `/${citySlug}/achievements`
   return tenantPath('/achievements')

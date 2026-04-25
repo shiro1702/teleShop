@@ -60,7 +60,33 @@
       @open="openFestivalStoryCampaign"
     />
     <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-
+      <section
+        v-if="showFestivalBanner"
+        class="mb-6 overflow-hidden rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-sm sm:p-6"
+      >
+        <div class="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div class="max-w-2xl">
+            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">
+              Сейчас проходит фестиваль
+            </p>
+            <h2 class="mt-2 text-2xl font-bold text-gray-900">
+              {{ festivalName }}
+            </h2>
+            <p v-if="festivalDescription" class="mt-2 text-sm leading-6 text-gray-700">
+              {{ festivalDescription }}
+            </p>
+            <p v-if="festivalPlace" class="mt-3 text-sm font-medium text-amber-800">
+              Место: {{ festivalPlace }}
+            </p>
+          </div>
+          <NuxtLink
+            :to="festivalPublicPath"
+            class="inline-flex shrink-0 items-center justify-center rounded-xl bg-amber-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-700"
+          >
+            Перейти на фестиваль
+          </NuxtLink>
+        </div>
+      </section>
 
       <section
         v-if="isFestivalMode"
@@ -350,8 +376,16 @@ type FestivalStoryCard = {
   id: 'leaderboard' | 'achievements' | 'pulse' | 'schedule'
   title: string
   subtitle: string
-  html: string
   to: string
+  slides: FestivalStorySlide[]
+}
+type FestivalStorySlide = {
+  title: string
+  text: string
+  html: string
+  buttonLabel?: string
+  to?: string
+  durationSeconds?: number
 }
 
 const route = useRoute()
@@ -468,100 +502,189 @@ const errorMessage = computed<string | null>(() => {
 })
 const shops = computed<ShopItem[]>(() => shopsRes.value?.items ?? [])
 const festival = computed<FestivalDto | null>(() => cityRes.value?.festival ?? null)
-const isFestivalMode = computed(() => !!festival.value)
+const isFestivalMode = computed(() => !!festival.value && !!forcedFestivalSlug.value)
 const activeFestivalSlug = computed(() => forcedFestivalSlug.value || festival.value?.slug || '')
 const festivalName = computed(() => festival.value?.name || 'Фестиваль')
 const festivalDescription = computed(() => festival.value?.description || '')
+const festivalPublicPath = computed(() => `/${citySlug.value}/festival/${activeFestivalSlug.value || 'festival'}`)
+const showFestivalBanner = computed(() => !!festival.value && !forcedFestivalSlug.value)
+const festivalPlace = computed(() => {
+  const descriptionMatch = festivalDescription.value.match(/Адрес:\s*([^.]*)/i)
+  if (descriptionMatch?.[1]) return descriptionMatch[1].trim()
+  const scheduleAddress = festival.value?.schedule.find((item: unknown) => String(item).toLowerCase().includes('адрес'))
+  if (!scheduleAddress) return ''
+  return String(scheduleAddress).replace(/^Адрес:\s*/i, '').trim()
+})
 const festivalStoryViewerOpen = ref(false)
 const festivalStoryViewerCampaign = ref<StoryCampaignDto | null>(null)
 const festivalStoryCards = computed<FestivalStoryCard[]>(() => {
   const city = citySlug.value || 'ulan-ude'
   const festivalSlug = activeFestivalSlug.value || 'festival'
   const firstTenant = shops.value[0]?.slug
+  const festivalPath = `/${city}/festival/${festivalSlug}`
+  const leaderboardPath = `${festivalPath}/leaderboard`
+  const achievementsPath = `${festivalPath}/achievements`
   return [
     {
       id: 'leaderboard',
       title: 'Лидерборд фестиваля',
-      subtitle: 'Хит фестиваля и Народная любовь в реальном времени.',
-      html: `
-        <h3>Лидерборд фестиваля</h3>
-        <p>Открытые номинации для гостей и сцены:</p>
-        <ul>
-          <li>«Хит фестиваля» — по количеству проданных позиций.</li>
-          <li>«Народная любовь» — по оценкам гостей.</li>
-        </ul>
-      `,
-      to: '/dashboard/festival-leaderboard',
+      subtitle: 'Смотри, какие корнеры сейчас вырываются вперед.',
+      to: leaderboardPath,
+      slides: [
+        {
+          title: 'Лидерборд фестиваля',
+          text: 'Здесь видно, кто сейчас лидирует по заказам и оценкам гостей.',
+          html: `
+            <h3>Лидерборд фестиваля</h3>
+            <p>Открытый рейтинг помогает гостям выбирать корнеры, а участникам — соревноваться честно.</p>
+            <ul>
+              <li>«Хит фестиваля» — по количеству проданных позиций.</li>
+              <li>«Народная любовь» — по оценкам после получения заказа.</li>
+            </ul>
+          `,
+          buttonLabel: 'Лидерборд',
+          to: leaderboardPath,
+        },
+        {
+          title: 'Как попасть в топ',
+          text: 'Готовьте быстро, собирайте заказы и просите гостей оставить оценку после выдачи.',
+          html: `
+            <h3>Как попасть в топ</h3>
+            <p>Места считаются по реальным действиям гостей, а не вручную.</p>
+            <ul>
+              <li>Больше заказанных блюд — выше шанс стать «Хитом фестиваля».</li>
+              <li>Больше хороших оценок — ближе к номинации «Народная любовь».</li>
+            </ul>
+          `,
+          buttonLabel: 'Лидерборд',
+          to: leaderboardPath,
+        },
+      ],
     },
     {
       id: 'achievements',
-      title: 'Достижения клиента',
-      subtitle: 'Прогресс по персональным целям: Гастро-турист, Флэш, Легенда.',
-      html: `
-        <h3>Достижения клиента</h3>
-        <p>Фестивальная геймификация для вовлечения:</p>
-        <ul>
-          <li>«Гастро-турист» — заказы у разных корнеров.</li>
-          <li>«Флэш» — быстрый забор заказа.</li>
-          <li>«Легенда фестиваля» — собрать несколько достижений.</li>
-        </ul>
-      `,
-      to: firstTenant
-        ? `/${city}/festival/${festivalSlug}/${firstTenant}/achievements`
-        : `/${city}/achievements`,
+      title: 'Достижения',
+      subtitle: 'Собирай фестивальные бейджи за заказы у разных корнеров.',
+      to: achievementsPath,
+      slides: [
+        {
+          title: 'Достижения',
+          text: 'Заказывай у разных корнеров, забирай готовые заказы вовремя и открывай бейджи фестиваля.',
+          html: `
+            <h3>Как работают достижения</h3>
+            <p>Каждый заказ двигает прогресс. Чем активнее ты пробуешь фестиваль, тем больше бейджей открывается.</p>
+            <ul>
+              <li>«Гастро-турист» — попробуй разные корнеры.</li>
+              <li>«Бездонный желудок» — 5 заказов за день.</li>
+              <li>«Флэш» — забирай заказы за 1 минуту.</li>
+              <li>И ещё 7 скрытых достижений!</li>
+            </ul>
+          `,
+          buttonLabel: 'Посмотреть',
+          to: achievementsPath,
+        },
+        {
+          title: 'Зачем это вам',
+          text: 'Достижения подсказывают, что еще попробовать, и превращают прогулку по фестивалю в небольшой квест.',
+          html: `
+            <h3>Фестивальный квест</h3>
+            <p>Открой страницу достижений и смотри, сколько осталось до следующего бейджа.</p>
+            <ul>
+              <li>Выбирай новый корнер.</li>
+              <li>Оформляй заказ через QR.</li>
+              <li>Следи за прогрессом после покупки.</li>
+            </ul>
+          `,
+          buttonLabel: 'Посмотреть',
+          to: achievementsPath,
+        },
+      ],
     },
     {
       id: 'pulse',
       title: 'Пульс фестиваля',
-      subtitle: 'Съедено позиций, GMV и пиковые минуты заказов.',
-      html: `
-        <h3>Пульс фестиваля</h3>
-        <p>Операционные метрики MVP:</p>
-        <ul>
-          <li>orders_total и items_total</li>
-          <li>gmv_total и avg_prep_time_sec</li>
-          <li>peak_minute_orders</li>
-        </ul>
-      `,
-      to: `/${city}/festival/${festivalSlug}`,
+      subtitle: 'Сколько заказов уже сделали и когда площадка живет активнее всего.',
+      to: festivalPath,
+      slides: [
+        {
+          title: 'Пульс фестиваля',
+          text: 'Здесь собирается живая статистика события: заказы, популярные блюда и пиковые минуты.',
+          html: `
+            <h3>Пульс фестиваля</h3>
+            <p>Это быстрый срез того, как сейчас живет площадка.</p>
+            <ul>
+              <li>Сколько позиций уже заказали гости.</li>
+              <li>Какие минуты стали самыми активными.</li>
+              <li>Сколько времени гости сэкономили без очереди.</li>
+            </ul>
+          `,
+          buttonLabel: 'К фестивалю',
+          to: festivalPath,
+        },
+      ],
     },
     {
       id: 'schedule',
-      title: 'Сегодня на фестивале',
-      subtitle: 'QR-вход, pickup-only и быстрая выдача без живой очереди.',
-      html: `
-        <h3>Сегодня на фестивале</h3>
-        <p>Путь гостя в MVP:</p>
-        <ul>
-          <li>QR-вход в фестивальный режим.</li>
-          <li>Выбор корнера и оформление заказа.</li>
-          <li>Получение статуса «Готово» и забор без живой очереди.</li>
-        </ul>
-      `,
-      to: `/${city}/festival/${festivalSlug}`,
+      title: 'План мероприятий',
+      subtitle: 'Что происходит сегодня: открытие, активности, музыка и награждение.',
+      to: festivalPath,
+      slides: [
+        {
+          title: 'План мероприятий',
+          text: 'Ориентировочный сценарий дня: еда, активности, музыка и финальные номинации.',
+          html: `
+            <h3>План мероприятий</h3>
+            <ul>
+              <li>12:00 — старт фестиваля и открытие корнеров.</li>
+              <li>14:00 — дегустационный маршрут: попробуй блюда у разных участников.</li>
+              <li>17:00 — музыкальная программа и активности партнеров.</li>
+              <li>20:00 — промежуточные итоги лидерборда на сцене.</li>
+            </ul>
+          `,
+          buttonLabel: 'К фестивалю',
+          to: festivalPath,
+        },
+        {
+          title: 'Как заказать без очереди',
+          text: 'Выбери корнер, оплати заказ в телефоне и подходи на выдачу, когда появится статус «Готово».',
+          html: `
+            <h3>Как заказать без очереди</h3>
+            <p>Фестиваль работает в режиме быстрого самовывоза:</p>
+            <ul>
+              <li>Открой меню через QR.</li>
+              <li>Выбери блюда у нужного корнера.</li>
+              <li>Следи за статусом заказа и забери его на выдаче.</li>
+            </ul>
+          `,
+          buttonLabel: 'К фестивалю',
+          to: festivalPath,
+        },
+      ],
     },
   ]
 })
 
 const festivalStoryCampaigns = computed<StoryCampaignDto[]>(() =>
-  festivalStoryCards.value.map((card: FestivalStoryCard, idx: number) => ({
+  festivalStoryCards.value.map((card: FestivalStoryCard) => ({
     id: card.id,
     title: card.title,
     previewUrl: null,
     placement: 'top_bar' as const,
-    slides: [
-      {
-        id: `${card.id}-slide`,
-        campaignId: card.id,
-        sortOrder: idx,
-        mediaUrl: '',
-        durationSeconds: 7,
-        actionType: 'open_category' as const,
-        actionPayload: { to: card.to, html: card.html },
-        title: card.title,
-        text: card.subtitle,
+    slides: card.slides.map((slide: FestivalStorySlide, slideIdx: number) => ({
+      id: `${card.id}-slide-${slideIdx + 1}`,
+      campaignId: card.id,
+      sortOrder: slideIdx,
+      mediaUrl: '',
+      durationSeconds: slide.durationSeconds ?? 7,
+      actionType: 'open_category' as const,
+      actionPayload: {
+        to: slide.to || card.to,
+        html: slide.html,
+        buttonLabel: slide.buttonLabel,
       },
-    ],
+      title: slide.title || card.title,
+      text: slide.text || card.subtitle,
+    })),
   })),
 )
 
