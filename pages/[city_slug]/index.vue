@@ -57,6 +57,49 @@
     <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
       <section
         v-if="isFestivalMode"
+        class="mb-6 w-full border-b"
+        style="background-color: rgb(20, 22, 43); border-bottom-color: rgb(245, 194, 222);"
+      >
+        <div class="relative mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <button
+            type="button"
+            class="absolute left-1 top-1/2 z-10 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border bg-white/90 text-gray-700 shadow-sm backdrop-blur md:inline-flex"
+            aria-label="Прокрутить сторисы влево"
+            style="border-color: rgb(245, 194, 222);"
+            @click="scrollStoriesBy(-220)"
+          >
+            ←
+          </button>
+          <div ref="festivalStoriesScrollEl" class="flex gap-3 overflow-x-auto [scrollbar-width:none]">
+            <NuxtLink
+              v-for="card in festivalStoryCards"
+              :key="card.id"
+              :to="card.to"
+              class="group relative h-[176px] w-[128px] shrink-0 overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:h-[240px] sm:w-[200px]"
+              style="border-color: rgb(245, 194, 222); background-color: rgb(20, 22, 43);"
+            >
+              <img :src="card.image" :alt="card.title" class="h-full w-full object-cover">
+              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-3">
+                <p class="text-xs font-semibold text-white sm:text-sm">{{ card.title }}</p>
+                <p class="mt-1 line-clamp-2 text-[10px] text-white/80 sm:text-xs">{{ card.subtitle }}</p>
+              </div>
+              <div class="pointer-events-none absolute inset-0 rounded-2xl border-0 transition group-hover:border-2" style="border-color: rgb(220, 50, 146);" />
+            </NuxtLink>
+          </div>
+          <button
+            type="button"
+            class="absolute right-1 top-1/2 z-10 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border bg-white/90 text-gray-700 shadow-sm backdrop-blur md:inline-flex"
+            aria-label="Прокрутить сторисы вправо"
+            style="border-color: rgb(245, 194, 222);"
+            @click="scrollStoriesBy(220)"
+          >
+            →
+          </button>
+        </div>
+      </section>
+
+      <section
+        v-if="isFestivalMode"
         class="mb-6 grid gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:grid-cols-2 sm:p-6"
       >
         <div>
@@ -94,7 +137,7 @@
       </section>
 
       <section
-        v-if="listMode === 'pickup' && pickupMapMarkers.length && !pending"
+        v-if="!isFestivalMode && listMode === 'pickup' && pickupMapMarkers.length && !pending"
         class="mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
       >
         <div class="border-b border-gray-100 px-4 py-3 sm:px-6">
@@ -141,7 +184,7 @@
       </section>
 
       <section
-        v-if="listMode === 'dine-in' && dineInMapMarkers.length && !pending"
+        v-if="!isFestivalMode && listMode === 'dine-in' && dineInMapMarkers.length && !pending"
         class="mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
       >
         <div class="border-b border-gray-100 px-4 py-3 sm:px-6">
@@ -206,7 +249,7 @@
             :key="shop.id"
             class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-primary"
           >
-            <NuxtLink :to="`/${citySlug}/${shop.slug}`" class="block">
+            <NuxtLink :to="shopLink(shop)" class="block">
               <div class="flex items-start gap-3">
                 <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary-50 text-primary">
                   <img
@@ -277,7 +320,8 @@
             Ничего не найдено по запросу.
           </template>
           <template v-else>
-            Нет заведений с выбранным режимом. Переключите режим отображения выше.
+            <span v-if="isFestivalMode">Нет доступных корнеров в режиме «В ресторане».</span>
+            <span v-else>Нет заведений с выбранным режимом. Переключите режим отображения выше.</span>
           </template>
         </div>
       </section>
@@ -287,6 +331,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import type { Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import type { MapPointInput } from '~/composables/useGeocodedMarkers'
 import {
@@ -338,6 +383,8 @@ type CityResponse = {
 }
 
 type FestivalDto = NonNullable<CityResponse['festival']>
+type ShopsResponse = { ok: boolean, items: ShopItem[] }
+type CachedEntry<T> = { expiresAt: number, data: T }
 
 const route = useRoute()
 const citySlug = computed(() => (typeof route.params.city_slug === 'string' ? route.params.city_slug : ''))
@@ -351,17 +398,151 @@ const forcedFestivalSlug = computed(() => {
   return ''
 })
 
-const cityNameRu = ref('')
+const CITY_CACHE_TTL_MS = 5 * 60 * 1000
+const SHOPS_CACHE_TTL_MS = 60 * 1000
+const cityCache = useState<Record<string, CachedEntry<CityResponse>>>('city-page-city-cache', () => ({}))
+const shopsCache = useState<Record<string, CachedEntry<ShopsResponse>>>('city-page-shops-cache', () => ({}))
+
+function makeCacheKey(slug: string, festivalSlug: string) {
+  return `${slug}::${festivalSlug || '-'}`
+}
+
+function readCached<T>(cacheState: Ref<Record<string, CachedEntry<T>>>, key: string): T | null {
+  const cached = cacheState.value[key]
+  if (!cached) return null
+  if (cached.expiresAt <= Date.now()) {
+    delete cacheState.value[key]
+    return null
+  }
+  return cached.data
+}
+
+function writeCached<T>(cacheState: Ref<Record<string, CachedEntry<T>>>, key: string, data: T, ttlMs: number) {
+  cacheState.value[key] = {
+    data,
+    expiresAt: Date.now() + ttlMs,
+  }
+}
+
+function buildCityApiUrl(slug: string, festivalSlug: string) {
+  const query = new URLSearchParams({ slug })
+  if (festivalSlug) query.set('festival_slug', festivalSlug)
+  return `/api/cities?${query.toString()}`
+}
+
+function buildShopsApiUrl(slug: string, festivalSlug: string) {
+  const query = new URLSearchParams({ city_slug: slug })
+  if (festivalSlug) query.set('festival_slug', festivalSlug)
+  return `/api/shops?${query.toString()}`
+}
 
 const search = ref('')
-const pending = ref(true)
-const errorMessage = ref<string | null>(null)
-const shops = ref<ShopItem[]>([])
-const listMode = ref<'delivery' | 'pickup' | 'dine-in'>('delivery')
-const festival = ref<FestivalDto | null>(null)
+const listMode = ref<'delivery' | 'pickup' | 'dine-in'>('dine-in')
+const {
+  data: cityRes,
+  pending: cityPending,
+  error: cityError,
+} = await useAsyncData<CityResponse>(
+  () => `city-page-city:${makeCacheKey(citySlug.value, forcedFestivalSlug.value)}`,
+  async () => {
+    const slug = citySlug.value
+    if (!slug) {
+      return {
+        ok: true,
+        city: null,
+        festival: null,
+      } as CityResponse
+    }
+    const cacheKey = makeCacheKey(slug, forcedFestivalSlug.value)
+    const cached = readCached(cityCache, cacheKey)
+    if (cached) return cached
+    const response = await $fetch<CityResponse>(buildCityApiUrl(slug, forcedFestivalSlug.value))
+    writeCached(cityCache, cacheKey, response, CITY_CACHE_TTL_MS)
+    return response
+  },
+  {
+    server: true,
+    watch: [citySlug, forcedFestivalSlug],
+  },
+)
+
+const {
+  data: shopsRes,
+  pending: shopsPending,
+  error: shopsError,
+} = await useAsyncData<ShopsResponse>(
+  () => `city-page-shops:${makeCacheKey(citySlug.value, forcedFestivalSlug.value)}`,
+  async () => {
+    const slug = citySlug.value
+    if (!slug) {
+      return { ok: true, items: [] } as ShopsResponse
+    }
+    const cacheKey = makeCacheKey(slug, forcedFestivalSlug.value)
+    const cached = readCached(shopsCache, cacheKey)
+    if (cached) return cached
+    const response = await $fetch<ShopsResponse>(buildShopsApiUrl(slug, forcedFestivalSlug.value))
+    writeCached(shopsCache, cacheKey, response, SHOPS_CACHE_TTL_MS)
+    return response
+  },
+  {
+    server: true,
+    watch: [citySlug, forcedFestivalSlug],
+  },
+)
+
+const cityNameRu = computed(() => cityRes.value?.city?.name || citySlug.value)
+const pending = computed(() => cityPending.value || shopsPending.value)
+const errorMessage = computed<string | null>(() => {
+  if (!citySlug.value) return 'Город не указан в URL'
+  if (cityError.value) return cityError.value.message || 'Не удалось загрузить город'
+  if (shopsError.value) return shopsError.value.message || 'Не удалось загрузить рестораны'
+  if (shopsRes.value && !shopsRes.value.ok) return 'Не удалось загрузить рестораны'
+  return null
+})
+const shops = computed<ShopItem[]>(() => shopsRes.value?.items ?? [])
+const festival = computed<FestivalDto | null>(() => cityRes.value?.festival ?? null)
 const isFestivalMode = computed(() => !!festival.value)
+const activeFestivalSlug = computed(() => forcedFestivalSlug.value || festival.value?.slug || '')
 const festivalName = computed(() => festival.value?.name || 'Фестиваль')
 const festivalDescription = computed(() => festival.value?.description || '')
+const festivalStoriesScrollEl = ref<HTMLElement | null>(null)
+const festivalStoryCards = computed(() => {
+  const city = citySlug.value || 'ulan-ude'
+  const festivalSlug = activeFestivalSlug.value || 'festival'
+  const firstTenant = shops.value[0]?.slug
+  return [
+    {
+      id: 'leaderboard',
+      title: 'Лидерборд фестиваля',
+      subtitle: 'Хит фестиваля и Народная любовь в реальном времени.',
+      to: '/dashboard/festival-leaderboard',
+      image: '/pixel-assets/preview-levelup.webp',
+    },
+    {
+      id: 'achievements',
+      title: 'Достижения клиента',
+      subtitle: 'Прогресс по персональным целям: Гастро-турист, Флэш, Легенда.',
+      to: firstTenant
+        ? `/${city}/festival/${festivalSlug}/${firstTenant}/achievements`
+        : `/${city}/achievements`,
+      image: '/pixel-assets/preview-reviews.webp',
+    },
+    {
+      id: 'pulse',
+      title: 'Пульс фестиваля',
+      subtitle: 'Съедено позиций, GMV и пиковые минуты заказов.',
+      to: `/${city}/festival/${festivalSlug}`,
+      image: '/pixel-assets/preview-start-game.webp',
+    },
+    {
+      id: 'schedule',
+      title: 'Сегодня на фестивале',
+      subtitle: 'QR-вход, pickup-only и быстрая выдача без живой очереди.',
+      to: `/${city}/festival/${festivalSlug}`,
+      image: '/pixel-assets/preview-cashback.webp',
+    },
+  ]
+})
 const pulseStatsList = computed(() => {
   const src = festival.value?.pulseStats || {}
   const entries = Object.entries(src)
@@ -381,6 +562,7 @@ const modeAvailability = computed(() => ({
 }))
 
 const showModeSwitcher = computed(() => {
+  if (isFestivalMode.value) return false
   const m = modeAvailability.value
   return [m.delivery, m.pickup, m.dineIn].filter(Boolean).length >= 2
 })
@@ -430,11 +612,23 @@ function flattenMarkers(
 const pickupMapMarkers = computed(() => flattenMarkers(filteredByMode.value, 'pickup'))
 const dineInMapMarkers = computed(() => flattenMarkers(filteredByMode.value, 'dine-in'))
 
+function scrollStoriesBy(delta: number) {
+  festivalStoriesScrollEl.value?.scrollBy({ left: delta, behavior: 'smooth' })
+}
+
+function shopLink(shop: ShopItem): string {
+  if (isFestivalMode.value && activeFestivalSlug.value) {
+    return `/${citySlug.value}/festival/${activeFestivalSlug.value}/${shop.slug}`
+  }
+  return `/${citySlug.value}/${shop.slug}`
+}
+
 function yandexMapsLink(address: string) {
   return `https://yandex.ru/maps/?text=${encodeURIComponent(address)}`
 }
 
 function persistCityMode(mode: 'delivery' | 'pickup' | 'dine-in') {
+  if (isFestivalMode.value) return
   writeCityFulfillmentMode(citySlug.value, mode)
 }
 
@@ -445,13 +639,14 @@ function selectListMode(mode: 'delivery' | 'pickup' | 'dine-in') {
 }
 
 watch(listMode, (mode: 'delivery' | 'pickup' | 'dine-in') => {
+  if (isFestivalMode.value) return
   persistCityMode(mode)
 })
 
 function pickInitialListMode(list: ShopItem[]): 'delivery' | 'pickup' | 'dine-in' {
   if (isFestivalMode.value) {
-    const canPickup = list.some((s) => s.fulfillment?.pickup)
-    if (canPickup) return 'pickup'
+    const canDineIn = list.some((s) => s.fulfillment?.dineIn)
+    if (canDineIn) return 'dine-in'
   }
   const canD = list.some((s) => s.fulfillment?.delivery)
   const canP = list.some((s) => s.fulfillment?.pickup)
@@ -469,6 +664,10 @@ function modeAllowed(mode: 'delivery' | 'pickup' | 'dine-in', list: ShopItem[]) 
 }
 
 function restoreListMode(list: ShopItem[]) {
+  if (isFestivalMode.value) {
+    listMode.value = pickInitialListMode(list)
+    return
+  }
   if (!list.length) {
     listMode.value = 'delivery'
     return
@@ -497,50 +696,7 @@ watch(shops, (list: ShopItem[]) => {
   }
 }, { deep: true })
 
-async function loadCityAndShops() {
-  const slug = citySlug.value
-  if (!slug) {
-    cityNameRu.value = ''
-    shops.value = []
-    pending.value = false
-    errorMessage.value = 'Город не указан в URL'
-    return
-  }
-
-  pending.value = true
-  errorMessage.value = null
-  try {
-    const festivalQueryPart = forcedFestivalSlug.value ? `&festival_slug=${encodeURIComponent(forcedFestivalSlug.value)}` : ''
-    const [cityHttpRes, shopsHttpRes] = await Promise.all([
-      fetch(`/api/cities?slug=${encodeURIComponent(slug)}${festivalQueryPart}`),
-      fetch(`/api/shops?city_slug=${encodeURIComponent(slug)}${festivalQueryPart}`),
-    ])
-
-    if (!cityHttpRes.ok) {
-      throw new Error('Не удалось загрузить город')
-    }
-    if (!shopsHttpRes.ok) {
-      throw new Error('Не удалось загрузить рестораны')
-    }
-
-    const cityRes = await cityHttpRes.json() as CityResponse
-    const shopsRes = await shopsHttpRes.json() as { ok: boolean, items: ShopItem[] }
-
-    cityNameRu.value = cityRes.city?.name || slug
-    festival.value = cityRes.festival ?? null
-    if (!shopsRes.ok) {
-      throw new Error('Не удалось загрузить рестораны')
-    }
-    shops.value = shopsRes.items ?? []
-    restoreListMode(shops.value)
-  } catch (err: any) {
-    errorMessage.value = err?.message || 'Ошибка загрузки'
-    cityNameRu.value = slug
-    shops.value = []
-  } finally {
-    pending.value = false
-  }
-}
-
-watch([citySlug, forcedFestivalSlug], loadCityAndShops, { immediate: true })
+watch(shops, (list: ShopItem[]) => {
+  restoreListMode(list)
+}, { immediate: true })
 </script>

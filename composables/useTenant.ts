@@ -218,6 +218,13 @@ export function useTenant() {
   const routeCitySlug = computed(() =>
     typeof route.params.city_slug === 'string' ? route.params.city_slug : null,
   )
+  const routeFestivalSlug = computed(() => {
+    if (typeof route.params.festival_slug === 'string' && route.params.festival_slug.trim()) {
+      return route.params.festival_slug.trim()
+    }
+    const queryFestival = normalizeRouteQueryParam(route.query.festival_slug)
+    return queryFestival || null
+  })
 
   const tenantKey = computed(() =>
     // Витрина ресторана SPA-навигация: приоритет должен быть у URL.
@@ -238,6 +245,9 @@ export function useTenant() {
     if (!slug || state.value.isCustomDomain) return ''
 
     // Публичная restaurant-схема агрегатора: /{city_slug}/{tenant_slug}
+    if (routeCitySlug.value && routeFestivalSlug.value) {
+      return `/${routeCitySlug.value}/festival/${routeFestivalSlug.value}/${slug}`
+    }
     if (routeCitySlug.value) return `/${routeCitySlug.value}/${slug}`
     return `/${slug}`
   })

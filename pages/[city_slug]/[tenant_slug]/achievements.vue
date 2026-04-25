@@ -5,7 +5,7 @@
         <NuxtLink :to="tenantPath('/')" class="text-sm font-medium text-amber-700 hover:text-amber-800">
           ← К меню
         </NuxtLink>
-        <h1 class="text-lg font-semibold">Ачивки фестиваля</h1>
+        <h1 class="text-lg font-semibold">Достижения фестиваля</h1>
         <span class="text-xs text-amber-700">Demo</span>
       </div>
     </header>

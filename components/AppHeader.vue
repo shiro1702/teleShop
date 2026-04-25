@@ -82,7 +82,7 @@
               :style="{ color: mainTextColor }"
               @click="showMiniappMenu = false"
             >
-              Ачивки
+              Достижения
             </NuxtLink>
             <NuxtLink
               to="/profile"
@@ -170,7 +170,7 @@
                 :style="{ color: mainTextColor }"
                 @click="showUserMenu = false"
               >
-                Ачивки
+                Достижения
               </NuxtLink>
               <NuxtLink
                 to="/profile"
@@ -266,22 +266,32 @@ const maxBotUrl = computed(() => {
   return trimmed || null
 })
 const homeLink = computed(() => tenantPath('/'))
+const festivalPrefix = computed(() => {
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const festivalSlug = typeof route.params.festival_slug === 'string' ? route.params.festival_slug.trim() : ''
+  if (citySlug && festivalSlug) return `/${citySlug}/festival/${festivalSlug}`
+  if (citySlug) return `/${citySlug}`
+  return ''
+})
 const ordersLink = computed(() => {
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
   const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  if (tenantSlug && festivalPrefix.value) return `${festivalPrefix.value}/${tenantSlug}/orders`
   if (citySlug && tenantSlug) return `/${citySlug}/${tenantSlug}/orders`
   if (citySlug) return `/${citySlug}/orders`
   return tenantPath('/orders')
 })
 const bonusesLink = computed(() => {
-  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
   const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  if (tenantSlug && festivalPrefix.value) return `${festivalPrefix.value}/${tenantSlug}/bonuses`
   if (citySlug && tenantSlug) return `/${citySlug}/${tenantSlug}/bonuses`
   return tenantPath('/bonuses')
 })
 const achievementsLink = computed(() => {
-  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
   const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  if (tenantSlug && festivalPrefix.value) return `${festivalPrefix.value}/${tenantSlug}/achievements`
   if (citySlug && tenantSlug) return `/${citySlug}/${tenantSlug}/achievements`
   if (citySlug) return `/${citySlug}/achievements`
   return tenantPath('/achievements')

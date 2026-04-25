@@ -1,4 +1,4 @@
-import { createError, defineEventHandler, getQuery } from 'h3'
+import { createError, defineEventHandler, getQuery, setResponseHeader } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 
 type CityRow = {
@@ -20,6 +20,8 @@ type FestivalRow = {
 }
 
 export default defineEventHandler(async (event) => {
+  // City metadata changes rarely; allow browser/CDN reuse.
+  setResponseHeader(event, 'Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600')
   const query = getQuery(event)
   const config = useRuntimeConfig(event)
   const requestedSlug = typeof query.slug === 'string' ? query.slug.trim() : ''

@@ -1,4 +1,4 @@
-import { createError, defineEventHandler, getQuery } from 'h3'
+import { createError, defineEventHandler, getQuery, setResponseHeader } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { getOrganizationSettings, getStyleRecord } from '~/server/utils/organizationStyle'
 
@@ -47,6 +47,8 @@ function normalizeRestaurants(raw: ShopRow['restaurants']): ShopRestaurantRow[] 
 }
 
 export default defineEventHandler(async (event) => {
+  // Shops list can update, but not every second; short shared cache helps SSR perf.
+  setResponseHeader(event, 'Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=120')
   const query = getQuery(event)
   const config = useRuntimeConfig(event)
   const requestedCitySlug = typeof query.city_slug === 'string' ? query.city_slug.trim() : ''
