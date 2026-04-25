@@ -3,10 +3,10 @@
     <header class="border-b border-gray-200 bg-white/95 backdrop-blur">
       <div class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <h1 class="text-2xl font-bold text-gray-900">
-          Рестораны в {{ cityNameRu }}
+          {{ isFestivalMode ? `Фестиваль: ${festivalName}` : `Рестораны в ${cityNameRu}` }}
         </h1>
         <p class="mt-2 text-sm text-gray-600">
-          меню в вашем кармане. Доставку и готовку выполняет каждый ресторан самостоятельно.
+          {{ isFestivalMode ? 'Выберите корнер, закажите и заберите без очереди.' : 'меню в вашем кармане. Доставку и готовку выполняет каждый ресторан самостоятельно.' }}
         </p>
       </div>
     </header>
@@ -55,6 +55,32 @@
     </div>
 
     <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <section
+        v-if="isFestivalMode"
+        class="mb-6 grid gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:grid-cols-2 sm:p-6"
+      >
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">Пульс фестиваля</p>
+          <h2 class="mt-2 text-lg font-semibold text-amber-900">{{ festivalName }}</h2>
+          <p v-if="festivalDescription" class="mt-1 text-sm text-amber-800">{{ festivalDescription }}</p>
+          <ul class="mt-3 space-y-1 text-sm text-amber-900">
+            <li v-for="(line, idx) in pulseStatsList" :key="`pulse-${idx}`">{{ line }}</li>
+          </ul>
+        </div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">Расписание</p>
+          <ul class="mt-2 space-y-2">
+            <li
+              v-for="(item, idx) in festivalScheduleList"
+              :key="`schedule-${idx}`"
+              class="rounded-lg border border-amber-200 bg-white/70 px-3 py-2 text-sm text-amber-900"
+            >
+              {{ item }}
+            </li>
+          </ul>
+        </div>
+      </section>
+
       <section class="mb-6 rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
         <label class="block text-sm font-medium text-gray-700">
           Поиск по ресторанам
@@ -301,10 +327,29 @@ type CityResponse = {
     slug: string
     isActive: boolean
   } | null
+  festival?: {
+    id: string
+    slug: string
+    name: string
+    description: string | null
+    pulseStats: Record<string, unknown>
+    schedule: unknown[]
+  } | null
 }
+
+type FestivalDto = NonNullable<CityResponse['festival']>
 
 const route = useRoute()
 const citySlug = computed(() => (typeof route.params.city_slug === 'string' ? route.params.city_slug : ''))
+const forcedFestivalSlug = computed(() => {
+  if (typeof route.params.festival_slug === 'string' && route.params.festival_slug.trim()) {
+    return route.params.festival_slug.trim()
+  }
+  if (typeof route.query.festival_slug === 'string' && route.query.festival_slug.trim()) {
+    return route.query.festival_slug.trim()
+  }
+  return ''
+})
 
 const cityNameRu = ref('')
 
@@ -313,6 +358,21 @@ const pending = ref(true)
 const errorMessage = ref<string | null>(null)
 const shops = ref<ShopItem[]>([])
 const listMode = ref<'delivery' | 'pickup' | 'dine-in'>('delivery')
+const festival = ref<FestivalDto | null>(null)
+const isFestivalMode = computed(() => !!festival.value)
+const festivalName = computed(() => festival.value?.name || 'Фестиваль')
+const festivalDescription = computed(() => festival.value?.description || '')
+const pulseStatsList = computed(() => {
+  const src = festival.value?.pulseStats || {}
+  const entries = Object.entries(src)
+  if (!entries.length) return ['Съедено 1500 бургеров', 'Сэкономлено 400 часов в очереди']
+  return entries.map(([k, v]) => `${k}: ${String(v)}`)
+})
+const festivalScheduleList = computed(() => {
+  const src = festival.value?.schedule
+  if (!Array.isArray(src) || !src.length) return ['12:00 — Открытие фестиваля', '20:00 — Награждение лидеров']
+  return src.map((item) => String(item))
+})
 
 const modeAvailability = computed(() => ({
   delivery: shops.value.some((s: ShopItem) => s.fulfillment?.delivery),
@@ -389,6 +449,10 @@ watch(listMode, (mode: 'delivery' | 'pickup' | 'dine-in') => {
 })
 
 function pickInitialListMode(list: ShopItem[]): 'delivery' | 'pickup' | 'dine-in' {
+  if (isFestivalMode.value) {
+    const canPickup = list.some((s) => s.fulfillment?.pickup)
+    if (canPickup) return 'pickup'
+  }
   const canD = list.some((s) => s.fulfillment?.delivery)
   const canP = list.some((s) => s.fulfillment?.pickup)
   const canI = list.some((s) => s.fulfillment?.dineIn)
@@ -446,9 +510,10 @@ async function loadCityAndShops() {
   pending.value = true
   errorMessage.value = null
   try {
+    const festivalQueryPart = forcedFestivalSlug.value ? `&festival_slug=${encodeURIComponent(forcedFestivalSlug.value)}` : ''
     const [cityHttpRes, shopsHttpRes] = await Promise.all([
-      fetch(`/api/cities?slug=${encodeURIComponent(slug)}`),
-      fetch(`/api/shops?city_slug=${encodeURIComponent(slug)}`),
+      fetch(`/api/cities?slug=${encodeURIComponent(slug)}${festivalQueryPart}`),
+      fetch(`/api/shops?city_slug=${encodeURIComponent(slug)}${festivalQueryPart}`),
     ])
 
     if (!cityHttpRes.ok) {
@@ -462,6 +527,7 @@ async function loadCityAndShops() {
     const shopsRes = await shopsHttpRes.json() as { ok: boolean, items: ShopItem[] }
 
     cityNameRu.value = cityRes.city?.name || slug
+    festival.value = cityRes.festival ?? null
     if (!shopsRes.ok) {
       throw new Error('Не удалось загрузить рестораны')
     }
@@ -476,5 +542,5 @@ async function loadCityAndShops() {
   }
 }
 
-watch(citySlug, loadCityAndShops, { immediate: true })
+watch([citySlug, forcedFestivalSlug], loadCityAndShops, { immediate: true })
 </script>

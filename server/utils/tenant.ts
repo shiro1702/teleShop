@@ -25,6 +25,8 @@ export type TenantRestaurant = {
   id: string
   shop_id: string
   city_id: string | null
+  festival_id: string | null
+  is_festival: boolean
   name: string
   address: string
   supports_delivery: boolean
@@ -308,7 +310,7 @@ export async function requireRestaurantForShop(
   let error: any = null
   const primary = await client
     .from('restaurants')
-    .select('id,shop_id,city_id,name,address,supports_delivery,supports_pickup,supports_qr_menu,use_organization_working_hours,working_hours,is_active')
+    .select('id,shop_id,city_id,festival_id,is_festival,name,address,supports_delivery,supports_pickup,supports_qr_menu,use_organization_working_hours,working_hours,is_active')
     .eq('shop_id', shopId)
     .eq('id', normalizedRestaurantId)
     .eq('is_active', true)
@@ -328,6 +330,8 @@ export async function requireRestaurantForShop(
     if (data) {
       data = {
         ...data,
+        festival_id: null,
+        is_festival: false,
         use_organization_working_hours: true,
         working_hours: null,
       }

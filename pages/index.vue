@@ -103,6 +103,32 @@
       </section>
 
       <section
+        v-if="cityFestival"
+        class="mb-8 grid gap-4 rounded-3xl border border-amber-200 bg-amber-50 p-4 sm:grid-cols-2 sm:p-6"
+      >
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">Пульс фестиваля</p>
+          <h2 class="mt-2 text-lg font-semibold text-amber-900">{{ cityFestival.name }}</h2>
+          <p v-if="cityFestival.description" class="mt-1 text-sm text-amber-800">{{ cityFestival.description }}</p>
+          <ul class="mt-3 space-y-1 text-sm text-amber-900">
+            <li v-for="(line, idx) in festivalPulseLines" :key="`festival-pulse-${idx}`">{{ line }}</li>
+          </ul>
+        </div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">Сегодня на фестивале</p>
+          <ul class="mt-2 space-y-2">
+            <li
+              v-for="(line, idx) in festivalScheduleLines"
+              :key="`festival-schedule-${idx}`"
+              class="rounded-lg border border-amber-200 bg-white/70 px-3 py-2 text-sm text-amber-900"
+            >
+              {{ line }}
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section
         v-if="isCatalogLoading"
         class="mb-10"
       >
@@ -592,6 +618,25 @@ const tenantName = computed(() => tenant.value.shopName || 'Ресторан')
 const tenantLogoUrl = computed(() => tenant.value.logoLargeUrl || tenant.value.logoUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
 const theme = computed(() => tenant.value.theme || {})
+const cityFestival = ref<null | {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  pulseStats: Record<string, unknown>
+  schedule: unknown[]
+}>(null)
+const festivalPulseLines = computed(() => {
+  const stats = cityFestival.value?.pulseStats ?? {}
+  const entries = Object.entries(stats)
+  if (!entries.length) return ['Съедено 1500 бургеров', 'Сэкономлено 400 часов в очереди']
+  return entries.map(([k, v]) => `${k}: ${String(v)}`)
+})
+const festivalScheduleLines = computed(() => {
+  const src = cityFestival.value?.schedule
+  if (!Array.isArray(src) || src.length === 0) return ['12:00 — Открытие', '20:00 — Финал лидеров']
+  return src.map((item) => String(item))
+})
 
 // State for modifiers and parameters
 const activeModifiers = ref<Record<string, Set<string>>>({})
@@ -1154,6 +1199,14 @@ watch(
 )
 
 watch(
+  () => route.params.city_slug,
+  () => {
+    void loadCityFestival()
+  },
+  { immediate: true },
+)
+
+watch(
   () => [route.query.story_campaign_id, storiesTopBar.value, storiesCatalogGrid.value] as const,
   () => {
     const raw = route.query.story_campaign_id
@@ -1216,6 +1269,20 @@ async function loadCatalog() {
 watch(catalogFulfillmentType, () => {
   void loadCatalog()
 })
+
+async function loadCityFestival() {
+  const slug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  if (!slug) {
+    cityFestival.value = null
+    return
+  }
+  try {
+    const res = await $fetch<{ festival?: any | null }>('/api/cities', { query: { slug } })
+    cityFestival.value = res?.festival ?? null
+  } catch {
+    cityFestival.value = null
+  }
+}
 
 </script>
 

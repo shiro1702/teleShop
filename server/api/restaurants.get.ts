@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
   let error: any = null
   const primary = await client
     .from('restaurants')
-    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active')
+    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,is_festival,festival_id,festivals(name)')
     .eq('shop_id', shopId)
     .eq('is_active', true)
     .order('name', { ascending: true })
@@ -108,6 +108,9 @@ export default defineEventHandler(async (event) => {
        */
       supports_in_restaurant:
         allowedSet.has('dine-in') && Boolean(item.supports_dine_in),
+      is_festival: Boolean(item.is_festival),
+      festival_id: typeof item.festival_id === 'string' ? item.festival_id : null,
+      festival_name: typeof item?.festivals?.name === 'string' ? item.festivals.name : null,
     })),
   }
 })

@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
 
   const { data: restaurant, error: restaurantError } = await client
     .from('restaurants')
-    .select('id,name')
+    .select('id,name,is_festival,festival_id,festivals(name)')
     .eq('id', restaurantId)
     .eq('shop_id', access.shopId)
     .maybeSingle()
@@ -112,7 +112,13 @@ export default defineEventHandler(async (event) => {
 
   return {
     ok: true,
-    restaurant: { id: restaurant.id, name: restaurant.name },
+    restaurant: {
+      id: restaurant.id,
+      name: restaurant.name,
+      isFestival: Boolean((restaurant as any).is_festival),
+      festivalId: (restaurant as any).festival_id ?? null,
+      festivalName: typeof (restaurant as any).festivals?.name === 'string' ? (restaurant as any).festivals.name : null,
+    },
     fulfillmentType,
     orders,
   }

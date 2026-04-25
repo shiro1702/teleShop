@@ -76,6 +76,15 @@
               Бонусы
             </NuxtLink>
             <NuxtLink
+              v-if="achievementsMenuVisible"
+              :to="achievementsLink"
+              class="block px-3 py-2"
+              :style="{ color: mainTextColor }"
+              @click="showMiniappMenu = false"
+            >
+              Ачивки
+            </NuxtLink>
+            <NuxtLink
               to="/profile"
               class="block px-3 py-2"
               :style="{ color: mainTextColor }"
@@ -153,6 +162,15 @@
                 @click="showUserMenu = false"
               >
                 Бонусы
+              </NuxtLink>
+              <NuxtLink
+                v-if="achievementsMenuVisible"
+                :to="achievementsLink"
+                class="block px-3 py-2"
+                :style="{ color: mainTextColor }"
+                @click="showUserMenu = false"
+              >
+                Ачивки
               </NuxtLink>
               <NuxtLink
                 to="/profile"
@@ -261,10 +279,22 @@ const bonusesLink = computed(() => {
   if (citySlug && tenantSlug) return `/${citySlug}/${tenantSlug}/bonuses`
   return tenantPath('/bonuses')
 })
+const achievementsLink = computed(() => {
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  if (citySlug && tenantSlug) return `/${citySlug}/${tenantSlug}/achievements`
+  if (citySlug) return `/${citySlug}/achievements`
+  return tenantPath('/achievements')
+})
 const bonusesMenuVisible = computed(() => {
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
   const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
   return !!(citySlug && tenantSlug) || !!tenant.value.tenantSlug
+})
+const achievementsMenuVisible = computed(() => {
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  return !!citySlug || !!tenantSlug || !!tenant.value.tenantSlug
 })
 
 /** Показываем miniapp-меню на витрине ресторана и на городской странице агрегатора. */

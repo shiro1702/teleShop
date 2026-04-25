@@ -21,7 +21,18 @@ type ShopRestaurantRow = {
   supports_pickup: boolean
   supports_dine_in: boolean
   city_id: string
+  festival_id: string | null
+  is_festival: boolean
   is_active: boolean
+}
+
+type FestivalRow = {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  pulse_stats: Record<string, unknown> | null
+  schedule: unknown[] | null
 }
 
 function normalizeRestaurants(raw: ShopRow['restaurants']): ShopRestaurantRow[] {
@@ -39,6 +50,7 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const config = useRuntimeConfig(event)
   const requestedCitySlug = typeof query.city_slug === 'string' ? query.city_slug.trim() : ''
+  const requestedFestivalSlug = typeof query.festival_slug === 'string' ? query.festival_slug.trim() : ''
   const defaultCitySlug = typeof config.public?.defaultCitySlug === 'string' ? config.public.defaultCitySlug.trim() : ''
   const citySlug = requestedCitySlug || defaultCitySlug
 
@@ -64,13 +76,40 @@ export default defineEventHandler(async (event) => {
   }
 
   const cityId = cityData.id as string
+  let activeFestival: FestivalRow | null = null
+
+  const nowTs = Date.now()
+  const { data: festivalRows, error: festivalError } = await client
+    .from('festivals')
+    .select('id,slug,name,description,pulse_stats,schedule,starts_at,ends_at')
+    .eq('city_id', cityId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  if (festivalError) {
+    console.error('Failed to resolve active festival:', festivalError)
+  } else if (Array.isArray(festivalRows)) {
+    const current = requestedFestivalSlug
+      ? festivalRows.find((row: any) => typeof row.slug === 'string' && row.slug.trim() === requestedFestivalSlug)
+      : festivalRows.find((row: any) => {
+          const startsAt = typeof row.starts_at === 'string' ? Date.parse(row.starts_at) : NaN
+          const endsAt = typeof row.ends_at === 'string' ? Date.parse(row.ends_at) : NaN
+          const startsOk = Number.isNaN(startsAt) || startsAt <= nowTs
+          const endsOk = Number.isNaN(endsAt) || endsAt >= nowTs
+          return startsOk && endsOk
+        })
+    if (current?.id) {
+      activeFestival = current as FestivalRow
+    }
+  }
 
   let data: ShopRow[] | null = null
   let error: { code?: string, message?: string } | null = null
 
   const primary = await client
     .from('shops')
-    .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(id,name,address,lat,lon,city_id,is_active,supports_delivery,supports_pickup,supports_dine_in)')
+    .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(id,name,address,lat,lon,city_id,festival_id,is_festival,is_active,supports_delivery,supports_pickup,supports_dine_in)')
     .eq('is_active', true)
     .eq('restaurants.city_id', cityId)
     .eq('restaurants.is_active', true)
@@ -92,6 +131,16 @@ export default defineEventHandler(async (event) => {
       restaurants: normalizeRestaurants(row.restaurants).map((r) => ({ ...r, supports_dine_in: false })),
     })) ?? null
     error = fallback.error
+  }
+
+  if (!error && activeFestival) {
+    data = (data ?? [])
+      .map((row) => ({
+        ...row,
+        restaurants: normalizeRestaurants(row.restaurants).filter((r) =>
+          r.is_festival === true && r.festival_id === activeFestival!.id),
+      }))
+      .filter((row) => normalizeRestaurants(row.restaurants).length > 0)
   }
 
   if (error) {
@@ -215,6 +264,16 @@ export default defineEventHandler(async (event) => {
   return {
     ok: true,
     items,
+    festival: activeFestival
+      ? {
+          id: activeFestival.id,
+          slug: activeFestival.slug,
+          name: activeFestival.name,
+          description: activeFestival.description,
+          pulseStats: activeFestival.pulse_stats ?? {},
+          schedule: Array.isArray(activeFestival.schedule) ? activeFestival.schedule : [],
+        }
+      : null,
   }
 })
 

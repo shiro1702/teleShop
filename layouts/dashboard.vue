@@ -14,6 +14,7 @@
             <NuxtLink v-if="can('marketing.manage')" to="/dashboard/marketing" class="hover:text-gray-900">Маркетинг</NuxtLink>
             <NuxtLink v-if="can('branches.view')" to="/dashboard/branches" class="hover:text-gray-900">Филиалы</NuxtLink>
             <NuxtLink v-if="can('team.manage')" to="/dashboard/team" class="hover:text-gray-900">Команда</NuxtLink>
+            <NuxtLink v-if="can('orders.view')" to="/dashboard/festival-leaderboard" class="hover:text-gray-900">Лидерборд</NuxtLink>
             <NuxtLink v-if="can('settings.org.edit')" to="/dashboard/settings/organization" class="hover:text-gray-900">Настройки</NuxtLink>
             <NuxtLink v-if="can('integrations.manage')" to="/dashboard/integrations" class="hover:text-gray-900">Интеграции</NuxtLink>
           </nav>
