@@ -88,18 +88,6 @@
         </div>
       </section>
 
-      <section class="mb-6 rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
-        <label class="block text-sm font-medium text-gray-700">
-          Поиск по ресторанам
-          <input
-            v-model.trim="search"
-            type="text"
-            class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            placeholder="Например: Суши"
-          >
-        </label>
-      </section>
-
       <section
         v-if="!isFestivalMode && listMode === 'pickup' && pickupMapMarkers.length && !pending"
         class="mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
@@ -280,17 +268,12 @@
         </ul>
 
         <div v-if="!displayShops.length" class="mt-6 text-sm text-gray-600">
-          <template v-if="search">
-            Ничего не найдено по запросу.
-          </template>
-          <template v-else>
-            <span v-if="isFestivalMode">Нет доступных корнеров в режиме «В ресторане».</span>
-            <span v-else>Нет заведений с выбранным режимом. Переключите режим отображения выше.</span>
-          </template>
+          <span v-if="isFestivalMode">Нет доступных корнеров в режиме «В ресторане».</span>
+          <span v-else>Нет заведений с выбранным режимом. Переключите режим отображения выше.</span>
         </div>
       </section>
     </main>
-    <StoryViewer
+    <StoryViewerSwiper
       v-model="festivalStoryViewerOpen"
       :campaign="festivalStoryViewerCampaign"
       :campaigns="festivalStoryCampaigns"
@@ -310,7 +293,7 @@ import type { MapPointInput } from '~/composables/useGeocodedMarkers'
 // @ts-ignore Nuxt SFC auto-export
 import StoriesTopBar from '~/components/stories/StoriesTopBar.vue'
 // @ts-ignore Nuxt SFC auto-export
-import StoryViewer from '~/components/stories/StoryViewer.vue'
+import StoryViewerSwiper from '~/components/stories/StoryViewerSwiper.vue'
 import type { StoryCampaignDto, StorySlideDto } from '~/types/stories'
 import {
   readCityFulfillmentMode,
@@ -421,7 +404,6 @@ function buildShopsApiUrl(slug: string, festivalSlug: string) {
   return `/api/shops?${query.toString()}`
 }
 
-const search = ref('')
 const listMode = ref<'delivery' | 'pickup' | 'dine-in'>('dine-in')
 const {
   data: cityRes,
@@ -638,12 +620,7 @@ function shopMatchesMode(shop: ShopItem): boolean {
 
 const filteredByMode = computed(() => shops.value.filter((s: ShopItem) => shopMatchesMode(s)))
 
-const displayShops = computed(() => {
-  const q = search.value.toLowerCase()
-  const base = filteredByMode.value
-  if (!q) return base
-  return base.filter((s: ShopItem) => s.name.toLowerCase().includes(q))
-})
+const displayShops = computed(() => filteredByMode.value)
 
 function flattenMarkers(
   shopsList: ShopItem[],
