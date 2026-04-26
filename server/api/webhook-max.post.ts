@@ -1,6 +1,7 @@
 import { createError, defineEventHandler, getHeader, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { buildAuthSiteLinkUrl, parseAuthLinkTokenUuidFromText } from '~/server/utils/authSiteLink'
+import { applyFestivalModerationAction } from '~/server/utils/festivalUgcModeration'
 
 type MaxMessage = {
   sender?: { user_id?: number | string; is_bot?: boolean }
@@ -430,6 +431,66 @@ export default defineEventHandler(async (event) => {
       text: 'Сигнал отправлен менеджеру ресторана.',
     }).catch((e) => console.error('webhook-max: delay ack failed:', e))
 
+    return { ok: true }
+  }
+
+  const messageTextRaw = typeof msg?.body?.text === 'string'
+    ? msg.body.text.trim()
+    : typeof msg?.text === 'string'
+      ? msg.text.trim()
+      : ''
+  if (actorUserId != null && /^ugc\s+/i.test(messageTextRaw)) {
+    const [, rawAction = '', rawSubmissionId = ''] = messageTextRaw.split(/\s+/, 3)
+    const actionName = rawAction.trim().toLowerCase()
+    const submissionId = rawSubmissionId.trim()
+    if (!submissionId) {
+      await sendMaxDmPlain({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        userId: actorUserId,
+        text: 'Формат команды: ugc <action> <submissionId>',
+      }).catch(() => {})
+      return { ok: true }
+    }
+    const map = (): {
+      action: 'approve_menu' | 'approve_menu_and_feed' | 'tag_category' | 'forward_to_corner' | 'reject' | 'shadow_ban'
+      category?: 'food' | 'stage' | 'vibe' | 'quest' | 'live' | null
+      label: string
+    } => {
+      if (actionName === 'approve_menu') return { action: 'approve_menu', label: 'Опубликовано в меню' }
+      if (actionName === 'approve_menu_and_feed') return { action: 'approve_menu_and_feed', label: 'Опубликовано в меню и в ленте' }
+      if (actionName === 'tag_food') return { action: 'tag_category', category: 'food', label: 'Категория: еда' }
+      if (actionName === 'tag_stage') return { action: 'tag_category', category: 'stage', label: 'Категория: сцена' }
+      if (actionName === 'tag_vibe') return { action: 'tag_category', category: 'vibe', label: 'Категория: вайб' }
+      if (actionName === 'tag_quest') return { action: 'tag_category', category: 'quest', label: 'Категория: квест' }
+      if (actionName === 'forward') return { action: 'forward_to_corner', label: 'Переслано менеджеру корнера' }
+      if (actionName === 'ban') return { action: 'shadow_ban', label: 'Пользователь отправлен в теневой бан' }
+      return { action: 'reject', label: 'Отклонено' }
+    }
+    const mapped = map()
+    try {
+      await applyFestivalModerationAction(event, {
+        submissionId,
+        action: mapped.action,
+        category: mapped.category,
+        actorChannel: 'max',
+        actorUserId: String(actorUserId),
+      })
+      await sendMaxDmPlain({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        userId: actorUserId,
+        text: `UGC: ${mapped.label}`,
+      }).catch(() => {})
+    } catch (err) {
+      console.error('webhook-max ugc moderation failed:', err)
+      await sendMaxDmPlain({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        userId: actorUserId,
+        text: 'Не удалось применить действие модерации UGC',
+      }).catch(() => {})
+    }
     return { ok: true }
   }
 

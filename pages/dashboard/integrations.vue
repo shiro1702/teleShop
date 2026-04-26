@@ -190,6 +190,45 @@
         </ul>
       </article>
 
+      <article class="rounded-xl border border-gray-200 bg-white p-4 md:col-span-2">
+        <h2 class="text-sm font-semibold">Фестиваль: модерация UGC (Telegram + MAX)</h2>
+        <p class="mt-1 text-xs text-gray-500">Общий чат модераторов фестиваля. Негативные отзывы после модерации пересылаются в чат выбранного корнера.</p>
+        <div class="mt-3 grid gap-2 md:grid-cols-3">
+          <label class="text-sm">
+            <span class="mb-1 block text-gray-600">Фестиваль</span>
+            <select v-model="festivalModerationFestivalId" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="role !== 'owner'">
+              <option value="">Выберите фестиваль</option>
+              <option v-for="item in festivalModerationFestivals" :key="item.id" :value="item.id">
+                {{ item.name }} ({{ item.slug }})
+              </option>
+            </select>
+          </label>
+          <label class="text-sm">
+            <span class="mb-1 block text-gray-600">Telegram chat id</span>
+            <input v-model="festivalModerationTelegramChatId" type="text" placeholder="-100..." class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="role !== 'owner'">
+          </label>
+          <label class="text-sm">
+            <span class="mb-1 block text-gray-600">MAX conversation id</span>
+            <input v-model="festivalModerationMaxChatId" type="text" placeholder="conv_..." class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="role !== 'owner'">
+          </label>
+        </div>
+        <label class="mt-3 flex items-center gap-2 text-sm text-gray-700">
+          <input v-model="festivalModerationIsActive" type="checkbox" :disabled="role !== 'owner'">
+          Активировать модерацию для выбранного фестиваля
+        </label>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner' || !festivalModerationFestivalId" @click="saveFestivalModerationSettings">
+            Сохранить
+          </button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner' || !festivalModerationFestivalId" @click="sendFestivalModerationTest">
+            Отправить тест
+          </button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50" @click="loadFestivalModerationSettings">
+            Обновить
+          </button>
+        </div>
+      </article>
+
       <article class="rounded-xl border border-gray-200 bg-white p-4">
         <h2 class="text-sm font-semibold">API key (masked)</h2>
         <p class="mt-1 text-xs text-gray-500">{{ maskedApiKey }}</p>
@@ -327,6 +366,12 @@ const notificationEvents = ref<Array<{ id: string; created_at: string; channel: 
 const telegramChatBindDeepLink = ref('')
 const telegramChatBindCommand = ref('')
 const telegramChatBindExpiresAt = ref('')
+const festivalModerationFestivals = ref<Array<{ id: string; slug: string; name: string }>>([])
+const festivalModerationChats = ref<Array<{ id: string; festivalId: string; telegramChatId: string; maxChatId: string; isActive: boolean; updatedAt: string }>>([])
+const festivalModerationFestivalId = ref('')
+const festivalModerationTelegramChatId = ref('')
+const festivalModerationMaxChatId = ref('')
+const festivalModerationIsActive = ref(true)
 
 const apiKey = ref('live_12ab34cd56ef78gh')
 const toasts = ref<Array<{ id: string; type: 'ok' | 'error'; message: string }>>([])
@@ -624,6 +669,73 @@ async function loadNotificationEvents() {
   notificationEvents.value = Array.isArray(payload.items) ? payload.items : []
 }
 
+function syncFestivalModerationSelection() {
+  const selected = festivalModerationChats.value.find((x: { festivalId: string }) => x.festivalId === festivalModerationFestivalId.value)
+  if (!selected) {
+    festivalModerationTelegramChatId.value = ''
+    festivalModerationMaxChatId.value = ''
+    festivalModerationIsActive.value = true
+    return
+  }
+  festivalModerationTelegramChatId.value = selected.telegramChatId || ''
+  festivalModerationMaxChatId.value = selected.maxChatId || ''
+  festivalModerationIsActive.value = selected.isActive !== false
+}
+
+async function loadFestivalModerationSettings() {
+  const response = await fetch('/api/dashboard/integrations/festival-moderation')
+  if (!response.ok) {
+    pushToast('error', 'Не удалось загрузить настройки модерации фестиваля')
+    return
+  }
+  const payload = await response.json().catch(() => ({}))
+  festivalModerationFestivals.value = Array.isArray(payload.festivals) ? payload.festivals : []
+  festivalModerationChats.value = Array.isArray(payload.chats) ? payload.chats : []
+  if (!festivalModerationFestivalId.value && festivalModerationFestivals.value.length) {
+    festivalModerationFestivalId.value = festivalModerationFestivals.value[0].id
+  }
+  syncFestivalModerationSelection()
+}
+
+async function saveFestivalModerationSettings() {
+  if (!festivalModerationFestivalId.value) return
+  const response = await fetch('/api/dashboard/integrations/festival-moderation', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      festivalId: festivalModerationFestivalId.value,
+      telegramChatId: festivalModerationTelegramChatId.value,
+      maxChatId: festivalModerationMaxChatId.value,
+      isActive: festivalModerationIsActive.value,
+    }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    pushToast('error', payload?.statusMessage || 'Не удалось сохранить чат модерации фестиваля')
+    return
+  }
+  pushToast('ok', 'Настройки чата модерации фестиваля сохранены')
+  await loadFestivalModerationSettings()
+}
+
+async function sendFestivalModerationTest() {
+  if (!festivalModerationFestivalId.value) return
+  const response = await fetch('/api/dashboard/integrations/festival-moderation/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      festivalId: festivalModerationFestivalId.value,
+    }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    pushToast('error', payload?.statusMessage || 'Не удалось отправить тест в чат модерации')
+    return
+  }
+  const channels = Array.isArray(payload.sent) ? payload.sent.join(', ') : 'channel'
+  pushToast('ok', `Тест отправлен: ${channels}`)
+}
+
 onMounted(async () => {
   try {
     const response = await fetch('/api/dashboard/restaurants')
@@ -635,6 +747,7 @@ onMounted(async () => {
   }
   await loadNotificationSettings()
   await loadNotificationEvents()
+  await loadFestivalModerationSettings()
   await loadQuickRestoState()
 })
 
@@ -643,5 +756,9 @@ watch(notificationRestaurantId, () => {
   telegramChatBindCommand.value = ''
   telegramChatBindExpiresAt.value = ''
   syncSelectedNotificationRestaurant()
+})
+
+watch(festivalModerationFestivalId, () => {
+  syncFestivalModerationSelection()
 })
 </script>

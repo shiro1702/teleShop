@@ -517,6 +517,38 @@ const festivalPlace = computed(() => {
 })
 const festivalStoryViewerOpen = ref(false)
 const festivalStoryViewerCampaign = ref<StoryCampaignDto | null>(null)
+const festivalLiveUgc = ref<Array<{
+  id: string
+  kind: 'story' | 'video_review'
+  category: string | null
+  mediaUrl: string
+  rating: number | null
+  createdAt: string
+}>>([])
+
+async function loadFestivalLiveUgc() {
+  if (!isFestivalMode.value || !activeFestivalSlug.value) {
+    festivalLiveUgc.value = []
+    return
+  }
+  try {
+    const data = await $fetch<{ ok: boolean; items?: Array<any> }>(
+      `/api/festival/${encodeURIComponent(activeFestivalSlug.value)}/ugc?limit=30`,
+    )
+    festivalLiveUgc.value = Array.isArray(data?.items)
+      ? data.items.map((x: any) => ({
+        id: String(x.id),
+        kind: x.kind === 'story' ? 'story' : 'video_review',
+        category: typeof x.category === 'string' ? x.category : null,
+        mediaUrl: String(x.mediaUrl || ''),
+        rating: typeof x.rating === 'number' ? x.rating : null,
+        createdAt: String(x.createdAt || ''),
+      }))
+      : []
+  } catch {
+    festivalLiveUgc.value = []
+  }
+}
 const festivalStoryCards = computed<FestivalStoryCard[]>(() => {
   const city = citySlug.value || 'ulan-ude'
   const festivalSlug = activeFestivalSlug.value || 'festival'
@@ -746,7 +778,52 @@ const festivalStoryCards = computed<FestivalStoryCard[]>(() => {
 })
 
 const festivalStoryCampaigns = computed<StoryCampaignDto[]>(() =>
-  festivalStoryCards.value.map((card: FestivalStoryCard) => ({
+  [
+    ...((() => {
+      const liveItems = festivalLiveUgc.value.filter((x: { kind: string }) => x.kind === 'story').slice(0, 12)
+      const foodItems = festivalLiveUgc.value.filter((x: { kind: string }) => x.kind === 'video_review').slice(0, 12)
+      const campaigns: StoryCampaignDto[] = []
+      if (liveItems.length) {
+        campaigns.push({
+          id: 'ugc-live',
+          title: 'Live от гостей',
+          previewUrl: liveItems[0].mediaUrl || null,
+          placement: 'top_bar',
+          slides: liveItems.map((item: { id: string; mediaUrl: string }, idx: number) => ({
+            id: `ugc-live-${item.id}`,
+            campaignId: 'ugc-live',
+            sortOrder: idx,
+            mediaUrl: item.mediaUrl,
+            durationSeconds: 7,
+            actionType: 'open_category',
+            actionPayload: { to: festivalPublicPath.value },
+            title: 'Live-лента',
+            text: 'Свежие сторис от гостей фестиваля',
+          })),
+        })
+      }
+      if (foodItems.length) {
+        campaigns.push({
+          id: 'ugc-food',
+          title: 'Видеоотзывы',
+          previewUrl: foodItems[0].mediaUrl || null,
+          placement: 'top_bar',
+          slides: foodItems.map((item: { id: string; mediaUrl: string; rating: number | null }, idx: number) => ({
+            id: `ugc-food-${item.id}`,
+            campaignId: 'ugc-food',
+            sortOrder: idx,
+            mediaUrl: item.mediaUrl,
+            durationSeconds: 7,
+            actionType: 'open_category',
+            actionPayload: { to: festivalPublicPath.value },
+            title: 'Видеоотзыв',
+            text: item.rating ? `Оценка: ${item.rating}/5` : 'Гость фестиваля делится впечатлениями',
+          })),
+        })
+      }
+      return campaigns
+    })()),
+    ...festivalStoryCards.value.map((card: FestivalStoryCard) => ({
     id: card.id,
     title: card.title,
     previewUrl: null,
@@ -767,6 +844,7 @@ const festivalStoryCampaigns = computed<StoryCampaignDto[]>(() =>
       text: slide.text || card.subtitle,
     })),
   })),
+  ],
 )
 
 const festivalStoryTargetByCampaignId = computed<Record<string, string>>(() =>
@@ -775,6 +853,10 @@ const festivalStoryTargetByCampaignId = computed<Record<string, string>>(() =>
     return acc
   }, {}),
 )
+
+watch([isFestivalMode, activeFestivalSlug], async () => {
+  await loadFestivalLiveUgc()
+}, { immediate: true })
 
 function openFestivalStoryCampaign(campaign: StoryCampaignDto) {
   festivalStoryViewerCampaign.value = campaign
