@@ -103,29 +103,13 @@
       </section>
 
       <section
-        v-if="cityFestival"
-        class="mb-8 grid gap-4 rounded-3xl border border-amber-200 bg-amber-50 p-4 sm:grid-cols-2 sm:p-6"
+        v-if="festivalPageBanner"
+        class="mb-8 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm"
       >
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">Пульс фестиваля</p>
-          <h2 class="mt-2 text-lg font-semibold text-amber-900">{{ cityFestival.name }}</h2>
-          <p v-if="cityFestival.description" class="mt-1 text-sm text-amber-800">{{ cityFestival.description }}</p>
-          <ul class="mt-3 space-y-1 text-sm text-amber-900">
-            <li v-for="(line, idx) in festivalPulseLines" :key="`festival-pulse-${idx}`">{{ line }}</li>
-          </ul>
-        </div>
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">Сегодня на фестивале</p>
-          <ul class="mt-2 space-y-2">
-            <li
-              v-for="(line, idx) in festivalScheduleLines"
-              :key="`festival-schedule-${idx}`"
-              class="rounded-lg border border-amber-200 bg-white/70 px-3 py-2 text-sm text-amber-900"
-            >
-              {{ line }}
-            </li>
-          </ul>
-        </div>
+        <p class="font-semibold">Филиал работает в рамках фестиваля {{ festivalPageBanner.name }}.</p>
+        <p v-if="festivalPageBanner.description" class="mt-1 text-amber-800">
+          Заказы на этой странице доступны только для фестивального режима.
+        </p>
       </section>
 
       <section
@@ -626,6 +610,11 @@ const cityFestival = ref<null | {
   pulseStats: Record<string, unknown>
   schedule: unknown[]
 }>(null)
+const routeFestivalSlug = computed(() => {
+  const raw = route.params.festival_slug
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : null
+})
+const festivalPageBanner = computed(() => (routeFestivalSlug.value ? cityFestival.value : null))
 const festivalPulseLines = computed(() => {
   const stats = cityFestival.value?.pulseStats ?? {}
   const entries = Object.entries(stats)
@@ -867,7 +856,10 @@ async function loadRestaurantModes() {
 
   try {
     const branchIdFromQuery = readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
-    const res = await loadTenantRestaurants({ shopId: tenantKey.value })
+    const res = await loadTenantRestaurants({
+      shopId: tenantKey.value,
+      festivalSlug: routeFestivalSlug.value,
+    })
 
     if (res?.ok && Array.isArray(res.items)) {
       restaurantOps.value = branchIdFromQuery
@@ -1199,7 +1191,7 @@ watch(
 )
 
 watch(
-  () => route.params.city_slug,
+  () => [route.params.city_slug, route.params.festival_slug],
   () => {
     void loadCityFestival()
   },
@@ -1277,7 +1269,12 @@ async function loadCityFestival() {
     return
   }
   try {
-    const res = await $fetch<{ festival?: any | null }>('/api/cities', { query: { slug } })
+    const res = await $fetch<{ festival?: any | null }>('/api/cities', {
+      query: {
+        slug,
+        ...(routeFestivalSlug.value ? { festival_slug: routeFestivalSlug.value } : {}),
+      },
+    })
     cityFestival.value = res?.festival ?? null
   } catch {
     cityFestival.value = null

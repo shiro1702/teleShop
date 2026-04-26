@@ -15,6 +15,7 @@ type FestivalRow = {
   description: string | null
   pulse_stats: Record<string, unknown> | null
   schedule: unknown[] | null
+  public_banner_lead_days: number | null
   starts_at: string | null
   ends_at: string | null
 }
@@ -57,7 +58,7 @@ export default defineEventHandler(async (event) => {
   let festival: FestivalRow | null = null
   const { data: festivalRows } = await client
     .from('festivals')
-    .select('id,slug,name,description,pulse_stats,schedule,starts_at,ends_at')
+    .select('id,slug,name,description,pulse_stats,schedule,public_banner_lead_days,starts_at,ends_at')
     .eq('city_id', city.id)
     .eq('is_active', true)
     .order('created_at', { ascending: false })
@@ -70,7 +71,9 @@ export default defineEventHandler(async (event) => {
       : festivalRows.find((row: any) => {
           const startsAt = typeof row.starts_at === 'string' ? Date.parse(row.starts_at) : NaN
           const endsAt = typeof row.ends_at === 'string' ? Date.parse(row.ends_at) : NaN
-          const startsOk = Number.isNaN(startsAt) || startsAt <= nowTs
+          const leadDays = typeof row.public_banner_lead_days === 'number' ? row.public_banner_lead_days : 35
+          const bannerStartsAt = Number.isNaN(startsAt) ? NaN : startsAt - leadDays * 24 * 60 * 60 * 1000
+          const startsOk = Number.isNaN(bannerStartsAt) || bannerStartsAt <= nowTs
           const endsOk = Number.isNaN(endsAt) || endsAt >= nowTs
           return startsOk && endsOk
         })

@@ -6,6 +6,7 @@ create table if not exists public.festivals (
   description text null,
   pulse_stats jsonb not null default '{}'::jsonb,
   schedule jsonb not null default '[]'::jsonb,
+  public_banner_lead_days integer not null default 35 check (public_banner_lead_days >= 0),
   starts_at timestamptz null,
   ends_at timestamptz null,
   is_active boolean not null default true,
@@ -21,10 +22,16 @@ create index if not exists idx_festivals_active_window
 
 alter table public.restaurants
   add column if not exists festival_id uuid null references public.festivals(id) on delete set null,
-  add column if not exists is_festival boolean not null default false;
+  add column if not exists is_festival boolean not null default false,
+  add column if not exists festival_fulfillment_type text null
+    check (festival_fulfillment_type in ('delivery', 'pickup', 'dine-in'));
 
 create index if not exists idx_restaurants_city_festival_mode
   on public.restaurants (city_id, is_active, is_festival);
 
 create index if not exists idx_restaurants_festival_id
   on public.restaurants (festival_id);
+
+create index if not exists idx_restaurants_festival_fulfillment
+  on public.restaurants (festival_id, festival_fulfillment_type)
+  where is_festival = true;

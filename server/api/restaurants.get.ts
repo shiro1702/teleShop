@@ -1,4 +1,4 @@
-import { createError, defineEventHandler } from 'h3'
+import { createError, defineEventHandler, getQuery } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireTenantShop } from '~/server/utils/tenant'
 import { getOrganizationSettings } from '~/server/utils/organizationStyle'
@@ -13,6 +13,8 @@ import { normalizeWeeklyWorkingHours, resolveEffectiveWorkingHours } from '~/uti
  */
 export default defineEventHandler(async (event) => {
   const { shopId } = await requireTenantShop(event)
+  const query = getQuery(event)
+  const requestedFestivalSlug = typeof query.festival_slug === 'string' ? query.festival_slug.trim() : ''
   const org = await getOrganizationSettings(event, shopId)
   const allowedSet = new Set(org.ops.fulfillmentTypes)
   const organizationWorkingHours = org.ops.workingHours
@@ -21,9 +23,31 @@ export default defineEventHandler(async (event) => {
   const client = await serverSupabaseServiceRole(event)
   let data: any[] | null = null
   let error: any = null
+  let festivalId: string | null = null
+  if (requestedFestivalSlug) {
+    const { data: festival, error: festivalError } = await client
+      .from('festivals')
+      .select('id')
+      .eq('slug', requestedFestivalSlug)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (festivalError) {
+      throw createError({ statusCode: 500, message: 'Failed to load festival' })
+    }
+    festivalId = typeof festival?.id === 'string' ? festival.id : null
+    if (!festivalId) return {
+      ok: true,
+      shopId,
+      organizationTimezone,
+      organizationWorkingHours,
+      dineInHallMode: org.ops.dineInHallMode,
+      items: [],
+    }
+  }
+
   const primary = await client
     .from('restaurants')
-    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,is_festival,festival_id,festivals(name)')
+    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,is_festival,festival_id,festival_fulfillment_type,festivals(name)')
     .eq('shop_id', shopId)
     .eq('is_active', true)
     .order('name', { ascending: true })
@@ -71,17 +95,26 @@ export default defineEventHandler(async (event) => {
     allowedSet.has('dine-in')
     && org.ops.dineInHallMode !== 'qr-menu-browse'
 
+  const scopedItems = (data ?? []).filter((item: any) => {
+    if (festivalId) return item.is_festival === true && item.festival_id === festivalId
+    return item.is_festival !== true
+  })
+
   return {
     ok: true,
     shopId,
     organizationTimezone,
     organizationWorkingHours,
     dineInHallMode: org.ops.dineInHallMode,
-    items: (data ?? []).map((item: any) => ({
-      ...item,
-      lat: typeof item.lat === 'number' && Number.isFinite(item.lat) ? item.lat : null,
-      lon: typeof item.lon === 'number' && Number.isFinite(item.lon) ? item.lon : null,
-      ...(() => {
+    items: scopedItems.map((item: any) => {
+      const festivalFulfillmentType = ['delivery', 'pickup', 'dine-in'].includes(String(item.festival_fulfillment_type))
+        ? item.festival_fulfillment_type
+        : null
+      return {
+        ...item,
+        lat: typeof item.lat === 'number' && Number.isFinite(item.lat) ? item.lat : null,
+        lon: typeof item.lon === 'number' && Number.isFinite(item.lon) ? item.lon : null,
+        ...(() => {
         const branchWorkingHours = normalizeWeeklyWorkingHours(item.working_hours, organizationWorkingHours)
         const useOrganizationHours = item.use_organization_working_hours !== false
         return {
@@ -92,25 +125,28 @@ export default defineEventHandler(async (event) => {
             workingHours: branchWorkingHours,
           }),
         }
-      })(),
-      supports_delivery: Boolean(item.supports_delivery) && allowedSet.has('delivery'),
-      supports_pickup: Boolean(item.supports_pickup) && allowedSet.has('pickup'),
+        })(),
+        supports_delivery: (festivalFulfillmentType ? festivalFulfillmentType === 'delivery' : Boolean(item.supports_delivery)) && allowedSet.has('delivery'),
+        supports_pickup: (festivalFulfillmentType ? festivalFulfillmentType === 'pickup' : Boolean(item.supports_pickup)) && allowedSet.has('pickup'),
       /** Заказ «в зале» в чекауте (тип qr-menu): подрежим to-table → supports_qr_menu; pickup-point → supports_showcase_order. */
-      supports_qr_menu:
-        hallOrderingEnabled
-        && (
-          (org.ops.dineInHallMode === 'to-table' && Boolean(item.supports_qr_menu))
-          || (org.ops.dineInHallMode === 'pickup-point' && Boolean(item.supports_showcase_order))
-        ),
+        supports_qr_menu: festivalFulfillmentType
+          ? festivalFulfillmentType === 'dine-in' && hallOrderingEnabled
+          : hallOrderingEnabled
+            && (
+              (org.ops.dineInHallMode === 'to-table' && Boolean(item.supports_qr_menu))
+              || (org.ops.dineInHallMode === 'pickup-point' && Boolean(item.supports_showcase_order))
+            ),
       /**
        * Показ режима «В ресторане» на витрине: достаточно org dine-in + филиал «в зале».
        * Отличается от supports_qr_menu (только реальный заказ в зале при to-table / pickup-point).
        */
-      supports_in_restaurant:
-        allowedSet.has('dine-in') && Boolean(item.supports_dine_in),
-      is_festival: Boolean(item.is_festival),
-      festival_id: typeof item.festival_id === 'string' ? item.festival_id : null,
-      festival_name: typeof item?.festivals?.name === 'string' ? item.festivals.name : null,
-    })),
+        supports_in_restaurant:
+          allowedSet.has('dine-in') && (festivalFulfillmentType ? festivalFulfillmentType === 'dine-in' : Boolean(item.supports_dine_in)),
+        is_festival: Boolean(item.is_festival),
+        festival_id: typeof item.festival_id === 'string' ? item.festival_id : null,
+        festival_fulfillment_type: festivalFulfillmentType,
+        festival_name: typeof item?.festivals?.name === 'string' ? item.festivals.name : null,
+      }
+    }),
   }
 })

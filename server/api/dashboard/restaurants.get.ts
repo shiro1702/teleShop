@@ -16,6 +16,9 @@ type RestaurantRow = {
   supports_dine_in: boolean
   supports_qr_menu: boolean
   supports_showcase_order: boolean
+  festival_id: string | null
+  is_festival: boolean
+  festival_fulfillment_type: 'delivery' | 'pickup' | 'dine-in' | null
   use_organization_working_hours: boolean
   working_hours: unknown
   is_active: boolean
@@ -53,7 +56,7 @@ export default defineEventHandler(async (event) => {
   let error: any = null
   const runRestaurantsQuery = async (mode: RestaurantSelectMode) => {
     const selectByMode: Record<RestaurantSelectMode, string> = {
-      primary: 'id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,created_at',
+      primary: 'id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,festival_id,is_festival,festival_fulfillment_type,use_organization_working_hours,working_hours,is_active,created_at',
       fallback: 'id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active,created_at',
       legacy: 'id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,is_active,created_at',
     }
@@ -110,6 +113,11 @@ export default defineEventHandler(async (event) => {
         row.supports_showcase_order === true
         && hallOrderingEnabled
         && hallMode === 'pickup-point',
+      festivalId: typeof row.festival_id === 'string' ? row.festival_id : null,
+      isFestival: row.is_festival === true,
+      festivalFulfillmentType: ['delivery', 'pickup', 'dine-in'].includes(String(row.festival_fulfillment_type))
+        ? row.festival_fulfillment_type
+        : null,
       useOrganizationWorkingHours: row.use_organization_working_hours !== false,
       workingHours: normalizeWeeklyWorkingHours(row.working_hours, fallbackWorkingHours),
       isActive: row.is_active,
