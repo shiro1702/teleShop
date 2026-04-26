@@ -373,7 +373,7 @@ type FestivalDto = NonNullable<CityResponse['festival']>
 type ShopsResponse = { ok: boolean, items: ShopItem[] }
 type CachedEntry<T> = { expiresAt: number, data: T }
 type FestivalStoryCard = {
-  id: 'leaderboard' | 'achievements' | 'pulse' | 'schedule'
+  id: 'vibe' | 'food' | 'party' | 'quest' | 'leaderboard' | 'achievements' | 'pulse' | 'schedule'
   title: string
   subtitle: string
   to: string
@@ -526,9 +526,72 @@ const festivalStoryCards = computed<FestivalStoryCard[]>(() => {
   const achievementsPath = `${festivalPath}/achievements`
   return [
     {
+      id: 'vibe',
+      title: 'Вайб (Live)',
+      subtitle: 'Что происходит прямо сейчас.',
+      to: festivalPath,
+      slides: [
+        {
+          title: 'Вайб фестиваля',
+          text: 'Смотри, как проходит фестиваль, и делись своими эмоциями.',
+          html: `
+            <h3>Live-лента</h3>
+            <p>Здесь будут самые свежие сторис от гостей фестиваля.</p>
+            <ul>
+              <li>Снимай видео после заказа</li>
+              <li>Смотри, как отдыхают другие</li>
+              <li>Участвуй в баттлах и голосованиях</li>
+            </ul>
+          `,
+          buttonLabel: 'Вайб',
+          to: festivalPath,
+        },
+      ],
+    },
+    {
+      id: 'food',
+      title: 'Еда (Фудпорн)',
+      subtitle: 'Самые сочные видеоотзывы.',
+      to: festivalPath,
+      slides: [
+        {
+          title: 'Только еда',
+          text: 'Не знаешь, что выбрать? Смотри видеоотзывы от других гостей.',
+          html: `
+            <h3>Еда и ничего лишнего</h3>
+            <p>Отзывы в формате коротких видео.</p>
+            <ul>
+              <li>Реальные порции и эмоции</li>
+              <li>Кнопка "Хочу так же" для быстрого заказа</li>
+            </ul>
+          `,
+          buttonLabel: 'Смотреть еду',
+          to: festivalPath,
+        },
+      ],
+    },
+    {
+      id: 'party',
+      title: 'Отрыв',
+      subtitle: 'Танцы, сцена и музыка.',
+      to: festivalPath,
+      slides: [
+        {
+          title: 'Отрыв',
+          text: 'Что происходит на сцене и вокруг нее.',
+          html: `
+            <h3>Сцена и развлечения</h3>
+            <p>Выступления артистов, конкурсы и просто хороший вайб.</p>
+          `,
+          buttonLabel: 'Смотреть отрыв',
+          to: festivalPath,
+        },
+      ],
+    },
+    {
       id: 'leaderboard',
-      title: 'Лидерборд фестиваля',
-      subtitle: 'Смотри, какие корнеры сейчас вырываются вперед.',
+      title: 'Лидеры',
+      subtitle: 'Кто обгоняет всех.',
       to: leaderboardPath,
       slides: [
         {
@@ -562,14 +625,32 @@ const festivalStoryCards = computed<FestivalStoryCard[]>(() => {
       ],
     },
     {
+      id: 'quest',
+      title: 'Герои квеста',
+      subtitle: 'Те, кто нашел все коды.',
+      to: achievementsPath,
+      slides: [
+        {
+          title: 'Герои квеста',
+          text: 'Те, кто проходит задания и хвастается призами.',
+          html: `
+            <h3>Герои квеста</h3>
+            <p>Те, кто проходит все задания, собирает все QR-коды и показывает призы.</p>
+          `,
+          buttonLabel: 'К достижениям',
+          to: achievementsPath,
+        },
+      ],
+    },
+    {
       id: 'achievements',
-      title: 'Достижения',
-      subtitle: 'Собирай фестивальные бейджи за заказы у разных корнеров.',
+      title: 'Ачивки',
+      subtitle: 'Собирай фестивальные бейджи.',
       to: achievementsPath,
       slides: [
         {
           title: 'Достижения',
-          text: 'Заказывай у разных корнеров, забирай готовые заказы вовремя и открывай бейджи фестиваля.',
+          text: 'Собери бейджи и открой ачивки фестиваля.',
           html: `
             <h3>Как работают достижения</h3>
             <p>Каждый заказ двигает прогресс. Чем активнее ты пробуешь фестиваль, тем больше бейджей открывается.</p>
