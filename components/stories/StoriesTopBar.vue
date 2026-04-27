@@ -1,6 +1,6 @@
 <template>
   <div v-if="loading || campaigns.length" class="w-full">
-    <div class="relative mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+    <div class="relative mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6 overflow-x-auto [scrollbar-width:none]">
       <button
         v-show="campaigns.length"
         type="button"
@@ -12,7 +12,7 @@
         ←
       </button>
 
-      <div ref="scrollEl" class="flex gap-3 overflow-x-auto [scrollbar-width:none]">
+      <div ref="scrollEl" class="flex gap-3 ">
         <template v-if="loading && !campaigns.length">
           <div
             v-for="i in skeletonCount"

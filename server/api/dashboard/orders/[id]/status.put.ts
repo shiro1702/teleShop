@@ -20,7 +20,86 @@ type Body = {
 
 const statusLabels = dashboardOrderStatusLabels
 
+function resolveReviewReminderDelayMs(raw: unknown): number {
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return 5 * 60 * 1000
+  return Math.max(10_000, parsed)
+}
+
+async function sendReviewReminder(args: {
+  client: Awaited<ReturnType<typeof serverSupabaseServiceRole>>
+  config: ReturnType<typeof useRuntimeConfig>
+  orderId: string
+  orderNumber: string
+  shopId: string
+  restaurantId: string | null
+  customerTelegramId: number | null
+  customerMaxUserId: string | null
+  customerMaxConversationId: string | null
+}) {
+  if (!args.restaurantId) return
+  const { data: restaurant } = await args.client
+    .from('restaurants')
+    .select('festival_id,name')
+    .eq('id', args.restaurantId)
+    .maybeSingle()
+  const festivalId = (restaurant as any)?.festival_id
+  if (!festivalId) return
+
+  const { data: festival } = await args.client
+    .from('festivals')
+    .select('name,slug')
+    .eq('id', festivalId)
+    .maybeSingle()
+
+  const orderRef = String(args.orderNumber || args.orderId).slice(0, 12)
+  const festivalName = String((festival as any)?.name || 'фестиваля')
+  const reminderText = [
+    `Как вам заказ #${orderRef}?`,
+    `Поделитесь коротким видеоотзывом о блюде для ${festivalName} и получите бонусные баллы.`,
+    'Откройте миниапп, раздел "Мои заказы" и нажмите "Добавить видеоотзыв".',
+  ].join('\n')
+
+  const botToken = String((args.config as any).botToken || '')
+  if (args.customerTelegramId && botToken) {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: args.customerTelegramId,
+        text: reminderText,
+      }),
+    }).catch((err) => {
+      console.error('festival review reminder telegram send failed:', err)
+    })
+  }
+
+  const maxBaseUrl = String((args.config as any).maxApiBaseUrl || '').replace(/\/$/, '')
+  const maxToken = String((args.config as any).maxApiToken || '')
+  const hasMaxConversation = typeof args.customerMaxConversationId === 'string' && args.customerMaxConversationId.trim()
+  const hasMaxUserId = typeof args.customerMaxUserId === 'string' && args.customerMaxUserId.trim()
+  if ((hasMaxConversation || hasMaxUserId) && maxBaseUrl && maxToken) {
+    const url = hasMaxConversation
+      ? `${maxBaseUrl}/messages`
+      : `${maxBaseUrl}/messages?user_id=${encodeURIComponent(String(args.customerMaxUserId))}`
+    const body = hasMaxConversation
+      ? { conversationId: String(args.customerMaxConversationId), text: reminderText }
+      : { text: reminderText }
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: maxToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    }).catch((err) => {
+      console.error('festival review reminder max send failed:', err)
+    })
+  }
+}
+
 export default defineEventHandler(async (event) => {
+  const config = useRuntimeConfig(event)
   const access = await requireDashboardAccess(event)
   const id = getRouterParam(event, 'id')
   if (!id) {
@@ -146,6 +225,30 @@ export default defineEventHandler(async (event) => {
       customerMaxConversationId,
     },
   })
+
+  if (nextStatus === 'handed_to_customer') {
+    const reminderDelayMs = resolveReviewReminderDelayMs((config as any).festivalReviewReminderDelayMs)
+    const orderId = String((existing as any).id)
+    const orderNumber = String((existing as any).order_number || orderId)
+    const restaurantId = (existing as any)?.restaurant_id ? String((existing as any).restaurant_id) : null
+    const customerTelegramIdRaw = Number((existing as any)?.customer_telegram_id)
+    const customerTelegramId = Number.isFinite(customerTelegramIdRaw) && customerTelegramIdRaw > 0
+      ? customerTelegramIdRaw
+      : null
+    setTimeout(() => {
+      void sendReviewReminder({
+        client,
+        config,
+        orderId,
+        orderNumber,
+        shopId: access.shopId,
+        restaurantId,
+        customerTelegramId,
+        customerMaxUserId,
+        customerMaxConversationId,
+      })
+    }, reminderDelayMs)
+  }
 
   return { ok: true, status: nextStatus }
 })

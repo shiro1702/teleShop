@@ -72,6 +72,7 @@ function mapRestaurantZonesFromApiItems(items: RestaurantZoneApiItem[]): Deliver
 
 type UseCheckoutTenantRestaurantsParams = {
   shopIdFromRoute: Ref<string | null>
+  festivalSlug?: Ref<string | null>
   pickupPointsConfigRaw: string
   fulfillmentTypesConfigRaw: string
   currentFulfillmentType: Ref<FulfillmentType>
@@ -109,8 +110,9 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
 
   function getRestaurantsLoadKey(): string {
     const shop = typeof params.shopIdFromRoute.value === 'string' ? params.shopIdFromRoute.value.trim() : ''
+    const festival = typeof params.festivalSlug?.value === 'string' ? params.festivalSlug.value.trim() : ''
     const init = messengerInitData.value ? '1' : '0'
-    return `${shop}\t${init}`
+    return `${shop}\t${festival}\t${init}`
   }
 
   function applyRestaurantZonesUi(mapped: DeliveryZoneFeature[]) {
@@ -339,6 +341,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
       try {
         const res = await loadTenantRestaurants({
           shopId: params.shopIdFromRoute.value,
+          festivalSlug: params.festivalSlug?.value ?? null,
           force: options?.force,
         })
         if (res?.ok && Array.isArray(res.items)) {

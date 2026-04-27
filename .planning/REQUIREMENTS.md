@@ -1,4 +1,4 @@
-# Requirements: teleShop
+# Requirements: PocketMenu
 
 **Defined:** 2026-04-01
 **Core Value:** A guest scans a branch QR and completes an order with online payment in under 60 seconds, while the venue reduces cashier load and queue pressure at peak hours.

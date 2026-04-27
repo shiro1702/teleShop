@@ -18,13 +18,12 @@ export default defineEventHandler(async (event) => {
   }
 
   const ids = (campaigns ?? []).map((c: { id: string }) => c.id)
-  let slidesByCampaign = new Map<string, any[]>()
+  const slideCountByCampaign = new Map<string, number>()
   if (ids.length) {
     const { data: slides, error: sErr } = await client
       .from('story_slides')
-      .select('id, campaign_id, sort_order, media_url, duration_seconds, action_type, action_payload')
+      .select('campaign_id')
       .in('campaign_id', ids)
-      .order('sort_order', { ascending: true })
 
     if (sErr) {
       console.error('dashboard stories slides:', sErr)
@@ -33,22 +32,13 @@ export default defineEventHandler(async (event) => {
 
     for (const s of slides ?? []) {
       const cid = (s as { campaign_id: string }).campaign_id
-      if (!slidesByCampaign.has(cid)) slidesByCampaign.set(cid, [])
-      slidesByCampaign.get(cid)!.push(s)
+      slideCountByCampaign.set(cid, (slideCountByCampaign.get(cid) ?? 0) + 1)
     }
   }
 
   return {
     ok: true,
     items: (campaigns ?? []).map((row: any) => {
-      const slides = (slidesByCampaign.get(row.id) ?? []).map((s: any) => ({
-        id: s.id,
-        sortOrder: s.sort_order,
-        mediaUrl: s.media_url,
-        durationSeconds: s.duration_seconds,
-        actionType: s.action_type,
-        actionPayload: s.action_payload ?? {},
-      }))
       return {
         id: row.id,
         title: row.title,
@@ -59,7 +49,7 @@ export default defineEventHandler(async (event) => {
         validUntil: row.valid_until,
         targeting: row.targeting ?? {},
         createdAt: row.created_at,
-        slides,
+        slides: Array.from({ length: slideCountByCampaign.get(row.id) ?? 0 }, () => ({})),
       }
     }),
   }

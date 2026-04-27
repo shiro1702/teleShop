@@ -14,8 +14,15 @@ type UpdateBranchBody = {
   supportsDineIn?: boolean
   supportsQrMenu?: boolean
   supportsShowcaseOrder?: boolean
+  festivalId?: string | null
+  isFestival?: boolean
+  festivalFulfillmentType?: 'delivery' | 'pickup' | 'dine-in' | null
   useOrganizationWorkingHours?: boolean
   workingHours?: unknown
+}
+
+function normalizeFestivalFulfillmentType(value: unknown): 'delivery' | 'pickup' | 'dine-in' | null {
+  return value === 'delivery' || value === 'pickup' || value === 'dine-in' ? value : null
 }
 
 export default defineEventHandler(async (event) => {
@@ -32,6 +39,8 @@ export default defineEventHandler(async (event) => {
   const address = body?.address?.trim()
   const lat = typeof body?.lat === 'number' && Number.isFinite(body.lat) ? body.lat : null
   const lon = typeof body?.lon === 'number' && Number.isFinite(body.lon) ? body.lon : null
+  const isFestivalBranch = body?.isFestival === true
+  const festivalFulfillmentType = normalizeFestivalFulfillmentType(body?.festivalFulfillmentType) || 'pickup'
   if (!name || !address) {
     throw createError({ statusCode: 400, statusMessage: 'name and address are required' })
   }
@@ -51,12 +60,15 @@ export default defineEventHandler(async (event) => {
       supports_dine_in: body?.supportsDineIn === true,
       supports_qr_menu: body?.supportsQrMenu === true,
       supports_showcase_order: body?.supportsShowcaseOrder === true,
+      festival_id: body?.festivalId || null,
+      is_festival: isFestivalBranch,
+      festival_fulfillment_type: isFestivalBranch ? festivalFulfillmentType : null,
       use_organization_working_hours: body?.useOrganizationWorkingHours !== false,
       working_hours: normalizedWorkingHours,
     })
     .eq('id', branchId)
     .eq('shop_id', access.shopId)
-    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active')
+    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,festival_id,is_festival,festival_fulfillment_type,use_organization_working_hours,working_hours,is_active')
     .maybeSingle()
   if (update.error && (update.error as any).code === '42703') {
     update = await client
@@ -71,10 +83,13 @@ export default defineEventHandler(async (event) => {
         supports_dine_in: body?.supportsDineIn === true,
         supports_qr_menu: body?.supportsQrMenu === true,
         supports_showcase_order: body?.supportsShowcaseOrder === true,
+        festival_id: body?.festivalId || null,
+        is_festival: isFestivalBranch,
+        festival_fulfillment_type: isFestivalBranch ? festivalFulfillmentType : null,
       })
       .eq('id', branchId)
       .eq('shop_id', access.shopId)
-      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active')
+      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,festival_id,is_festival,festival_fulfillment_type,is_active')
       .maybeSingle()
     if (update.data) {
       ;(update.data as any).use_organization_working_hours = true
@@ -99,6 +114,11 @@ export default defineEventHandler(async (event) => {
       supportsDineIn: update.data.supports_dine_in,
       supportsQrMenu: update.data.supports_qr_menu,
       supportsShowcaseOrder: update.data.supports_showcase_order,
+      festivalId: update.data.festival_id ?? null,
+      isFestival: update.data.is_festival === true,
+      festivalFulfillmentType: ['delivery', 'pickup', 'dine-in'].includes(String(update.data.festival_fulfillment_type))
+        ? update.data.festival_fulfillment_type
+        : null,
       useOrganizationWorkingHours: update.data.use_organization_working_hours !== false,
       workingHours: normalizeWeeklyWorkingHours(update.data.working_hours, fallbackWorkingHours),
       isActive: update.data.is_active,

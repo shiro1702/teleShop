@@ -63,6 +63,7 @@ function extractTenantSlugFromPath(path: string, defaultCitySlug: string | null)
   // Поддержка URL-схемы агрегатора: /{city_slug}/{tenant_slug}/...
   // Для restaurant-страниц tenant_slug должен браться из второго сегмента.
   if (defaultCitySlug && firstSegment === defaultCitySlug) {
+    if (secondSegment === 'festival') return null
     return secondSegment ?? null
   }
 
@@ -80,6 +81,7 @@ function extractCityAndTenantFromPath(path: string): { citySlug: string; tenantS
   const [citySlug, tenantSlug] = segments
   if (!citySlug || !tenantSlug) return null
   if (['api', '_nuxt', '__nuxt_error', 'profile', 'link-telegram'].includes(citySlug)) return null
+  if (tenantSlug === 'festival') return null
   if (/\.[a-z0-9]+$/i.test(citySlug) || /\.[a-z0-9]+$/i.test(tenantSlug)) return null
   return { citySlug, tenantSlug }
 }

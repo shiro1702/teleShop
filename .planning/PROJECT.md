@@ -1,8 +1,8 @@
-# teleShop - QR SaaS for quick-service restaurants
+# PocketMenu - QR SaaS for quick-service restaurants
 
 ## What This Is
 
-teleShop is a multi-tenant SaaS product for quick-service restaurants: kiosks, food trucks, and coffee shops. Each restaurant branch gets its own QR storefront with independent branding and settings so guests can place and pay for orders without installing an app. The platform target is B2B self-service for owners with centralized aggregator administration.
+PocketMenu is a multi-tenant SaaS product for quick-service restaurants: kiosks, food trucks, and coffee shops. Each restaurant branch gets its own QR storefront with independent branding and settings so guests can place and pay for orders without installing an app. The platform target is B2B self-service for owners with centralized aggregator administration.
 
 ## Core Value
 

@@ -1,4 +1,4 @@
-import { createError, defineEventHandler, getQuery } from 'h3'
+import { createError, defineEventHandler, getQuery, setResponseHeader } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { getOrganizationSettings, getStyleRecord } from '~/server/utils/organizationStyle'
 
@@ -20,8 +20,20 @@ type ShopRestaurantRow = {
   supports_delivery: boolean
   supports_pickup: boolean
   supports_dine_in: boolean
+  festival_fulfillment_type: 'delivery' | 'pickup' | 'dine-in' | null
   city_id: string
+  festival_id: string | null
+  is_festival: boolean
   is_active: boolean
+}
+
+type FestivalRow = {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  pulse_stats: Record<string, unknown> | null
+  schedule: unknown[] | null
 }
 
 function normalizeRestaurants(raw: ShopRow['restaurants']): ShopRestaurantRow[] {
@@ -32,13 +44,19 @@ function normalizeRestaurants(raw: ShopRow['restaurants']): ShopRestaurantRow[] 
     .map((r) => ({
       ...r,
       supports_dine_in: Boolean((r as ShopRestaurantRow).supports_dine_in),
+      festival_fulfillment_type: (['delivery', 'pickup', 'dine-in'].includes(String((r as ShopRestaurantRow).festival_fulfillment_type))
+        ? (r as ShopRestaurantRow).festival_fulfillment_type
+        : null) as ShopRestaurantRow['festival_fulfillment_type'],
     }))
 }
 
 export default defineEventHandler(async (event) => {
+  // Shops list can update, but not every second; short shared cache helps SSR perf.
+  setResponseHeader(event, 'Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=120')
   const query = getQuery(event)
   const config = useRuntimeConfig(event)
   const requestedCitySlug = typeof query.city_slug === 'string' ? query.city_slug.trim() : ''
+  const requestedFestivalSlug = typeof query.festival_slug === 'string' ? query.festival_slug.trim() : ''
   const defaultCitySlug = typeof config.public?.defaultCitySlug === 'string' ? config.public.defaultCitySlug.trim() : ''
   const citySlug = requestedCitySlug || defaultCitySlug
 
@@ -64,13 +82,40 @@ export default defineEventHandler(async (event) => {
   }
 
   const cityId = cityData.id as string
+  let activeFestival: FestivalRow | null = null
+
+  const nowTs = Date.now()
+  const { data: festivalRows, error: festivalError } = await client
+    .from('festivals')
+    .select('id,slug,name,description,pulse_stats,schedule,starts_at,ends_at')
+    .eq('city_id', cityId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  if (festivalError) {
+    console.error('Failed to resolve active festival:', festivalError)
+  } else if (Array.isArray(festivalRows)) {
+    const current = requestedFestivalSlug
+      ? festivalRows.find((row: any) => typeof row.slug === 'string' && row.slug.trim() === requestedFestivalSlug)
+      : festivalRows.find((row: any) => {
+          const startsAt = typeof row.starts_at === 'string' ? Date.parse(row.starts_at) : NaN
+          const endsAt = typeof row.ends_at === 'string' ? Date.parse(row.ends_at) : NaN
+          const startsOk = Number.isNaN(startsAt) || startsAt <= nowTs
+          const endsOk = Number.isNaN(endsAt) || endsAt >= nowTs
+          return startsOk && endsOk
+        })
+    if (current?.id) {
+      activeFestival = current as FestivalRow
+    }
+  }
 
   let data: ShopRow[] | null = null
   let error: { code?: string, message?: string } | null = null
 
   const primary = await client
     .from('shops')
-    .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(id,name,address,lat,lon,city_id,is_active,supports_delivery,supports_pickup,supports_dine_in)')
+    .select('id,slug,name,ui_settings,is_active,restaurants!restaurants_shop_id_fkey!inner(id,name,address,lat,lon,city_id,festival_id,is_festival,festival_fulfillment_type,is_active,supports_delivery,supports_pickup,supports_dine_in)')
     .eq('is_active', true)
     .eq('restaurants.city_id', cityId)
     .eq('restaurants.is_active', true)
@@ -89,9 +134,30 @@ export default defineEventHandler(async (event) => {
       .order('name', { ascending: true })
     data = (fallback.data as ShopRow[] | null)?.map((row) => ({
       ...row,
-      restaurants: normalizeRestaurants(row.restaurants).map((r) => ({ ...r, supports_dine_in: false })),
+      restaurants: normalizeRestaurants(row.restaurants).map((r) => ({
+        ...r,
+        supports_dine_in: false,
+        festival_fulfillment_type: null,
+      })),
     })) ?? null
     error = fallback.error
+  }
+
+  if (!error && activeFestival) {
+    data = (data ?? [])
+      .map((row) => ({
+        ...row,
+        restaurants: normalizeRestaurants(row.restaurants).filter((r) =>
+          r.is_festival === true && r.festival_id === activeFestival!.id),
+      }))
+      .filter((row) => normalizeRestaurants(row.restaurants).length > 0)
+  } else if (!error) {
+    data = (data ?? [])
+      .map((row) => ({
+        ...row,
+        restaurants: normalizeRestaurants(row.restaurants).filter((r) => r.is_festival !== true),
+      }))
+      .filter((row) => normalizeRestaurants(row.restaurants).length > 0)
   }
 
   if (error) {
@@ -130,8 +196,13 @@ export default defineEventHandler(async (event) => {
     }
 
     for (const r of normalizeRestaurants(row.restaurants)) {
-      if (r.supports_delivery) agg.hasDelivery = true
-      if (r.supports_pickup && !agg.pickupRestaurantIds.has(r.id)) {
+      const festivalMode = activeFestival ? r.festival_fulfillment_type : null
+      const supportsDelivery = festivalMode ? festivalMode === 'delivery' : r.supports_delivery
+      const supportsPickup = festivalMode ? festivalMode === 'pickup' : r.supports_pickup
+      const supportsDineIn = festivalMode ? festivalMode === 'dine-in' : r.supports_dine_in
+
+      if (supportsDelivery) agg.hasDelivery = true
+      if (supportsPickup && !agg.pickupRestaurantIds.has(r.id)) {
         agg.pickupRestaurantIds.add(r.id)
         agg.hasPickup = true
         agg.pickupPoints.push({
@@ -142,7 +213,7 @@ export default defineEventHandler(async (event) => {
           lon: typeof r.lon === 'number' && Number.isFinite(r.lon) ? r.lon : null,
         })
       }
-      if (r.supports_dine_in && !agg.dineInRestaurantIds.has(r.id)) {
+      if (supportsDineIn && !agg.dineInRestaurantIds.has(r.id)) {
         agg.dineInRestaurantIds.add(r.id)
         agg.hasDineIn = true
         agg.dineInPoints.push({
@@ -215,6 +286,16 @@ export default defineEventHandler(async (event) => {
   return {
     ok: true,
     items,
+    festival: activeFestival
+      ? {
+          id: activeFestival.id,
+          slug: activeFestival.slug,
+          name: activeFestival.name,
+          description: activeFestival.description,
+          pulseStats: activeFestival.pulse_stats ?? {},
+          schedule: Array.isArray(activeFestival.schedule) ? activeFestival.schedule : [],
+        }
+      : null,
   }
 })
 
