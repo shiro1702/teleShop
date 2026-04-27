@@ -4,6 +4,12 @@ import { requireTenantShop } from '~/server/utils/tenant'
 import { getOrganizationSettings } from '~/server/utils/organizationStyle'
 import { normalizeWeeklyWorkingHours, resolveEffectiveWorkingHours } from '~/utils/workingHours'
 
+function canRetryWithLegacySchema(error: any): boolean {
+  const code = typeof error?.code === 'string' ? error.code : ''
+  // 42703: undefined_column, 42P01: undefined_table, PGRST2xx: PostgREST schema cache/relation errors.
+  return code === '42703' || code === '42P01' || code.startsWith('PGRST2')
+}
+
 /**
  * Публичные флаги филиала согласованы с ops.fulfillmentTypes (после нормализации — только
  * delivery | pickup | dine-in; legacy qr-menu/showcase-order → dine-in).
@@ -53,7 +59,7 @@ export default defineEventHandler(async (event) => {
     .order('name', { ascending: true })
   data = primary.data as any[] | null
   error = primary.error
-  if (error && error.code === '42703') {
+  if (error && canRetryWithLegacySchema(error)) {
     const fallback = await client
       .from('restaurants')
       .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active')
@@ -69,7 +75,7 @@ export default defineEventHandler(async (event) => {
     })) ?? []
     error = fallback.error
   }
-  if (error && error.code === '42703') {
+  if (error && canRetryWithLegacySchema(error)) {
     const legacy = await client
       .from('restaurants')
       .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_qr_menu,supports_showcase_order,is_active')
