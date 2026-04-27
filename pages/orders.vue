@@ -16,6 +16,81 @@
       </p>
     </header>
 
+    <section v-if="festivalSlug" class="mb-6 rounded-xl border border-primary-100 bg-white p-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-base font-semibold text-gray-900">Фестиваль: видеоотзывы и Live-сторис</h2>
+          <p class="mt-1 text-xs text-gray-600">Публикация доступна после реального заказа. Сначала контент попадет на модерацию.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50" :disabled="ugcLoading" @click="loadFestivalEligibility">
+            Обновить доступ
+          </button>
+          <button class="rounded-lg border border-primary-300 px-3 py-1.5 text-sm text-primary hover:bg-primary-50 disabled:opacity-50" :disabled="ugcLoading || !ugcEligibility.canPostStory" @click="openUgcComposer('story')">
+            Добавить Live-сторис
+          </button>
+          <button class="rounded-lg border border-primary-300 px-3 py-1.5 text-sm text-primary hover:bg-primary-50 disabled:opacity-50" :disabled="ugcLoading || !ugcEligibility.canPostReview" @click="openUgcComposer('video_review')">
+            Добавить видеоотзыв
+          </button>
+        </div>
+      </div>
+      <p v-if="ugcMessage" class="mt-2 text-sm" :class="ugcMessageType === 'ok' ? 'text-emerald-700' : 'text-red-700'">
+        {{ ugcMessage }}
+      </p>
+    </section>
+
+    <section v-if="festivalSlug && ugcComposerOpen" class="mb-6 rounded-xl border border-gray-200 bg-white p-4">
+      <h3 class="text-sm font-semibold text-gray-900">
+        {{ ugcKind === 'story' ? 'Новая Live-сторис' : 'Новый видеоотзыв' }}
+      </h3>
+      <div class="mt-3 grid gap-2 md:grid-cols-2">
+        <label class="text-sm">
+          <span class="mb-1 block text-gray-600">Видео/фото</span>
+          <input type="file" accept="video/*,image/*" class="w-full rounded-lg border border-gray-300 px-3 py-2" @change="onUgcFileSelected">
+        </label>
+        <label v-if="ugcKind === 'video_review'" class="text-sm">
+          <span class="mb-1 block text-gray-600">Оценка</span>
+          <select v-model.number="ugcRating" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+            <option :value="5">5</option>
+            <option :value="4">4</option>
+            <option :value="3">3</option>
+            <option :value="2">2</option>
+            <option :value="1">1</option>
+          </select>
+        </label>
+      </div>
+      <label class="mt-2 block text-sm">
+        <span class="mb-1 block text-gray-600">Категория</span>
+        <select v-model="ugcCategory" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+          <option value="live">Live</option>
+          <option value="food">Еда</option>
+          <option value="stage">Сцена</option>
+          <option value="vibe">Вайб</option>
+          <option value="quest">Квест</option>
+        </select>
+      </label>
+      <label v-if="ugcKind === 'video_review'" class="mt-2 block text-sm">
+        <span class="mb-1 block text-gray-600">Заказ для отзыва</span>
+        <select v-model="ugcOrderId" class="w-full rounded-lg border border-gray-300 px-3 py-2">
+          <option v-for="item in ugcEligibility.ordersForReview" :key="item.id" :value="item.id">
+            {{ item.restaurantName }} • {{ item.orderNumber }}
+          </option>
+        </select>
+      </label>
+      <label class="mt-3 flex items-start gap-2 text-xs text-gray-600">
+        <input v-model="ugcConsentChecked" type="checkbox">
+        Даю согласие на публикацию моего видео/аудио в фестивальной ленте и меню после модерации.
+      </label>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button class="rounded-lg border border-primary-300 px-3 py-1.5 text-sm text-primary hover:bg-primary-50 disabled:opacity-50" :disabled="ugcSubmitting || !ugcConsentChecked || !ugcFile" @click="submitFestivalUgc">
+          Отправить на модерацию
+        </button>
+        <button class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50" :disabled="ugcSubmitting" @click="ugcComposerOpen = false">
+          Закрыть
+        </button>
+      </div>
+    </section>
+
     <section v-if="selectedOrderId" class="mb-6 rounded-xl border border-primary-100 bg-white p-4">
       <div class="flex items-start justify-between gap-4">
         <div>
@@ -172,6 +247,11 @@ type ClientOrder = {
   itemsPreview?: Array<{ name: string; quantity: number }>
   createdAt: string
 }
+type FestivalEligibilityOrder = {
+  id: string
+  orderNumber: string
+  restaurantName: string
+}
 
 const query = ref('')
 const statusFilter = ref<'all' | 'active' | 'history'>('all')
@@ -262,6 +342,28 @@ type ClientOrderStatusDetail = {
 const detailErrorMessage = ref('')
 const detailOrder = ref<ClientOrderStatusDetail | null>(null)
 let detailPollHandle: number | null = null
+const festivalSlug = computed(() => {
+  const fromParams = typeof route.params.festival_slug === 'string' ? route.params.festival_slug.trim() : ''
+  if (fromParams) return fromParams
+  const fromQuery = typeof route.query.festival_slug === 'string' ? route.query.festival_slug.trim() : ''
+  return fromQuery
+})
+const ugcLoading = ref(false)
+const ugcSubmitting = ref(false)
+const ugcMessage = ref('')
+const ugcMessageType = ref<'ok' | 'error'>('ok')
+const ugcComposerOpen = ref(false)
+const ugcKind = ref<'story' | 'video_review'>('story')
+const ugcFile = ref<File | null>(null)
+const ugcConsentChecked = ref(false)
+const ugcRating = ref(5)
+const ugcCategory = ref<'live' | 'food' | 'stage' | 'vibe' | 'quest'>('live')
+const ugcOrderId = ref('')
+const ugcEligibility = ref<{ canPostStory: boolean; canPostReview: boolean; ordersForReview: FestivalEligibilityOrder[] }>({
+  canPostStory: false,
+  canPostReview: false,
+  ordersForReview: [],
+})
 type NormalizedOrder = ClientOrder & {
   statusText: string
   paymentText: string
@@ -302,6 +404,119 @@ async function fetchOrders(): Promise<{ ok: boolean; items: ClientOrder[] }> {
   }
   const json = (await res.json()) as { ok: boolean; items: ClientOrder[] }
   return json ?? { ok: true, items: [] }
+}
+
+async function loadFestivalEligibility() {
+  if (!festivalSlug.value) return
+  ugcLoading.value = true
+  ugcMessage.value = ''
+  try {
+    const res = await fetch(`/api/festival/${encodeURIComponent(festivalSlug.value)}/ugc/eligibility`, {
+      method: 'GET',
+      headers: requestHeaders(),
+    })
+    const payload = await res.json().catch(() => ({} as any))
+    if (!res.ok) {
+      throw new Error(payload?.statusMessage || 'Не удалось проверить доступ к UGC')
+    }
+    ugcEligibility.value = {
+      canPostStory: payload?.canPostStory === true,
+      canPostReview: payload?.canPostReview === true,
+      ordersForReview: Array.isArray(payload?.ordersForReview)
+        ? payload.ordersForReview.map((x: any) => ({
+          id: String(x.id),
+          orderNumber: String(x.orderNumber || x.id),
+          restaurantName: String(x.restaurantName || 'Корнер'),
+        }))
+        : [],
+    }
+    if (!ugcOrderId.value && ugcEligibility.value.ordersForReview.length) {
+      ugcOrderId.value = ugcEligibility.value.ordersForReview[0].id
+    }
+  } catch (err: any) {
+    ugcMessageType.value = 'error'
+    ugcMessage.value = err?.message || 'Не удалось проверить eligibility'
+  } finally {
+    ugcLoading.value = false
+  }
+}
+
+function openUgcComposer(kind: 'story' | 'video_review') {
+  ugcKind.value = kind
+  ugcComposerOpen.value = true
+  ugcFile.value = null
+  ugcConsentChecked.value = false
+}
+
+function onUgcFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  ugcFile.value = input.files?.[0] || null
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const raw = typeof reader.result === 'string' ? reader.result : ''
+      resolve(raw.split(',')[1] || '')
+    }
+    reader.onerror = () => reject(new Error('read_failed'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function submitFestivalUgc() {
+  if (!festivalSlug.value || !ugcFile.value || !ugcConsentChecked.value) return
+  ugcSubmitting.value = true
+  ugcMessage.value = ''
+  try {
+    const dataBase64 = await fileToBase64(ugcFile.value)
+    const uploadRes = await fetch(`/api/festival/${encodeURIComponent(festivalSlug.value)}/ugc/upload`, {
+      method: 'POST',
+      headers: {
+        ...requestHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fileName: ugcFile.value.name,
+        mimeType: ugcFile.value.type,
+        dataBase64,
+      }),
+    })
+    const uploadPayload = await uploadRes.json().catch(() => ({} as any))
+    if (!uploadRes.ok || !uploadPayload?.url) {
+      throw new Error(uploadPayload?.statusMessage || 'Не удалось загрузить файл')
+    }
+
+    const reviewRes = await fetch(`/api/festival/${encodeURIComponent(festivalSlug.value)}/reviews`, {
+      method: 'POST',
+      headers: {
+        ...requestHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        kind: ugcKind.value,
+        rating: ugcKind.value === 'video_review' ? ugcRating.value : null,
+        category: ugcCategory.value,
+        orderId: ugcKind.value === 'video_review' ? ugcOrderId.value : null,
+        mediaUrl: uploadPayload.url,
+        mediaPath: uploadPayload.path || null,
+      }),
+    })
+    const reviewPayload = await reviewRes.json().catch(() => ({} as any))
+    if (!reviewRes.ok) {
+      throw new Error(reviewPayload?.statusMessage || 'Не удалось отправить отзыв')
+    }
+    ugcMessageType.value = 'ok'
+    ugcMessage.value = 'UGC отправлен на модерацию'
+    ugcComposerOpen.value = false
+    await loadFestivalEligibility()
+  } catch (err: any) {
+    ugcMessageType.value = 'error'
+    ugcMessage.value = err?.message || 'Не удалось отправить UGC'
+  } finally {
+    ugcSubmitting.value = false
+  }
 }
 
 function detailStatusClass(status: string) {
@@ -352,6 +567,9 @@ onMounted(async () => {
   try {
     await waitForMessengerInitData()
     data.value = await fetchOrders()
+    if (festivalSlug.value) {
+      await loadFestivalEligibility()
+    }
   } catch (error: any) {
     const maybeUnauthorized = String(error?.message || '').toLowerCase().includes('unauthorized')
     if (isMessengerMiniApp.value && maybeUnauthorized && !messengerInitData.value) {
@@ -391,6 +609,11 @@ watch(selectedOrderId, async (nextId: string) => {
   if (!nextId) return
   await loadDetailOrderStatus()
   detailPollHandle = window.setInterval(loadDetailOrderStatus, 3000)
+})
+
+watch(festivalSlug, async (next: string) => {
+  if (!next) return
+  await loadFestivalEligibility()
 })
 
 function statusLabel(status: string) {

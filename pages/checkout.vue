@@ -1314,6 +1314,10 @@ const citySlug = computed(() => {
   const raw = route.params.city_slug
   return typeof raw === 'string' && raw.trim() ? raw.trim() : null
 })
+const festivalSlug = computed(() => {
+  const raw = route.params.festival_slug
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : null
+})
 
 function resolveCheckoutFulfillment(allowed: FulfillmentType[], current: FulfillmentType) {
   const resolved = resolveFulfillmentByPreference({
@@ -1392,6 +1396,7 @@ const {
   loadRestaurants,
 } = useCheckoutTenantRestaurants({
   shopIdFromRoute,
+  festivalSlug,
   pickupPointsConfigRaw,
   fulfillmentTypesConfigRaw,
   currentFulfillmentType: toRef(state, 'fulfillmentType'),

@@ -4,18 +4,31 @@
     :style="headerStyle"
   >
     <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-      <NuxtLink :to="homeLink" class="flex min-w-0 items-center gap-3" :style="{ color: mainTextColor }">
-        <img
-          :src="tenantLogoUrl"
-          :alt="tenantName"
-          class="h-10 w-auto shrink-0 object-cover"
-        />
-        <div class="min-w-0">
-          <span class="block truncate text-sm font-semibold tracking-wide sm:text-base">
-            {{ tenantName }}
-          </span>
-        </div>
-      </NuxtLink>
+      <div class="flex min-w-0 items-center gap-3">
+        <NuxtLink
+          v-if="festivalBackLink"
+          :to="festivalBackLink"
+          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition bg-black/5 hover:bg-black/10"
+          :style="{ color: mainTextColor }"
+          aria-label="Назад к фестивалю"
+        >
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+          </svg>
+        </NuxtLink>
+        <NuxtLink :to="homeLink" class="flex min-w-0 items-center gap-3" :style="{ color: mainTextColor }">
+          <img
+            :src="tenantLogoUrl"
+            :alt="tenantName"
+            class="h-10 w-auto shrink-0 object-cover"
+          />
+          <div class="min-w-0">
+            <span class="block truncate text-sm font-semibold tracking-wide sm:text-base">
+              {{ tenantName }}
+            </span>
+          </div>
+        </NuxtLink>
+      </div>
 
       <div v-if="showCitySelector" class="hidden md:block">
         <label class="sr-only" for="city-selector">Город</label>
@@ -74,6 +87,15 @@
               @click="showMiniappMenu = false"
             >
               Бонусы
+            </NuxtLink>
+            <NuxtLink
+              v-if="achievementsMenuVisible"
+              :to="achievementsLink"
+              class="block px-3 py-2"
+              :style="{ color: mainTextColor }"
+              @click="showMiniappMenu = false"
+            >
+              Достижения
             </NuxtLink>
             <NuxtLink
               to="/profile"
@@ -153,6 +175,15 @@
                 @click="showUserMenu = false"
               >
                 Бонусы
+              </NuxtLink>
+              <NuxtLink
+                v-if="achievementsMenuVisible"
+                :to="achievementsLink"
+                class="block px-3 py-2"
+                :style="{ color: mainTextColor }"
+                @click="showUserMenu = false"
+              >
+                Достижения
               </NuxtLink>
               <NuxtLink
                 to="/profile"
@@ -248,23 +279,53 @@ const maxBotUrl = computed(() => {
   return trimmed || null
 })
 const homeLink = computed(() => tenantPath('/'))
+const festivalBackLink = computed(() => {
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const festivalSlug = typeof route.params.festival_slug === 'string' ? route.params.festival_slug.trim() : ''
+  const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  
+  if (citySlug && festivalSlug && tenantSlug) return `/${citySlug}/festival/${festivalSlug}`
+  return null
+})
+const festivalPrefix = computed(() => {
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const festivalSlug = typeof route.params.festival_slug === 'string' ? route.params.festival_slug.trim() : ''
+  if (citySlug && festivalSlug) return `/${citySlug}/festival/${festivalSlug}`
+  if (citySlug) return `/${citySlug}`
+  return ''
+})
 const ordersLink = computed(() => {
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
   const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  if (tenantSlug && festivalPrefix.value) return `${festivalPrefix.value}/${tenantSlug}/orders`
   if (citySlug && tenantSlug) return `/${citySlug}/${tenantSlug}/orders`
   if (citySlug) return `/${citySlug}/orders`
   return tenantPath('/orders')
 })
 const bonusesLink = computed(() => {
-  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
   const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  if (tenantSlug && festivalPrefix.value) return `${festivalPrefix.value}/${tenantSlug}/bonuses`
   if (citySlug && tenantSlug) return `/${citySlug}/${tenantSlug}/bonuses`
   return tenantPath('/bonuses')
+})
+const achievementsLink = computed(() => {
+  const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  if (festivalPrefix.value) return `${festivalPrefix.value}/achievements`
+  if (citySlug && tenantSlug) return `/${citySlug}/${tenantSlug}/achievements`
+  if (citySlug) return `/${citySlug}/achievements`
+  return tenantPath('/achievements')
 })
 const bonusesMenuVisible = computed(() => {
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
   const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
   return !!(citySlug && tenantSlug) || !!tenant.value.tenantSlug
+})
+const achievementsMenuVisible = computed(() => {
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
+  return !!citySlug || !!tenantSlug || !!tenant.value.tenantSlug
 })
 
 /** Показываем miniapp-меню на витрине ресторана и на городской странице агрегатора. */

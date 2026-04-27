@@ -103,6 +103,16 @@
       </section>
 
       <section
+        v-if="festivalPageBanner"
+        class="mb-8 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm"
+      >
+        <p class="font-semibold">Филиал работает в рамках фестиваля {{ festivalPageBanner.name }}.</p>
+        <p v-if="festivalPageBanner.description" class="mt-1 text-amber-800">
+          Заказы на этой странице доступны только для фестивального режима.
+        </p>
+      </section>
+
+      <section
         v-if="isCatalogLoading"
         class="mb-10"
       >
@@ -592,6 +602,30 @@ const tenantName = computed(() => tenant.value.shopName || 'Ресторан')
 const tenantLogoUrl = computed(() => tenant.value.logoLargeUrl || tenant.value.logoUrl || '/logo.webp')
 const tenantDescription = computed(() => tenant.value.description || '')
 const theme = computed(() => tenant.value.theme || {})
+const cityFestival = ref<null | {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  pulseStats: Record<string, unknown>
+  schedule: unknown[]
+}>(null)
+const routeFestivalSlug = computed(() => {
+  const raw = route.params.festival_slug
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : null
+})
+const festivalPageBanner = computed(() => (routeFestivalSlug.value ? cityFestival.value : null))
+const festivalPulseLines = computed(() => {
+  const stats = cityFestival.value?.pulseStats ?? {}
+  const entries = Object.entries(stats)
+  if (!entries.length) return ['Съедено 1500 бургеров', 'Сэкономлено 400 часов в очереди']
+  return entries.map(([k, v]) => `${k}: ${String(v)}`)
+})
+const festivalScheduleLines = computed(() => {
+  const src = cityFestival.value?.schedule
+  if (!Array.isArray(src) || src.length === 0) return ['12:00 — Открытие', '20:00 — Финал лидеров']
+  return src.map((item) => String(item))
+})
 
 // State for modifiers and parameters
 const activeModifiers = ref<Record<string, Set<string>>>({})
@@ -822,7 +856,10 @@ async function loadRestaurantModes() {
 
   try {
     const branchIdFromQuery = readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
-    const res = await loadTenantRestaurants({ shopId: tenantKey.value })
+    const res = await loadTenantRestaurants({
+      shopId: tenantKey.value,
+      festivalSlug: routeFestivalSlug.value,
+    })
 
     if (res?.ok && Array.isArray(res.items)) {
       restaurantOps.value = branchIdFromQuery
@@ -1154,6 +1191,14 @@ watch(
 )
 
 watch(
+  () => [route.params.city_slug, route.params.festival_slug],
+  () => {
+    void loadCityFestival()
+  },
+  { immediate: true },
+)
+
+watch(
   () => [route.query.story_campaign_id, storiesTopBar.value, storiesCatalogGrid.value] as const,
   () => {
     const raw = route.query.story_campaign_id
@@ -1216,6 +1261,25 @@ async function loadCatalog() {
 watch(catalogFulfillmentType, () => {
   void loadCatalog()
 })
+
+async function loadCityFestival() {
+  const slug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  if (!slug) {
+    cityFestival.value = null
+    return
+  }
+  try {
+    const res = await $fetch<{ festival?: any | null }>('/api/cities', {
+      query: {
+        slug,
+        ...(routeFestivalSlug.value ? { festival_slug: routeFestivalSlug.value } : {}),
+      },
+    })
+    cityFestival.value = res?.festival ?? null
+  } catch {
+    cityFestival.value = null
+  }
+}
 
 </script>
 

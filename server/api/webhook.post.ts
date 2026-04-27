@@ -1,5 +1,6 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { buildAuthSiteLinkUrl } from '~/server/utils/authSiteLink'
+import { applyFestivalModerationAction } from '~/server/utils/festivalUgcModeration'
 
 const TELEGRAM_API = (token: string) => `https://api.telegram.org/bot${token}`
 
@@ -603,6 +604,54 @@ export default defineEventHandler(async (event) => {
   // Нажатие inline-кнопки менеджером (callback_query)
   const query = body.callback_query
   if (!query?.data || !query.message) {
+    return { ok: true }
+  }
+
+  if (query.data.startsWith('ugc:')) {
+    const parts = query.data.split(':')
+    const actionKey = parts[1] || ''
+    const submissionId = parts[2] || ''
+    if (!submissionId) {
+      await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id, text: 'Некорректный UGC callback', show_alert: false })
+      return { ok: true }
+    }
+    const mapAction = (): {
+      action: 'approve_menu' | 'approve_menu_and_feed' | 'tag_category' | 'forward_to_corner' | 'reject' | 'shadow_ban'
+      category?: 'food' | 'stage' | 'vibe' | 'quest' | 'live' | null
+      label: string
+    } => {
+      if (actionKey === 'approve_menu') return { action: 'approve_menu', label: 'Опубликовано в меню' }
+      if (actionKey === 'approve_menu_and_feed') return { action: 'approve_menu_and_feed', label: 'Опубликовано в меню и ленте' }
+      if (actionKey === 'tag_food') return { action: 'tag_category', category: 'food', label: 'Категория: Еда' }
+      if (actionKey === 'tag_stage') return { action: 'tag_category', category: 'stage', label: 'Категория: Сцена' }
+      if (actionKey === 'tag_vibe') return { action: 'tag_category', category: 'vibe', label: 'Категория: Вайб' }
+      if (actionKey === 'tag_quest') return { action: 'tag_category', category: 'quest', label: 'Категория: Квест' }
+      if (actionKey === 'forward') return { action: 'forward_to_corner', label: 'Переслано менеджеру корнера' }
+      if (actionKey === 'ban') return { action: 'shadow_ban', label: 'Пользователь отправлен в теневой бан' }
+      return { action: 'reject', label: 'Отклонено' }
+    }
+    const mapped = mapAction()
+    try {
+      await applyFestivalModerationAction(event, {
+        submissionId,
+        action: mapped.action,
+        category: mapped.category,
+        actorChannel: 'telegram',
+        actorUserId: String(query.from?.id || ''),
+      })
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: mapped.label,
+        show_alert: false,
+      })
+    } catch (err) {
+      console.error('webhook ugc moderation failed:', err)
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: 'Не удалось применить действие',
+        show_alert: true,
+      })
+    }
     return { ok: true }
   }
 

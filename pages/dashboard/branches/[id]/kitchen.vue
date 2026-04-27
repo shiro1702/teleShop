@@ -3,7 +3,15 @@
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 class="text-2xl font-semibold">Кухня (KDS)</h1>
-        <p v-if="branchName" class="mt-1 text-sm text-gray-600">{{ branchName }}</p>
+        <p v-if="branchName" class="mt-1 text-sm text-gray-600">
+          {{ branchName }}
+          <span
+            v-if="isFestivalBranch"
+            class="ml-2 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800"
+          >
+            Фестиваль{{ festivalName ? `: ${festivalName}` : '' }}
+          </span>
+        </p>
       </div>
       <NuxtLink :to="`/dashboard/branches/${restaurantId}`" class="text-sm text-primary hover:underline">
         Карточка филиала
@@ -274,6 +282,20 @@
         </div>
       </div>
     </div>
+
+    <div class="fixed right-4 top-4 z-[70] space-y-2">
+      <div
+        v-for="toast in toasts"
+        :key="toast.id"
+        class="w-80 rounded-lg border px-3 py-2 text-sm shadow-lg"
+        :class="toast.kind === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'"
+      >
+        <div class="flex items-start justify-between gap-2">
+          <p class="leading-5">{{ toast.message }}</p>
+          <button type="button" class="text-xs opacity-70 hover:opacity-100" @click="dismissToast(toast.id)">×</button>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -350,6 +372,8 @@ const mainTab = ref<'duplicates' | 'batch'>('duplicates')
 const fulfillmentType = ref('delivery')
 const branchName = ref('')
 const branchSupports = ref<BranchRow | null>(null)
+const isFestivalBranch = ref(false)
+const festivalName = ref<string | null>(null)
 
 const kitchenOrders = ref<KitchenOrder[]>([])
 const pending = ref(true)
@@ -362,6 +386,18 @@ const orderModalPending = ref(false)
 const orderModalError = ref<string | null>(null)
 const orderModalData = ref<KitchenOrder | null>(null)
 const delayNotifyPending = ref(false)
+const toasts = ref<Array<{ id: string; kind: 'error' | 'success'; message: string }>>([])
+
+function pushToast(kind: 'error' | 'success', message: string) {
+  const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  toasts.value = [...toasts.value, { id, kind, message }]
+  const timeout = kind === 'error' ? 13_000 : 5_000
+  setTimeout(() => dismissToast(id), timeout)
+}
+
+function dismissToast(id: string) {
+  toasts.value = toasts.value.filter((t: { id: string }) => t.id !== id)
+}
 
 type DuplicateGroup = {
   key: string
@@ -447,14 +483,22 @@ async function loadKitchen() {
   try {
     const qs = new URLSearchParams({ fulfillment_type: fulfillmentType.value })
     const res = await fetch(`/api/dashboard/branches/${restaurantId.value}/kitchen?${qs}`)
-    const data = await res.json() as { ok?: boolean; orders?: KitchenOrder[]; statusMessage?: string }
+    const data = await res.json() as {
+      ok?: boolean
+      orders?: KitchenOrder[]
+      statusMessage?: string
+      restaurant?: { isFestival?: boolean; festivalName?: string | null }
+    }
     if (!res.ok) {
       throw new Error(data.statusMessage || 'Не удалось загрузить кухню')
     }
     kitchenOrders.value = Array.isArray(data.orders) ? data.orders : []
+    isFestivalBranch.value = Boolean(data.restaurant?.isFestival)
+    festivalName.value = data.restaurant?.festivalName ?? null
   } catch (e: any) {
     errorMessage.value = e?.message || 'Ошибка'
     kitchenOrders.value = []
+    pushToast('error', e?.message || 'Ошибка загрузки кухни')
   } finally {
     pending.value = false
   }
@@ -487,6 +531,7 @@ async function applyStatus(orderId: string, nextStatus: DashboardOrderStatus) {
     })
     const json = (await res.json().catch(() => null)) as { statusMessage?: string } | null
     if (!res.ok) throw new Error(json?.statusMessage || 'Не удалось обновить статус')
+    pushToast('success', 'Статус заказа обновлен')
   } catch (e: any) {
     if (prevStatus) {
       kitchenOrders.value = kitchenOrders.value.map((o: KitchenOrder) =>
@@ -496,7 +541,7 @@ async function applyStatus(orderId: string, nextStatus: DashboardOrderStatus) {
     if (orderModalData.value?.id === orderId && prevModalStatus) {
       orderModalData.value = { ...orderModalData.value, status: prevModalStatus }
     }
-    window.alert(e?.message || 'Ошибка изменения статуса')
+    pushToast('error', e?.message || 'Ошибка изменения статуса')
   } finally {
     const copy = { ...savingByOrder.value }
     delete copy[orderId]
@@ -718,11 +763,12 @@ async function notifyDelay(orderId: string, kind: 'kitchen' | 'delivery') {
     })
     const data = (await res.json().catch(() => null)) as { statusMessage?: string } | null
     if (!res.ok) throw new Error(data?.statusMessage || 'Не удалось отправить уведомление о задержке')
+    pushToast('success', 'Уведомление о задержке отправлено')
     if (orderModalOpen.value && orderModalData.value?.id === orderId) {
       await fetchOrderDetails(orderId)
     }
   } catch (e: any) {
-    window.alert(e?.message || 'Ошибка отправки уведомления')
+    pushToast('error', e?.message || 'Ошибка отправки уведомления')
   } finally {
     delayNotifyPending.value = false
   }
