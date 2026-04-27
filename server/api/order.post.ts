@@ -26,6 +26,7 @@ import { isOpenNowBySchedule, normalizeWeeklyWorkingHours, resolveEffectiveWorki
 import { dispatchNotificationEvent } from '~/server/utils/notifications'
 import { resolveDeliveryForPoint } from '~/server/utils/resolveDeliveryForPoint'
 import { enqueueQuickRestoOrderOutbox, getQuickRestoClient } from '~/server/utils/quickresto'
+import { enqueueIikoOrderOutbox, getIikoClient } from '~/server/utils/iiko'
 import {
   getMaxBotTokenForShop,
   validateWebAppInitData,
@@ -576,12 +577,16 @@ export default defineEventHandler(async (event) => {
       ? promoSnapshot.subtotalAfterPromo
       : sumCartLines(itemsWithServerPrice)
 
+  const { config: iikoConfig } = getIikoClient(tenantIntegrationKeys as Record<string, any>)
   const loyaltySettings = await fetchShopLoyaltySettings(serviceClient, tenantShopId)
   const requestedBonus =
     typeof body.bonusPointsToSpend === 'number' && Number.isFinite(body.bonusPointsToSpend)
       ? Math.max(0, Math.floor(body.bonusPointsToSpend))
       : 0
 
+  if (requestedBonus > 0 && iikoConfig.useIikoCardLoyalty) {
+    throw createError({ statusCode: 400, message: 'Для этого ресторана бонусы TeleShop отключены: используйте iikoCard' })
+  }
   if (requestedBonus > 0 && !customerProfileId) {
     throw createError({ statusCode: 400, message: 'Списание бонусов доступно только авторизованным пользователям' })
   }
@@ -930,8 +935,28 @@ export default defineEventHandler(async (event) => {
         .eq('id', orderId)
         .eq('shop_id', tenantShopId)
     }
+    if (integrationKeys?.iiko) {
+      const { config } = getIikoClient(integrationKeys)
+      await enqueueIikoOrderOutbox(serviceClient, {
+        shopId: tenantShopId,
+        restaurantId: restaurant.id,
+        orderId,
+        orderNumber,
+        total: grandTotal,
+        items: itemsWithServerPrice.map((line) => ({
+          externalId: typeof line.id === 'string' ? line.id : null,
+          quantity: Math.max(1, Math.floor(Number(line.quantity || 1))),
+          price: Math.max(0, Math.floor(Number(line.price || 0))),
+        })),
+      })
+      await serviceClient
+        .from('orders')
+        .update({ external_status: config.strictMode ? 'queued_strict' : 'queued' })
+        .eq('id', orderId)
+        .eq('shop_id', tenantShopId)
+    }
   } catch (error) {
-    console.error('quickresto outbox enqueue failed:', error)
+    console.error('integration outbox enqueue failed:', error)
   }
 
   return { ok: true, orderId, orderNumber }

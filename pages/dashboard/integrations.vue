@@ -356,10 +356,98 @@
       </article>
     </div>
 
-    <div v-else-if="activeTab === 'iiko'" class="rounded-xl border border-gray-200 bg-white p-6 opacity-70">
-      <h2 class="text-sm font-semibold">Интеграция с iiko</h2>
-      <p class="mt-1 text-sm text-gray-600">Раздел зарезервирован под будущую интеграцию с iiko: меню, стоп-листы, заказы и статусы кухни.</p>
-      <span class="mt-3 inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500">Скоро</span>
+    <div v-else-if="activeTab === 'iiko'" class="grid gap-3 md:grid-cols-2">
+      <article class="rounded-xl border border-gray-200 bg-white p-4 md:col-span-2">
+        <h2 class="text-sm font-semibold">iiko</h2>
+        <p class="mt-1 text-xs text-gray-500">Подключение, синхронизация меню/стоп-листов, ретраи заказов и промокоды.</p>
+        <div class="mt-3 grid gap-2 md:grid-cols-5">
+          <select v-model="iikoMode" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="mock">mock</option>
+            <option value="http">http</option>
+          </select>
+          <input v-model="iikoBaseUrl" type="text" placeholder="https://api-ru.iiko.services" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <input v-model="iikoApiKey" type="text" placeholder="API key" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <label class="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+            <input v-model="iikoStrictMode" type="checkbox">
+            strict mode
+          </label>
+          <label class="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+            <input v-model="iikoUseIikoCardLoyalty" type="checkbox">
+            iikoCard вместо наших бонусов
+          </label>
+        </div>
+        <div class="mt-3 grid gap-2 md:grid-cols-3">
+          <select v-model="iikoMappingRestaurantId" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <option value="">Филиал для маппинга</option>
+            <option v-for="restaurant in restaurants" :key="restaurant.id" :value="restaurant.id">{{ restaurant.name }}</option>
+          </select>
+          <input v-model="iikoMappingTerminalGroupId" type="text" placeholder="iiko_terminal_group_id" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <button class="rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="saveIikoConnection">Сохранить подключение</button>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runIikoHealth">Проверить подключение</button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runIikoMenuSync(false)">Синхронизировать меню</button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runIikoMenuSync(true)">Dry-run sync</button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runIikoStopListSync">Синхронизировать стоп-листы</button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runIikoRetryOrders">Переотправить проблемные заказы</button>
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="runIikoPromoSync">Синхронизировать промокоды</button>
+        </div>
+        <p class="mt-2 text-xs text-gray-600">Mode: {{ iikoInfo.mode }} | Health: {{ iikoInfo.healthMessage }}</p>
+        <div class="mt-4 grid gap-3 md:grid-cols-2">
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs font-semibold text-gray-700">Последние sync jobs</p>
+            <div class="mt-2 max-h-52 overflow-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="text-gray-500">
+                  <tr>
+                    <th class="pr-2">Тип</th>
+                    <th class="pr-2">Статус</th>
+                    <th class="pr-2">Режим</th>
+                    <th>Создан</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="job in iikoJobs" :key="job.id" class="border-t border-gray-100">
+                    <td class="py-1 pr-2">{{ job.job_type }}</td>
+                    <td class="py-1 pr-2">{{ job.status }}</td>
+                    <td class="py-1 pr-2">{{ job.mode }}</td>
+                    <td class="py-1">{{ formatTs(job.created_at) }}</td>
+                  </tr>
+                  <tr v-if="!iikoJobs.length">
+                    <td colspan="4" class="py-2 text-gray-400">Нет записей</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs font-semibold text-gray-700">Последние webhook events</p>
+            <div class="mt-2 max-h-52 overflow-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="text-gray-500">
+                  <tr>
+                    <th class="pr-2">Событие</th>
+                    <th class="pr-2">External ID</th>
+                    <th class="pr-2">Статус</th>
+                    <th>Создан</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="eventItem in iikoEvents" :key="eventItem.id" class="border-t border-gray-100">
+                    <td class="py-1 pr-2">{{ eventItem.event_type }}</td>
+                    <td class="py-1 pr-2">{{ eventItem.external_event_id }}</td>
+                    <td class="py-1 pr-2">{{ eventItem.error ? 'error' : eventItem.processed_at ? 'processed' : 'new' }}</td>
+                    <td class="py-1">{{ formatTs(eventItem.created_at) }}</td>
+                  </tr>
+                  <tr v-if="!iikoEvents.length">
+                    <td colspan="4" class="py-2 text-gray-400">Нет записей</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </article>
     </div>
   </section>
 </template>
@@ -381,7 +469,7 @@ const tabs: Array<{ id: IntegrationTabId; label: string; disabled?: boolean }> =
   { id: 'notifications', label: 'Омниканальные уведомления' },
   { id: 'bots', label: 'Интеграция с ботами' },
   { id: 'quickresto', label: 'Quick Resto', disabled: true },
-  { id: 'iiko', label: 'iiko', disabled: true },
+  { id: 'iiko', label: 'iiko' },
 ]
 const notificationChannelTabs: Array<{ id: NotificationChannelTabId; label: string }> = [
   { id: 'telegram', label: 'Telegram' },
@@ -450,6 +538,16 @@ const quickRestoMappingPlaceId = ref('')
 const quickRestoInfo = ref<{ mode: string; healthMessage: string }>({ mode: 'mock', healthMessage: '—' })
 const quickRestoJobs = ref<Array<{ id: string; job_type: string; status: string; mode: string; created_at: string }>>([])
 const quickRestoEvents = ref<Array<{ id: string; event_type: string; external_event_id: string; error: string | null; processed_at: string | null; created_at: string }>>([])
+const iikoMode = ref<'mock' | 'http'>('mock')
+const iikoBaseUrl = ref('')
+const iikoApiKey = ref('')
+const iikoStrictMode = ref(false)
+const iikoUseIikoCardLoyalty = ref(false)
+const iikoMappingRestaurantId = ref('')
+const iikoMappingTerminalGroupId = ref('')
+const iikoInfo = ref<{ mode: string; healthMessage: string }>({ mode: 'mock', healthMessage: '—' })
+const iikoJobs = ref<Array<{ id: string; job_type: string; status: string; mode: string; created_at: string }>>([])
+const iikoEvents = ref<Array<{ id: string; event_type: string; external_event_id: string; error: string | null; processed_at: string | null; created_at: string }>>([])
 
 const maskedApiKey = computed(() => `••••••••${apiKey.value.slice(-4)}`)
 const maskedTelegramToken = computed(() => `••••••••${telegramToken.value.slice(-4)}`)
@@ -674,6 +772,101 @@ async function runQuickRestoSmokeSeed() {
   await loadQuickRestoState()
 }
 
+async function loadIikoState() {
+  const response = await fetch('/api/dashboard/integrations/iiko')
+  if (!response.ok) return
+  const payload = await response.json()
+  const cfg = payload?.config ?? {}
+  iikoMode.value = cfg.mode === 'http' ? 'http' : 'mock'
+  iikoBaseUrl.value = typeof cfg.baseUrl === 'string' ? cfg.baseUrl : ''
+  iikoStrictMode.value = cfg.strictMode === true
+  iikoUseIikoCardLoyalty.value = cfg.useIikoCardLoyalty === true
+  iikoInfo.value = {
+    mode: iikoMode.value,
+    healthMessage: cfg.hasApiKey ? 'api key configured' : 'api key is empty',
+  }
+  iikoJobs.value = Array.isArray(payload?.jobs) ? payload.jobs : []
+  iikoEvents.value = Array.isArray(payload?.events) ? payload.events : []
+}
+
+async function saveIikoConnection() {
+  const restaurantMappings = iikoMappingRestaurantId.value && iikoMappingTerminalGroupId.value
+    ? [{ restaurantId: iikoMappingRestaurantId.value, iikoTerminalGroupId: iikoMappingTerminalGroupId.value }]
+    : []
+  const response = await fetch('/api/dashboard/integrations/iiko/connect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mode: iikoMode.value,
+      baseUrl: iikoBaseUrl.value,
+      apiKey: iikoApiKey.value,
+      strictMode: iikoStrictMode.value,
+      useIikoCardLoyalty: iikoUseIikoCardLoyalty.value,
+      restaurantMappings,
+    }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    pushToast('error', payload?.statusMessage || 'Не удалось сохранить iiko подключение')
+    return
+  }
+  const isHealthy = payload?.health?.ok === true
+  iikoInfo.value = { mode: payload.mode || iikoMode.value, healthMessage: payload?.health?.message || 'saved' }
+  if (!isHealthy) {
+    pushToast('error', payload?.health?.message || 'iiko подключен, но health-check не пройден')
+    return
+  }
+  pushToast('ok', 'iiko подключение сохранено и health-check пройден')
+  await loadIikoState()
+}
+
+async function runIikoHealth() {
+  const response = await fetch('/api/dashboard/integrations/iiko/health-check', { method: 'POST' })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    pushToast('error', payload?.statusMessage || 'Health-check не выполнен')
+    return
+  }
+  iikoInfo.value = { mode: payload.mode || iikoMode.value, healthMessage: payload.message || 'OK' }
+  pushToast(payload.ok ? 'ok' : 'error', payload.message || 'Health-check завершен')
+}
+
+async function runIikoMenuSync(dryRun: boolean) {
+  const response = await fetch('/api/dashboard/integrations/iiko/menu-sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dryRun }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) return pushToast('error', payload?.statusMessage || 'Menu sync не выполнен')
+  pushToast('ok', dryRun ? `Dry-run: ${payload?.diff?.length || 0} изменений` : 'Синхронизация меню завершена')
+  await loadIikoState()
+}
+
+async function runIikoStopListSync() {
+  const response = await fetch('/api/dashboard/integrations/iiko/stoplist-sync', { method: 'POST' })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) return pushToast('error', payload?.statusMessage || 'Stop-list sync не выполнен')
+  pushToast('ok', 'Стоп-листы синхронизированы')
+  await loadIikoState()
+}
+
+async function runIikoRetryOrders() {
+  const response = await fetch('/api/dashboard/integrations/iiko/orders/retry-failed', { method: 'POST' })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) return pushToast('error', payload?.statusMessage || 'Retry failed orders не выполнен')
+  pushToast('ok', `Отправлено: ${payload.sent || 0}, ошибок: ${payload.failed || 0}`)
+  await loadIikoState()
+}
+
+async function runIikoPromoSync() {
+  const response = await fetch('/api/dashboard/integrations/iiko/promocodes-sync', { method: 'POST' })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) return pushToast('error', payload?.statusMessage || 'Promo sync не выполнен')
+  pushToast('ok', `Промокодов синхронизировано: ${payload.synced || 0}`)
+  await loadIikoState()
+}
+
 async function saveNotificationSettings() {
   if (!notificationRestaurantId.value) return
   let parsedRecipients: Array<{ channel: 'telegram' | 'max'; targetId: string }> = []
@@ -860,6 +1053,7 @@ onMounted(async () => {
     loadNotificationEvents(),
     loadFestivalModerationSettings(),
     loadQuickRestoState(),
+    loadIikoState(),
   ])
 })
 
