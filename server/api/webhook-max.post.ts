@@ -23,8 +23,20 @@ type MaxUpdate = {
   /** Альтернативное имя стартового параметра в части апдейтов MAX */
   start_payload?: string | null
   chat_id?: number | string
+  conversation_id?: number | string
+  recipient?: { chat_id?: number | string; user_id?: number | string; chat_type?: string }
+  chat?: { id?: number | string; chat_id?: number | string; type?: string }
+  dialog?: { id?: number | string; chat_id?: number | string }
   user?: { user_id?: number | string; is_bot?: boolean; id?: number | string }
   message?: MaxMessage
+}
+
+type ChatLinkTokenRow = {
+  token: string
+  shop_id: string
+  restaurant_id: string
+  expires_at: string
+  used_at: string | null
 }
 
 function formatOrderRef(orderNumber: unknown, fallbackOrderId: string): string {
@@ -57,12 +69,73 @@ function parseNumericId(value: unknown): number | null {
   return null
 }
 
+function normalizeNonEmptyId(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  return null
+}
+
 function normalizeAuthTokenUuid(raw: string): string | null {
   const t = raw.trim()
   if (!t) return null
   const plain =
     /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(t)?.[1] ?? null
   return plain ? plain.toLowerCase() : null
+}
+
+function parseMaxBindToken(text: string): string | null {
+  const trimmed = text.trim()
+  const [first = '', second = ''] = trimmed.split(/\s+/, 2)
+  const command = first.toLowerCase()
+  if (command === 'bindmax' || command === '/bindmax' || command.startsWith('/bindmax@')) {
+    return second ? second.trim() : null
+  }
+  if (command.startsWith('bindmax_')) {
+    const token = first.slice('bindmax_'.length)
+    return token ? token.trim() : null
+  }
+  if (command.startsWith('/bindmax_')) {
+    const token = first.slice('/bindmax_'.length)
+    return token ? token.trim() : null
+  }
+  return null
+}
+
+function extractMaxBindTokenFromUpdate(update: MaxUpdate, messageText: string): string | null {
+  const direct = parseMaxBindToken(messageText)
+  if (direct) return direct
+
+  const dump = JSON.stringify(update)
+  const match = /(?:^|["\s:/])\/?bindmax(?:@[\w.-]+)?[\s_]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(dump)
+  return match?.[1]?.trim() || null
+}
+
+function extractMaxConversationId(update: MaxUpdate): string | null {
+  const raw = update as Record<string, unknown>
+  const msg = update.message
+  const candidates: unknown[] = [
+    msg?.recipient?.chat_id,
+    update.recipient?.chat_id,
+    update.chat_id,
+    update.conversation_id,
+    update.chat?.chat_id,
+    update.chat?.id,
+    update.dialog?.chat_id,
+    update.dialog?.id,
+    raw.conversationId,
+    raw.conversation_id,
+    raw.chatId,
+    raw.chat_id,
+  ]
+
+  for (const candidate of candidates) {
+    const normalized = normalizeNonEmptyId(candidate)
+    if (normalized) return normalized
+  }
+
+  const dump = JSON.stringify(update)
+  const match = /"(?:conversationId|conversation_id|chatId|chat_id|dialog_id|dialogId)"\s*:\s*"?([^",}\s]+)"?/i.exec(dump)
+  return match?.[1]?.trim() || null
 }
 
 /** user_id отправителя: сообщение / bot_started (`user`) / альтернативные поля из API MAX. */
@@ -312,8 +385,17 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody<MaxUpdate>(event)
   const updateType = String(body?.update_type || '').trim()
+  if (!body) {
+    return { ok: true }
+  }
+  const incomingText = typeof body.message?.body?.text === 'string'
+    ? body.message.body.text.trim()
+    : typeof body.message?.text === 'string'
+      ? body.message.text.trim()
+      : ''
+  const hasBindCommand = Boolean(extractMaxBindTokenFromUpdate(body, incomingText))
   const supportedType = updateType === 'message_created' || updateType === 'bot_started'
-  if (!body || !supportedType) {
+  if (!supportedType && !hasBindCommand) {
     return { ok: true }
   }
 
@@ -324,6 +406,37 @@ export default defineEventHandler(async (event) => {
 
   const actorUserId = extractMaxActorUserId(body)
   const startPayload = extractStartPayload(body)
+  const messageTextRaw = typeof msg?.body?.text === 'string'
+    ? msg.body.text.trim()
+    : typeof msg?.text === 'string'
+      ? msg.text.trim()
+      : ''
+
+  if (actorUserId != null && startPayload.startsWith('linkmaxchat_')) {
+    const token = startPayload.slice('linkmaxchat_'.length).trim()
+    if (!token) {
+      await sendMaxDmPlain({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        userId: actorUserId,
+        text: 'Не удалось прочитать токен привязки. Сгенерируйте ссылку заново в кабинете.',
+      }).catch((e) => console.error('webhook-max: linkmaxchat invalid token ack failed:', e))
+      return { ok: true }
+    }
+    await sendMaxDmPlain({
+      baseUrl: maxBaseUrl,
+      token: maxToken,
+      userId: actorUserId,
+      text: [
+        'Токен привязки MAX получен.',
+        'Теперь добавьте MAX-бота в нужную группу менеджеров и отправьте там команду:',
+        `/bindmax ${token}`,
+        '',
+        'После команды этот MAX-чат будет привязан к филиалу.',
+      ].join('\n'),
+    }).catch((e) => console.error('webhook-max: linkmaxchat instructions failed:', e))
+    return { ok: true }
+  }
 
   if (actorUserId != null && startPayload.startsWith('orderdelay_')) {
     const orderId = startPayload.slice('orderdelay_'.length).trim()
@@ -434,11 +547,132 @@ export default defineEventHandler(async (event) => {
     return { ok: true }
   }
 
-  const messageTextRaw = typeof msg?.body?.text === 'string'
-    ? msg.body.text.trim()
-    : typeof msg?.text === 'string'
-      ? msg.text.trim()
-      : ''
+  const bindToken = extractMaxBindTokenFromUpdate(body, messageTextRaw)
+  if (bindToken) {
+    const conversationIdValue = extractMaxConversationId(body)
+    console.info('webhook-max: bindmax command received', {
+      updateType,
+      hasConversationId: Boolean(conversationIdValue),
+      conversationId: conversationIdValue,
+      tokenPrefix: bindToken.slice(0, 8),
+      messageText: messageTextRaw,
+    })
+    if (!conversationIdValue) {
+      console.warn('webhook-max: bindmax conversation id not found', {
+        updateType,
+        payload: body.payload ?? null,
+        start_payload: body.start_payload ?? null,
+        messageRecipient: msg?.recipient ?? null,
+        chat_id: body.chat_id ?? null,
+      })
+      if (actorUserId != null) {
+        await sendMaxDmPlain({
+          baseUrl: maxBaseUrl,
+          token: maxToken,
+          userId: actorUserId,
+          text: 'Команда bindmax работает только в группе менеджеров. Отправьте её в нужном MAX-чате.',
+        }).catch(() => {})
+      }
+      return { ok: true }
+    }
+
+    const supabase = await serverSupabaseServiceRole(event)
+    const { data: tokenRow } = await supabase
+      .from('telegram_chat_link_tokens')
+      .select('token,shop_id,restaurant_id,expires_at,used_at')
+      .eq('token', bindToken)
+      .maybeSingle<ChatLinkTokenRow>()
+
+    if (!tokenRow) {
+      console.warn('webhook-max: bindmax token not found', { tokenPrefix: bindToken.slice(0, 8) })
+      await sendMaxToConversation({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        conversationId: conversationIdValue,
+        text: 'Токен привязки не найден. Сгенерируйте новую ссылку в кабинете.',
+      }).catch(() => {})
+      return { ok: true }
+    }
+    if (tokenRow.used_at) {
+      console.warn('webhook-max: bindmax token already used', { tokenPrefix: bindToken.slice(0, 8) })
+      await sendMaxToConversation({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        conversationId: conversationIdValue,
+        text: 'Этот токен уже использован. Сгенерируйте новый в кабинете.',
+      }).catch(() => {})
+      return { ok: true }
+    }
+    if (new Date(tokenRow.expires_at).getTime() < Date.now()) {
+      console.warn('webhook-max: bindmax token expired', { tokenPrefix: bindToken.slice(0, 8), expiresAt: tokenRow.expires_at })
+      await sendMaxToConversation({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        conversationId: conversationIdValue,
+        text: 'Токен истек. Сгенерируйте новый в кабинете.',
+      }).catch(() => {})
+      return { ok: true }
+    }
+
+    const { data: existingRestaurant } = await supabase
+      .from('restaurants')
+      .select('id')
+      .eq('manager_max_chat_id', conversationIdValue)
+      .neq('id', tokenRow.restaurant_id)
+      .maybeSingle<{ id: string }>()
+    if (existingRestaurant?.id) {
+      console.warn('webhook-max: bindmax chat already linked', {
+        conversationId: conversationIdValue,
+        existingRestaurantId: existingRestaurant.id,
+      })
+      await sendMaxToConversation({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        conversationId: conversationIdValue,
+        text: 'Этот MAX-чат уже привязан к другому ресторану.',
+      }).catch(() => {})
+      return { ok: true }
+    }
+
+    const { data: updatedRestaurant, error: updateError } = await supabase
+      .from('restaurants')
+      .update({ manager_max_chat_id: conversationIdValue })
+      .eq('id', tokenRow.restaurant_id)
+      .eq('shop_id', tokenRow.shop_id)
+      .select('name')
+      .maybeSingle<{ name: string }>()
+
+    if (updateError || !updatedRestaurant) {
+      console.error('Bind MAX chat update restaurant failed:', updateError)
+      await sendMaxToConversation({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        conversationId: conversationIdValue,
+        text: 'Не удалось сохранить привязку MAX-чата. Попробуйте еще раз.',
+      }).catch(() => {})
+      return { ok: true }
+    }
+
+    await supabase
+      .from('telegram_chat_link_tokens')
+      .update({ used_at: new Date().toISOString() })
+      .eq('token', bindToken)
+      .is('used_at', null)
+
+    await sendMaxToConversation({
+      baseUrl: maxBaseUrl,
+      token: maxToken,
+      conversationId: conversationIdValue,
+      text: `MAX-чат успешно привязан к ресторану "${updatedRestaurant.name}".`,
+    }).catch(() => {})
+    console.info('webhook-max: bindmax linked restaurant', {
+      conversationId: conversationIdValue,
+      restaurantId: tokenRow.restaurant_id,
+      tokenPrefix: bindToken.slice(0, 8),
+    })
+    return { ok: true }
+  }
+
   if (actorUserId != null && /^ugc\s+/i.test(messageTextRaw)) {
     const [, rawAction = '', rawSubmissionId = ''] = messageTextRaw.split(/\s+/, 3)
     const actionName = rawAction.trim().toLowerCase()

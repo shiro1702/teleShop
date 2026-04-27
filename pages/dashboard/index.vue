@@ -35,6 +35,13 @@
       >
         Открыть филиалы
       </NuxtLink>
+      <NuxtLink
+        v-if="can('orders.view')"
+        to="/dashboard/moderation/city-ugc"
+        class="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm hover:border-gray-300"
+      >
+        Городская модерация UGC
+      </NuxtLink>
     </div>
 
     <div v-if="!pending && !errorMessage && !hasBranches" class="rounded-xl border border-blue-200 bg-blue-50 p-4">
@@ -87,7 +94,7 @@ onMounted(async () => {
       return
     }
 
-    const response = await fetch('/api/dashboard/restaurants')
+    const response = await fetch('/api/dashboard/restaurants?compact=1&pageSize=1')
     if (!response.ok) throw new Error('Не удалось загрузить филиалы организации')
     const payload = await response.json() as { ok: boolean; items?: unknown[] }
     branchCount.value = Array.isArray(payload.items) ? payload.items.length : 0

@@ -1,5 +1,6 @@
 <template>
-  <section class="space-y-4">
+  <NuxtPage v-if="isNotificationSettingsRoute" />
+  <section v-else class="space-y-4">
     <h1 class="text-2xl font-semibold">Интеграции</h1>
     <p class="text-sm text-gray-600">Статусы подключений, health-check и управление секретами.</p>
     <div class="fixed right-4 top-4 z-[100] space-y-2">
@@ -13,11 +14,48 @@
       Критичные действия с интеграциями доступны только Owner.
     </div>
 
-    <div class="grid gap-3 md:grid-cols-2">
+    <div class="flex flex-wrap gap-2 rounded-xl border border-gray-200 bg-white p-2">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        type="button"
+        class="rounded-lg px-3 py-2 text-sm transition-colors"
+        :class="activeTab === tab.id ? 'bg-primary text-white' : tab.disabled ? 'cursor-not-allowed bg-gray-100 text-gray-400' : 'text-gray-700 hover:bg-gray-50'"
+        :disabled="tab.disabled"
+        @click="activeTab = tab.id"
+      >
+        {{ tab.label }}
+        <span v-if="tab.disabled" class="ml-1 text-[11px]">(скоро)</span>
+      </button>
+    </div>
+
+    <div v-if="activeTab === 'bots'" class="space-y-3">
+      <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        Интеграция с ботами вынесена в отдельную вкладку как будущий функционал. Сейчас рабочие уведомления менеджерам настраиваются во вкладке «Омниканальные уведомления».
+      </div>
+      <div class="flex flex-wrap gap-2 rounded-xl border border-gray-200 bg-white p-2">
+        <button
+          v-for="tab in botTabs"
+          :key="tab.id"
+          type="button"
+          class="cursor-not-allowed rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-400"
+          disabled
+        >
+          {{ tab.label }} <span class="ml-1 text-[11px]">(скоро)</span>
+        </button>
+      </div>
+      <div v-if="restaurantsLoading" class="rounded-xl border border-gray-200 bg-white p-4">
+        <div class="animate-pulse space-y-3">
+          <div class="h-4 w-44 rounded bg-gray-200" />
+          <div class="h-10 rounded-lg bg-gray-100" />
+          <div class="h-10 rounded-lg bg-gray-100" />
+        </div>
+      </div>
       <article class="rounded-xl border border-gray-200 bg-white p-4 md:col-span-2">
-        <h2 class="text-sm font-semibold">Telegram Bot</h2>
+        <h2 class="text-sm font-semibold text-gray-500">Telegram Bot</h2>
+        <p class="mt-1 text-xs text-amber-700">Вкладка отключена: подключение tenant-ботов будет оформлено отдельным стабильным flow.</p>
         <p class="mt-1 text-xs text-gray-500">Webhook: {{ telegramWebhook }}</p>
-        <div class="mt-3 grid gap-2 md:grid-cols-2">
+        <div class="mt-3 grid gap-2 opacity-50 md:grid-cols-2">
           <label class="text-sm">
             <span class="mb-1 block text-gray-600">Bot token</span>
             <input
@@ -25,7 +63,7 @@
               type="text"
               placeholder="123456:AA..."
               class="w-full rounded-lg border border-gray-300 px-3 py-2"
-              :disabled="role !== 'owner'"
+              disabled
             >
           </label>
           <div class="text-sm">
@@ -39,16 +77,16 @@
           </div>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">
-          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner' || !telegramTokenInput.trim()" @click="connectTelegramBot">
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" disabled @click="connectTelegramBot">
             Подключить
           </button>
-          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner' || !telegramConnected" @click="reconnectTelegramBot">
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" disabled @click="reconnectTelegramBot">
             Переподключить
           </button>
-          <button class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50" :disabled="role !== 'owner' || !telegramConnected" @click="disconnectTelegramBot">
+          <button class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50" disabled @click="disconnectTelegramBot">
             Отключить
           </button>
-          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="telegramHealthy = !telegramHealthy">
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" disabled @click="telegramHealthy = !telegramHealthy">
             Проверить/переключить статус
           </button>
         </div>
@@ -58,10 +96,10 @@
       </article>
 
       <article class="rounded-xl border border-gray-200 bg-white p-4 md:col-span-2">
-        <h2 class="text-sm font-semibold">Подключенные Telegram-боты к ресторанам</h2>
-        <p class="mt-1 text-xs text-gray-500">Привяжите бота к конкретному ресторану для обработки заказов.</p>
-        <div class="mt-3 grid gap-2 md:grid-cols-3">
-          <select v-model="selectedRestaurantId" class="rounded-lg border border-gray-300 px-3 py-2 text-sm" :disabled="role !== 'owner'">
+        <h2 class="text-sm font-semibold text-gray-500">Подключенные Telegram-боты к ресторанам</h2>
+        <p class="mt-1 text-xs text-amber-700">Вкладка отключена: привязка отдельных ресторанных ботов пока не используется в боевом flow.</p>
+        <div class="mt-3 grid gap-2 opacity-50 md:grid-cols-3">
+          <select v-model="selectedRestaurantId" class="rounded-lg border border-gray-300 px-3 py-2 text-sm" disabled>
             <option value="">Выберите ресторан</option>
             <option v-for="restaurant in restaurants" :key="restaurant.id" :value="restaurant.id">
               {{ restaurant.name }}
@@ -72,9 +110,9 @@
             type="text"
             placeholder="@my_restaurant_bot"
             class="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            :disabled="role !== 'owner'"
+            disabled
           >
-          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="attachBotToRestaurant">
+          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" disabled @click="attachBotToRestaurant">
             Привязать бота
           </button>
         </div>
@@ -93,9 +131,14 @@
           </li>
         </ul>
       </article>
+    </div>
 
+    <div v-else-if="activeTab === 'notifications'" class="grid gap-3 md:grid-cols-2">
       <article class="rounded-xl border border-gray-200 bg-white p-4 md:col-span-2">
         <h2 class="text-sm font-semibold">Омниканальные уведомления (Telegram + MAX)</h2>
+        <p class="mt-1 text-xs text-gray-500">
+          Primary/Secondary задают порядок доставки. Привязка каждого канала вынесена в отдельную вкладку ниже.
+        </p>
         <div class="mt-3 grid gap-2 md:grid-cols-3">
           <label class="text-sm">
             <span class="mb-1 block text-gray-600">Primary канал</span>
@@ -117,65 +160,66 @@
           </label>
         </div>
 
-        <div class="mt-4 grid gap-2 md:grid-cols-2">
-          <label class="text-sm">
-            <span class="mb-1 block text-gray-600">Ресторан</span>
-            <select v-model="notificationRestaurantId" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="role !== 'owner'">
-              <option value="">Выберите ресторан</option>
-              <option v-for="r in notificationRestaurants" :key="r.id" :value="r.id">{{ r.name }}</option>
-            </select>
-          </label>
-          <label class="text-sm">
-            <span class="mb-1 block text-gray-600">Режим менеджерских получателей</span>
-            <select v-model="notificationMode" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="role !== 'owner'">
-              <option value="group">Группа менеджеров</option>
-              <option value="personal">Персональные менеджеры</option>
-            </select>
-          </label>
+        <div class="mt-4 rounded-xl border border-gray-200">
+          <div class="border-b border-gray-100 px-3 py-2">
+            <h3 class="text-sm font-semibold text-gray-900">Филиалы и уведомления</h3>
+            <p class="mt-1 text-xs text-gray-500">Выберите филиал и провалитесь глубже, чтобы настроить Telegram/MAX-группы, режим получателей и тестовую отправку.</p>
+          </div>
+          <div v-if="notificationRestaurantsLoading" class="divide-y divide-gray-100 px-3 py-2">
+            <div v-for="item in 4" :key="item" class="animate-pulse py-3">
+              <div class="h-4 w-48 rounded bg-gray-200" />
+              <div class="mt-2 h-3 w-72 max-w-full rounded bg-gray-100" />
+            </div>
+          </div>
+          <ul v-else class="divide-y divide-gray-100 text-sm">
+            <li v-for="r in notificationRestaurants" :key="r.id" class="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
+              <div>
+                <p class="font-medium text-gray-900">{{ r.name }}</p>
+                <p class="text-xs text-gray-500">
+                  Telegram: {{ r.managerGroupChatId || 'не задан' }} • MAX: {{ r.managerMaxChatId || 'не задан' }} • режим: {{ r.managerNotificationMode === 'personal' ? 'персональные' : 'группа' }}
+                </p>
+              </div>
+              <NuxtLink :to="`/dashboard/integrations/notifications/${r.id}`" class="rounded border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
+                Настроить
+              </NuxtLink>
+            </li>
+            <li v-if="!notificationRestaurants.length" class="px-3 py-4 text-sm text-gray-500">
+              Филиалов на этой странице нет.
+            </li>
+          </ul>
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+          <button
+            class="rounded border border-gray-300 px-2 py-1 disabled:opacity-50"
+            :disabled="!notificationRestaurantsHasPrev"
+            @click="changeNotificationRestaurantsPage(-1)"
+          >
+            Рестораны: назад
+          </button>
+          <button
+            class="rounded border border-gray-300 px-2 py-1 disabled:opacity-50"
+            :disabled="!notificationRestaurantsHasNext"
+            @click="changeNotificationRestaurantsPage(1)"
+          >
+            Рестораны: вперед
+          </button>
+          <span>по {{ notificationRestaurantsPageSize }} на странице</span>
         </div>
 
-        <div class="mt-3 grid gap-2 md:grid-cols-2">
-          <input v-model="managerGroupChatId" type="text" placeholder="Telegram group chat id" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
-          <input v-model="managerMaxChatId" type="text" placeholder="MAX group chat id" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
-        </div>
-        <div class="mt-2 flex flex-wrap gap-2">
+        <div class="mt-4 flex flex-wrap gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1">
           <button
-            class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
-            :disabled="role !== 'owner' || !notificationRestaurantId"
-            @click="createTelegramChatBindLink"
+            v-for="tab in notificationChannelTabs"
+            :key="tab.id"
+            type="button"
+            class="rounded-md px-3 py-1.5 text-sm transition-colors"
+            :class="activeNotificationChannelTab === tab.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:bg-white/70'"
+            @click="activeNotificationChannelTab = tab.id"
           >
-            Привязать через бота
-          </button>
-          <button
-            class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!notificationRestaurantId"
-            @click="refreshNotificationRestaurantStatus"
-          >
-            Проверить статус
-          </button>
-          <button
-            class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
-            :disabled="role !== 'owner' || !notificationRestaurantId || !managerGroupChatId"
-            @click="unlinkTelegramChat"
-          >
-            Отвязать чат
+            {{ tab.label }}
           </button>
         </div>
-        <div v-if="telegramChatBindDeepLink" class="mt-2 rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
-          <p class="font-medium">Ссылка для привязки активна до {{ telegramChatBindExpiresAt }}</p>
-          <p class="mt-1 break-all">1) Откройте: <a :href="telegramChatBindDeepLink" target="_blank" rel="noopener" class="underline">{{ telegramChatBindDeepLink }}</a></p>
-          <p class="mt-1">2) Добавьте бота в нужную группу менеджеров</p>
-          <p class="mt-1">3) В группе отправьте: <span class="font-mono">{{ telegramChatBindCommand }}</span></p>
-        </div>
-        <textarea v-model="managerRecipientsRaw" class="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs" rows="3" placeholder='[{"channel":"telegram","targetId":"123456"},{"channel":"max","targetId":"conv_1"}]' />
 
         <div class="mt-3 flex flex-wrap gap-2">
-          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner' || !notificationRestaurantId" @click="saveNotificationSettings">
-            Сохранить настройки
-          </button>
-          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner' || !notificationRestaurantId" @click="sendTestNotification">
-            Проверить уведомление
-          </button>
           <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50" @click="loadNotificationEvents">
             Обновить event-log
           </button>
@@ -188,44 +232,23 @@
             {{ item.created_at }} • {{ item.channel }} • {{ item.delivery_status }} • {{ item.event_type }} • attempts: {{ item.attempt_count }}
           </li>
         </ul>
-      </article>
-
-      <article class="rounded-xl border border-gray-200 bg-white p-4 md:col-span-2">
-        <h2 class="text-sm font-semibold">Фестиваль: модерация UGC (Telegram + MAX)</h2>
-        <p class="mt-1 text-xs text-gray-500">Общий чат модераторов фестиваля. Негативные отзывы после модерации пересылаются в чат выбранного корнера.</p>
-        <div class="mt-3 grid gap-2 md:grid-cols-3">
-          <label class="text-sm">
-            <span class="mb-1 block text-gray-600">Фестиваль</span>
-            <select v-model="festivalModerationFestivalId" class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="role !== 'owner'">
-              <option value="">Выберите фестиваль</option>
-              <option v-for="item in festivalModerationFestivals" :key="item.id" :value="item.id">
-                {{ item.name }} ({{ item.slug }})
-              </option>
-            </select>
-          </label>
-          <label class="text-sm">
-            <span class="mb-1 block text-gray-600">Telegram chat id</span>
-            <input v-model="festivalModerationTelegramChatId" type="text" placeholder="-100..." class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="role !== 'owner'">
-          </label>
-          <label class="text-sm">
-            <span class="mb-1 block text-gray-600">MAX conversation id</span>
-            <input v-model="festivalModerationMaxChatId" type="text" placeholder="conv_..." class="w-full rounded-lg border border-gray-300 px-3 py-2" :disabled="role !== 'owner'">
-          </label>
-        </div>
-        <label class="mt-3 flex items-center gap-2 text-sm text-gray-700">
-          <input v-model="festivalModerationIsActive" type="checkbox" :disabled="role !== 'owner'">
-          Активировать модерацию для выбранного фестиваля
-        </label>
-        <div class="mt-3 flex flex-wrap gap-2">
-          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner' || !festivalModerationFestivalId" @click="saveFestivalModerationSettings">
-            Сохранить
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+          <button
+            class="rounded border border-gray-300 px-2 py-1 disabled:opacity-50"
+            :disabled="!notificationEventsHasPrev"
+            @click="changeNotificationEventsPage(-1)"
+          >
+            Event-log: назад
           </button>
-          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner' || !festivalModerationFestivalId" @click="sendFestivalModerationTest">
-            Отправить тест
+          <span>страница {{ notificationEventsPage }}</span>
+          <button
+            class="rounded border border-gray-300 px-2 py-1 disabled:opacity-50"
+            :disabled="!notificationEventsHasNext"
+            @click="changeNotificationEventsPage(1)"
+          >
+            Event-log: вперед
           </button>
-          <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50" @click="loadFestivalModerationSettings">
-            Обновить
-          </button>
+          <span>по {{ notificationEventsPageSize }} на странице</span>
         </div>
       </article>
 
@@ -236,8 +259,14 @@
           Ротировать ключ
         </button>
       </article>
+    </div>
 
-      <article class="rounded-xl border border-gray-200 bg-white p-4 md:col-span-2">
+    <div v-else-if="activeTab === 'quickresto'" class="grid gap-3 md:grid-cols-2">
+      <article class="rounded-xl border border-amber-200 bg-amber-50 p-4 md:col-span-2">
+        <h2 class="text-sm font-semibold text-amber-900">Quick Resto</h2>
+        <p class="mt-1 text-sm text-amber-800">Вкладка отключена как будущий/служебный функционал. Текущие элементы оставлены ниже только для справки и неактивны.</p>
+      </article>
+      <article class="pointer-events-none rounded-xl border border-gray-200 bg-white p-4 opacity-50 md:col-span-2">
         <h2 class="text-sm font-semibold">Quick Resto</h2>
         <p class="mt-1 text-xs text-gray-500">Подключение, синхронизация меню/стоп-листов и ретраи заказов.</p>
         <div class="mt-3 grid gap-2 md:grid-cols-4">
@@ -326,6 +355,12 @@
         </div>
       </article>
     </div>
+
+    <div v-else-if="activeTab === 'iiko'" class="rounded-xl border border-gray-200 bg-white p-6 opacity-70">
+      <h2 class="text-sm font-semibold">Интеграция с iiko</h2>
+      <p class="mt-1 text-sm text-gray-600">Раздел зарезервирован под будущую интеграцию с iiko: меню, стоп-листы, заказы и статусы кухни.</p>
+      <span class="mt-3 inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500">Скоро</span>
+    </div>
   </section>
 </template>
 
@@ -335,7 +370,28 @@ import { useDashboardAccess } from '../../composables/useDashboardAccess'
 
 declare const definePageMeta: (meta: Record<string, unknown>) => void
 definePageMeta({ layout: 'dashboard' })
-const { role } = useDashboardAccess()
+const route = useRoute()
+const isNotificationSettingsRoute = computed(() => route.path.startsWith('/dashboard/integrations/notifications/'))
+const { role, load } = useDashboardAccess()
+type IntegrationTabId = 'notifications' | 'bots' | 'quickresto' | 'iiko'
+type NotificationChannelTabId = 'telegram' | 'max' | 'recipients'
+const activeTab = ref<IntegrationTabId>('notifications')
+const activeNotificationChannelTab = ref<NotificationChannelTabId>('telegram')
+const tabs: Array<{ id: IntegrationTabId; label: string; disabled?: boolean }> = [
+  { id: 'notifications', label: 'Омниканальные уведомления' },
+  { id: 'bots', label: 'Интеграция с ботами' },
+  { id: 'quickresto', label: 'Quick Resto', disabled: true },
+  { id: 'iiko', label: 'iiko', disabled: true },
+]
+const notificationChannelTabs: Array<{ id: NotificationChannelTabId; label: string }> = [
+  { id: 'telegram', label: 'Telegram' },
+  { id: 'max', label: 'MAX' },
+  { id: 'recipients', label: 'Получатели' },
+]
+const botTabs = [
+  { id: 'telegram-bot', label: 'Telegram Bot' },
+  { id: 'restaurant-bots', label: 'Боты ресторанов' },
+]
 const telegramWebhook = ref('https://api.teleshop.app/webhook/telegram')
 const telegramHealthy = ref(true)
 const telegramToken = ref('tg_live_12fd9aabce98')
@@ -346,6 +402,7 @@ const telegramMessageType = ref<'ok' | 'error'>('ok')
 
 type Restaurant = { id: string; name: string }
 const restaurants = ref<Restaurant[]>([])
+const restaurantsLoading = ref(false)
 const selectedRestaurantId = ref('')
 const botNameInput = ref('')
 const connectedBots = ref<Array<{ id: string; botName: string; restaurantId: string; restaurantName: string }>>([])
@@ -363,6 +420,15 @@ const managerRecipientsRaw = ref('[]')
 const notificationMessage = ref('')
 const notificationMessageType = ref<'ok' | 'error'>('ok')
 const notificationEvents = ref<Array<{ id: string; created_at: string; channel: string; delivery_status: string; event_type: string; attempt_count: number }>>([])
+const notificationRestaurantsPage = ref(1)
+const notificationRestaurantsPageSize = 25
+const notificationRestaurantsHasNext = ref(false)
+const notificationRestaurantsHasPrev = ref(false)
+const notificationRestaurantsLoading = ref(false)
+const notificationEventsPage = ref(1)
+const notificationEventsPageSize = 25
+const notificationEventsHasNext = ref(false)
+const notificationEventsHasPrev = ref(false)
 const telegramChatBindDeepLink = ref('')
 const telegramChatBindCommand = ref('')
 const telegramChatBindExpiresAt = ref('')
@@ -458,6 +524,20 @@ function detachBot(id: string) {
   connectedBots.value = connectedBots.value.filter((item: { id: string }) => item.id !== id)
 }
 
+async function loadRestaurants() {
+  restaurantsLoading.value = true
+  try {
+    const response = await fetch('/api/dashboard/restaurants?compact=1&pageSize=100')
+    if (!response.ok) return
+    const payload = await response.json() as { items?: Array<{ id: string; name: string }> }
+    restaurants.value = Array.isArray(payload.items) ? payload.items : []
+  } catch {
+    restaurants.value = []
+  } finally {
+    restaurantsLoading.value = false
+  }
+}
+
 function syncSelectedNotificationRestaurant() {
   const selected = notificationRestaurants.value.find((item: { id: string }) => item.id === notificationRestaurantId.value)
   if (!selected) return
@@ -468,11 +548,32 @@ function syncSelectedNotificationRestaurant() {
 }
 
 async function loadNotificationSettings() {
-  const response = await fetch('/api/dashboard/integrations/notifications')
-  if (!response.ok) return
-  const payload = await response.json()
-  channelPolicy.value = payload.channelPolicy ?? channelPolicy.value
-  notificationRestaurants.value = Array.isArray(payload.restaurants) ? payload.restaurants : []
+  notificationRestaurantsLoading.value = true
+  const params = new URLSearchParams({
+    page: String(notificationRestaurantsPage.value),
+    pageSize: String(notificationRestaurantsPageSize),
+  })
+  try {
+    const response = await fetch(`/api/dashboard/integrations/notifications?${params.toString()}`)
+    if (!response.ok) return
+    const payload = await response.json()
+    channelPolicy.value = payload.channelPolicy ?? channelPolicy.value
+    notificationRestaurants.value = Array.isArray(payload.restaurants) ? payload.restaurants : []
+    notificationRestaurantsHasNext.value = payload?.pagination?.hasNext === true
+    notificationRestaurantsHasPrev.value = payload?.pagination?.hasPrev === true
+    if (notificationRestaurantId.value && !notificationRestaurants.value.some((item: { id: string }) => item.id === notificationRestaurantId.value)) {
+      notificationRestaurantId.value = ''
+    }
+  } finally {
+    notificationRestaurantsLoading.value = false
+  }
+}
+
+async function changeNotificationRestaurantsPage(delta: number) {
+  const next = Math.max(1, notificationRestaurantsPage.value + delta)
+  if (next === notificationRestaurantsPage.value) return
+  notificationRestaurantsPage.value = next
+  await loadNotificationSettings()
 }
 
 async function loadQuickRestoState() {
@@ -663,10 +764,24 @@ async function sendTestNotification() {
 }
 
 async function loadNotificationEvents() {
-  const response = await fetch('/api/dashboard/integrations/notification-events')
+  const params = new URLSearchParams({
+    page: String(notificationEventsPage.value),
+    pageSize: String(notificationEventsPageSize),
+  })
+  if (notificationRestaurantId.value) params.set('restaurantId', notificationRestaurantId.value)
+  const response = await fetch(`/api/dashboard/integrations/notification-events?${params.toString()}`)
   if (!response.ok) return
   const payload = await response.json()
   notificationEvents.value = Array.isArray(payload.items) ? payload.items : []
+  notificationEventsHasNext.value = payload?.pagination?.hasNext === true
+  notificationEventsHasPrev.value = payload?.pagination?.hasPrev === true
+}
+
+async function changeNotificationEventsPage(delta: number) {
+  const next = Math.max(1, notificationEventsPage.value + delta)
+  if (next === notificationEventsPage.value) return
+  notificationEventsPage.value = next
+  await loadNotificationEvents()
 }
 
 function syncFestivalModerationSelection() {
@@ -737,25 +852,24 @@ async function sendFestivalModerationTest() {
 }
 
 onMounted(async () => {
-  try {
-    const response = await fetch('/api/dashboard/restaurants')
-    if (!response.ok) return
-    const payload = await response.json() as { items?: Array<{ id: string; name: string }> }
-    restaurants.value = Array.isArray(payload.items) ? payload.items : []
-  } catch {
-    restaurants.value = []
-  }
-  await loadNotificationSettings()
-  await loadNotificationEvents()
-  await loadFestivalModerationSettings()
-  await loadQuickRestoState()
+  if (isNotificationSettingsRoute.value) return
+  await load()
+  await Promise.all([
+    loadRestaurants(),
+    loadNotificationSettings(),
+    loadNotificationEvents(),
+    loadFestivalModerationSettings(),
+    loadQuickRestoState(),
+  ])
 })
 
 watch(notificationRestaurantId, () => {
   telegramChatBindDeepLink.value = ''
   telegramChatBindCommand.value = ''
   telegramChatBindExpiresAt.value = ''
+  notificationEventsPage.value = 1
   syncSelectedNotificationRestaurant()
+  void loadNotificationEvents()
 })
 
 watch(festivalModerationFestivalId, () => {
