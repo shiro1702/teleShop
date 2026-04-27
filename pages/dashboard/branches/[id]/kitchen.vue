@@ -37,6 +37,33 @@
       </button>
     </div>
 
+    <div class="rounded-xl border border-gray-200 bg-white p-3">
+      <div class="flex flex-wrap items-center gap-3">
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <span class="text-xs uppercase tracking-wide text-gray-500">Режим печати</span>
+          <select v-model="printMode" class="rounded border border-gray-300 bg-white px-2 py-1 text-sm">
+            <option value="off">Отключено</option>
+            <option value="rawbt">Android + RawBT</option>
+            <option value="browser">Системная печать (browser)</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <span class="text-xs uppercase tracking-wide text-gray-500">Ширина ленты</span>
+          <select v-model.number="printWidthMm" class="rounded border border-gray-300 bg-white px-2 py-1 text-sm">
+            <option :value="58">58 мм</option>
+            <option :value="80">80 мм</option>
+          </select>
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+          <input v-model="autoPrintEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
+          <span>Автопечать новых заказов</span>
+        </label>
+      </div>
+      <p class="mt-2 text-xs text-gray-500">
+        Для режима RawBT требуется Android-устройство с установленным приложением RawBT.
+      </p>
+    </div>
+
     <div v-if="mainTab === 'duplicates'" class="space-y-4">
       <div class="flex flex-wrap gap-2">
         <button
@@ -151,6 +178,13 @@
                 <p v-if="o.comment" class="mt-2 text-xs text-gray-600">Комментарий: {{ o.comment }}</p>
                 <div class="mt-3 flex flex-wrap gap-1.5">
                   <button
+                    type="button"
+                    class="rounded border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs text-sky-700 hover:bg-sky-100"
+                    @click.stop="printOrder(o, 'manual')"
+                  >
+                    Печать
+                  </button>
+                  <button
                     v-for="nextStatus in moveTargets(o)"
                     :key="`${o.id}:${nextStatus}`"
                     type="button"
@@ -215,6 +249,15 @@
           <p v-if="orderModalData.comment"><span class="text-gray-500">Комментарий:</span> {{ orderModalData.comment }}</p>
           <div class="rounded-lg border border-gray-200 bg-white p-3">
             <p class="mb-2 text-xs uppercase tracking-wide text-gray-500">Перенос по флоу</p>
+            <div class="mb-2 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                class="rounded border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs text-sky-700 hover:bg-sky-100"
+                @click="printOrder(orderModalData, 'manual')"
+              >
+                Печать чека
+              </button>
+            </div>
             <div class="flex flex-wrap gap-1.5">
               <button
                 v-for="nextStatus in moveTargets(orderModalData)"
@@ -302,6 +345,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { getAllowedOrderStatusTransitions, normalizeDashboardStatus, type DashboardOrderStatus } from '~/utils/dashboardOrderStatus'
+import {
+  buildHtmlReceipt,
+  buildRawBtIntent,
+  printViaBrowser,
+  type PrintMode,
+  type ReceiptWidth,
+} from '~/utils/receiptPrinter'
 
 definePageMeta({ layout: 'dashboard' })
 
@@ -387,6 +437,13 @@ const orderModalError = ref<string | null>(null)
 const orderModalData = ref<KitchenOrder | null>(null)
 const delayNotifyPending = ref(false)
 const toasts = ref<Array<{ id: string; kind: 'error' | 'success'; message: string }>>([])
+const printMode = ref<PrintMode>('off')
+const printWidthMm = ref<ReceiptWidth>(58)
+const autoPrintEnabled = ref(false)
+const knownOrderIds = ref<string[]>([])
+const hydrationDone = ref(false)
+
+const storageKeyPrefix = computed(() => `kds:printer:${restaurantId.value}`)
 
 function pushToast(kind: 'error' | 'success', message: string) {
   const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -504,6 +561,71 @@ async function loadKitchen() {
   }
 }
 
+function getStorageKey(suffix: string) {
+  return `${storageKeyPrefix.value}:${suffix}`
+}
+
+function loadPrintSettings() {
+  if (typeof window === 'undefined') return
+  const modeRaw = window.localStorage.getItem(getStorageKey('mode'))
+  if (modeRaw === 'rawbt' || modeRaw === 'browser' || modeRaw === 'off') {
+    printMode.value = modeRaw
+  }
+  const widthRaw = window.localStorage.getItem(getStorageKey('widthMm'))
+  if (widthRaw === '58' || widthRaw === '80') {
+    printWidthMm.value = Number(widthRaw) as ReceiptWidth
+  }
+  autoPrintEnabled.value = window.localStorage.getItem(getStorageKey('autoPrint')) === '1'
+}
+
+function persistPrintSettings() {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(getStorageKey('mode'), printMode.value)
+  window.localStorage.setItem(getStorageKey('widthMm'), String(printWidthMm.value))
+  window.localStorage.setItem(getStorageKey('autoPrint'), autoPrintEnabled.value ? '1' : '0')
+}
+
+function handleKnownOrders(orders: KitchenOrder[]) {
+  const seen = new Set(knownOrderIds.value)
+  for (const o of orders) {
+    seen.add(o.id)
+  }
+  knownOrderIds.value = Array.from(seen)
+}
+
+async function printOrder(order: KitchenOrder, source: 'manual' | 'auto' = 'manual') {
+  if (printMode.value === 'off') {
+    if (source === 'manual') pushToast('error', 'Печать отключена в настройках KDS')
+    return
+  }
+
+  try {
+    if (printMode.value === 'rawbt') {
+      const intent = buildRawBtIntent(order, { widthMm: printWidthMm.value, shopLabel: branchName.value || null })
+      window.location.assign(intent)
+      pushToast('success', source === 'auto' ? 'Автопечать: заказ отправлен в RawBT' : 'Заказ отправлен в RawBT')
+      return
+    }
+
+    const html = buildHtmlReceipt(order, { widthMm: printWidthMm.value, shopLabel: branchName.value || null })
+    printViaBrowser(html)
+    pushToast('success', source === 'auto' ? 'Автопечать: открыт системный диалог печати' : 'Открыт системный диалог печати')
+  } catch (e: any) {
+    pushToast('error', e?.message || 'Не удалось отправить заказ на печать')
+  }
+}
+
+async function runAutoPrint(orders: KitchenOrder[]) {
+  if (!hydrationDone.value) return
+  if (!autoPrintEnabled.value || printMode.value === 'off') return
+  const known = new Set(knownOrderIds.value)
+  const newKitchenOrders = orders.filter((o) => o.status === 'new' && !known.has(o.id))
+  if (!newKitchenOrders.length) return
+  for (const order of newKitchenOrders) {
+    await printOrder(order, 'auto')
+  }
+}
+
 async function applyStatus(orderId: string, nextStatus: DashboardOrderStatus) {
   const needsComment = nextStatus === 'cancelled'
   let comment: string | undefined
@@ -550,13 +672,28 @@ async function applyStatus(orderId: string, nextStatus: DashboardOrderStatus) {
 }
 
 onMounted(async () => {
+  loadPrintSettings()
   await loadBranch()
   await loadKitchen()
+  hydrationDone.value = true
 })
 
 watch(fulfillmentType, () => {
   if (mainTab.value === 'duplicates') loadKitchen()
 })
+
+watch([printMode, printWidthMm, autoPrintEnabled], () => {
+  persistPrintSettings()
+})
+
+watch(
+  () => kitchenOrders.value,
+  async (orders: KitchenOrder[]) => {
+    await runAutoPrint(orders)
+    handleKnownOrders(orders)
+  },
+  { deep: false },
+)
 
 function shortId(id: string) {
   if (!id) return '—'

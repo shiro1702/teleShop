@@ -5,7 +5,7 @@ type CityRow = {
   id: string
   name: string
   slug: string
-  is_active: boolean
+  is_active?: boolean
 }
 
 type FestivalRow = {
@@ -18,6 +18,11 @@ type FestivalRow = {
   public_banner_lead_days: number | null
   starts_at: string | null
   ends_at: string | null
+}
+
+function canRetryWithLegacySchema(error: any): boolean {
+  const code = typeof error?.code === 'string' ? error.code : ''
+  return code === '42703' || code === '42P01' || code.startsWith('PGRST2')
 }
 
 export default defineEventHandler(async (event) => {
@@ -35,12 +40,26 @@ export default defineEventHandler(async (event) => {
   }
 
   const client = await serverSupabaseServiceRole(event)
-  const { data, error } = await client
+  let data: any = null
+  let error: any = null
+  const primary = await client
     .from('cities')
     .select('id,name,slug,is_active')
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle()
+  data = primary.data
+  error = primary.error
+
+  if (error && canRetryWithLegacySchema(error)) {
+    const fallback = await client
+      .from('cities')
+      .select('id,name,slug')
+      .eq('slug', slug)
+      .maybeSingle()
+    data = fallback.data
+    error = fallback.error
+  }
 
   if (error) {
     console.error('Failed to load city by slug:', error)
@@ -88,7 +107,7 @@ export default defineEventHandler(async (event) => {
       id: city.id,
       name: city.name,
       slug: city.slug,
-      isActive: city.is_active,
+      isActive: city.is_active !== false,
     },
     festival: festival
       ? {
