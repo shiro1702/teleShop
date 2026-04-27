@@ -35,6 +35,11 @@ jobs:
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
+          set -euo pipefail
+          if [ -z "${SSH_PRIVATE_KEY:-}" ]; then
+            echo "SSH_PRIVATE_KEY secret is required"
+            exit 1
+          fi
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
@@ -48,12 +53,31 @@ jobs:
           DEPLOY_PATH: ${{ secrets.PRETEST_DEPLOY_PATH }}
           PRETEST_ENV_FILE: ${{ secrets.PRETEST_ENV_FILE }}
         run: |
+          set -euo pipefail
+          SSH_OPTS="-i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes"
+          if [ -z "${SSH_USER:-}" ]; then
+            echo "SSH_USER secret is required"
+            exit 1
+          fi
+          if [ -z "${VPS_HOST:-}" ]; then
+            echo "VPS_HOST secret is required"
+            exit 1
+          fi
+          if [ -z "${DEPLOY_PATH:-}" ]; then
+            echo "PRETEST_DEPLOY_PATH secret is required"
+            exit 1
+          fi
           if [ -z "${PRETEST_ENV_FILE:-}" ]; then
             echo "PRETEST_ENV_FILE secret is required"
             exit 1
           fi
-          ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; mkdir -p \"$DEPLOY_PATH\""
+
+          echo "Checking SSH connectivity to $SSH_USER@$VPS_HOST"
+          ssh $SSH_OPTS "$SSH_USER@$VPS_HOST" "echo connected && hostname"
+
+          ssh $SSH_OPTS "$SSH_USER@$VPS_HOST" "set -euo pipefail; mkdir -p \"$DEPLOY_PATH\""
           rsync -az --delete \
+            -e "ssh $SSH_OPTS" \
             --exclude '.git' \
             --exclude 'node_modules' \
             --exclude '.nuxt' \
@@ -61,8 +85,8 @@ jobs:
             --exclude '.env' \
             --exclude '.env.*' \
             ./ "$SSH_USER@$VPS_HOST:$DEPLOY_PATH/"
-          printf '%s\n' "$PRETEST_ENV_FILE" | ssh "$SSH_USER@$VPS_HOST" "cat > \"$DEPLOY_PATH/../.env.pretest\" && chmod 600 \"$DEPLOY_PATH/../.env.pretest\" && cp \"$DEPLOY_PATH/../.env.pretest\" \"$DEPLOY_PATH/.env\" && chmod 600 \"$DEPLOY_PATH/.env\""
-          ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; \
+          printf '%s\n' "$PRETEST_ENV_FILE" | ssh $SSH_OPTS "$SSH_USER@$VPS_HOST" "cat > \"$DEPLOY_PATH/../.env.pretest\" && chmod 600 \"$DEPLOY_PATH/../.env.pretest\" && cp \"$DEPLOY_PATH/../.env.pretest\" \"$DEPLOY_PATH/.env\" && chmod 600 \"$DEPLOY_PATH/.env\""
+          ssh $SSH_OPTS "$SSH_USER@$VPS_HOST" "set -euo pipefail; \
             cd \"$DEPLOY_PATH\"; \
             docker compose -f docker-compose.pretest.yml pull || true; \
             docker compose -f docker-compose.pretest.yml build --pull; \

@@ -150,6 +150,7 @@ onMounted(async () => {
     // Tenant theming is best-effort; app keeps default theme on failure.
   }
 })
+// тест деплоя
 
 onServerPrefetch(async () => {
   const routePath = typeof route.path === 'string' ? route.path : ''
