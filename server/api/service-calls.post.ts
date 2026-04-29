@@ -146,7 +146,11 @@ export default defineEventHandler(async (event) => {
     .select('id')
     .maybeSingle()
   if (insertError || !inserted?.id) {
-    throw createError({ statusCode: 500, statusMessage: 'Failed to create service call' })
+    console.error('service_calls insert failed:', insertError)
+    throw createError({
+      statusCode: 500,
+      statusMessage: insertError?.message || 'Failed to create service call',
+    })
   }
   serviceCallId = String(inserted.id)
 
