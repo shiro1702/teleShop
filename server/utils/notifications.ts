@@ -41,6 +41,7 @@ type OrderDetails = {
   status: string
   fulfillmentType: string
   paymentMethod: string
+  paymentStatus: string
   subtotal: number
   deliveryCost: number
   total: number
@@ -254,6 +255,20 @@ function formatItems(items: Array<Record<string, any>>): string[] {
   return lines
 }
 
+function getPaymentLine(order: OrderDetails): string {
+  const method = order.paymentMethod.trim().toLowerCase()
+  const status = order.paymentStatus.trim().toLowerCase()
+
+  if (method === 'online') {
+    return status === 'paid'
+      ? '💸 Способ оплаты: Онлайн (оплачен)'
+      : '💸 Способ оплаты: Онлайн (ожидает оплаты)'
+  }
+  if (method === 'card') return '💸 Способ оплаты: Картой при получении'
+  if (method === 'cash') return '💸 Способ оплаты: Наличными при получении'
+  return `💸 Способ оплаты: ${order.paymentMethod || 'Не указан'}`
+}
+
 function buildMoneyBlock(order: OrderDetails): string[] {
   const lines = [
     `💰 Товары: ${formatRub(order.subtotal)}`,
@@ -263,6 +278,7 @@ function buildMoneyBlock(order: OrderDetails): string[] {
   if (order.bonusSpent > 0) lines.push(`⭐ Бонусы: −${formatRub(order.bonusSpent)}`)
   if (order.promoCode) lines.push(`🏷 Промокод: ${order.promoCode}`)
   lines.push(`💳 Итого: ${formatRub(order.total)}`)
+  lines.push(getPaymentLine(order))
   return lines
 }
 
@@ -287,7 +303,7 @@ async function loadOrderDetails(event: H3Event, input: NotificationEvent): Promi
   const client = await serverSupabaseServiceRole(event)
   const { data: row } = await client
     .from('orders')
-    .select('order_number,status,fulfillment_type,payment_method,subtotal,delivery_cost,total,discount_amount,bonus_amount_spent,promo_snapshot,promo_code_id,items,address,pickup_point')
+    .select('order_number,status,fulfillment_type,payment_method,payment_status,subtotal,delivery_cost,total,discount_amount,bonus_amount_spent,promo_snapshot,promo_code_id,items,address,pickup_point')
     .eq('id', input.orderContext.orderId)
     .maybeSingle()
 
@@ -307,6 +323,7 @@ async function loadOrderDetails(event: H3Event, input: NotificationEvent): Promi
     status: String((row as any)?.status || input.orderContext.status || 'new'),
     fulfillmentType: String((row as any)?.fulfillment_type || 'delivery'),
     paymentMethod: String((row as any)?.payment_method || ''),
+    paymentStatus: String((row as any)?.payment_status || ''),
     subtotal: Number((row as any)?.subtotal || input.orderContext.totalAmount || 0),
     deliveryCost: Number((row as any)?.delivery_cost || 0),
     total: Number((row as any)?.total || input.orderContext.totalAmount || 0),
