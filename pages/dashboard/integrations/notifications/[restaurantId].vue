@@ -105,21 +105,24 @@
       <p class="mt-1 text-xs text-gray-500">
         Управление кнопками «Позвать официанта / кальянщика / выставить счет» отдельно для каждого филиала.
       </p>
+      <p class="mt-1 text-xs text-amber-700">
+        Глобальные ограничения из настроек организации применяются автоматически и не могут быть переопределены в филиале.
+      </p>
       <label class="mt-3 inline-flex items-center gap-2 text-sm">
         <input v-model="serviceCallsEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner'">
         <span>Включить сервисные вызовы в этом филиале</span>
       </label>
       <div class="mt-3 grid gap-2 sm:grid-cols-3">
         <label class="inline-flex items-center gap-2 text-sm">
-          <input v-model="serviceCallTypeWaiter" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner' || !serviceCallsEnabled">
+          <input v-model="serviceCallTypeWaiter" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner' || !serviceCallsEnabled || !orgAllowedWaiter">
           <span>Позвать официанта</span>
         </label>
         <label class="inline-flex items-center gap-2 text-sm">
-          <input v-model="serviceCallTypeHookah" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner' || !serviceCallsEnabled">
+          <input v-model="serviceCallTypeHookah" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner' || !serviceCallsEnabled || !orgAllowedHookah">
           <span>Позвать кальянщика</span>
         </label>
         <label class="inline-flex items-center gap-2 text-sm">
-          <input v-model="serviceCallTypeBill" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner' || !serviceCallsEnabled">
+          <input v-model="serviceCallTypeBill" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner' || !serviceCallsEnabled || !orgAllowedBill">
           <span>Выставить счет</span>
         </label>
       </div>
@@ -216,6 +219,9 @@ const serviceCallsEnabled = ref(false)
 const serviceCallTypeWaiter = ref(true)
 const serviceCallTypeHookah = ref(true)
 const serviceCallTypeBill = ref(true)
+const orgAllowedWaiter = ref(true)
+const orgAllowedHookah = ref(false)
+const orgAllowedBill = ref(true)
 const staffBotBindings = ref<Array<{ id: string; channel: string; externalUserId: string; staffRole: string; displayName: string; isActive: boolean }>>([])
 const serviceCallStats = ref<{ total: number; open: number; avgFirstResponseSec: number | null; avgResolvedSec: number | null }>({
   total: 0,
@@ -264,8 +270,21 @@ async function loadSettings() {
   serviceCallTypeWaiter.value = types.includes('call_waiter')
   serviceCallTypeHookah.value = types.includes('call_hookah')
   serviceCallTypeBill.value = types.includes('request_bill')
+  await loadOrganizationRestrictions()
+  if (!orgAllowedWaiter.value) serviceCallTypeWaiter.value = false
+  if (!orgAllowedHookah.value) serviceCallTypeHookah.value = false
+  if (!orgAllowedBill.value) serviceCallTypeBill.value = false
   staffBotBindings.value = Array.isArray(item.staffBotBindings) ? item.staffBotBindings : []
   await loadServiceCallStats()
+}
+
+async function loadOrganizationRestrictions() {
+  const response = await fetch('/api/dashboard/organization/style')
+  const payload = await response.json().catch(() => ({} as any))
+  const buttons = payload?.settings?.ops?.dineInStaffButtons ?? {}
+  orgAllowedWaiter.value = buttons.waiter !== false
+  orgAllowedHookah.value = buttons.hookah === true
+  orgAllowedBill.value = buttons.requestBill !== false
 }
 
 async function loadServiceCallStats() {
@@ -305,9 +324,9 @@ async function saveSettings() {
         managerRecipients: parsedRecipients,
         serviceCallsEnabled: serviceCallsEnabled.value,
         serviceCallTypes: [
-          ...(serviceCallTypeWaiter.value ? ['call_waiter'] : []),
-          ...(serviceCallTypeHookah.value ? ['call_hookah'] : []),
-          ...(serviceCallTypeBill.value ? ['request_bill'] : []),
+          ...(orgAllowedWaiter.value && serviceCallTypeWaiter.value ? ['call_waiter'] : []),
+          ...(orgAllowedHookah.value && serviceCallTypeHookah.value ? ['call_hookah'] : []),
+          ...(orgAllowedBill.value && serviceCallTypeBill.value ? ['request_bill'] : []),
         ],
       },
     }),

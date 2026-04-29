@@ -1,6 +1,7 @@
 import { createError, defineEventHandler, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
+import { getOrganizationSettings } from '~/server/utils/organizationStyle'
 
 type Body = {
   channelPolicy?: {
@@ -47,6 +48,13 @@ export default defineEventHandler(async (event) => {
   }
 
   if (body.restaurantSettings?.id) {
+    const orgSettings = await getOrganizationSettings(event, access.shopId)
+    const orgButtons = orgSettings.ops.dineInStaffButtons || { waiter: true, hookah: false, requestBill: true }
+    const orgAllowedTypes = [
+      ...(orgButtons.waiter === false ? [] : ['call_waiter']),
+      ...(orgButtons.hookah === true ? ['call_hookah'] : []),
+      ...(orgButtons.requestBill === false ? [] : ['request_bill']),
+    ]
     const recipients = Array.isArray(body.restaurantSettings.managerRecipients)
       ? body.restaurantSettings.managerRecipients
           .filter((item) => (item.channel === 'telegram' || item.channel === 'max') && item.targetId?.trim())
@@ -59,7 +67,8 @@ export default defineEventHandler(async (event) => {
       new Set(
         serviceCallTypesRaw
           .map((x) => String(x))
-          .filter((x) => x === 'call_waiter' || x === 'call_hookah' || x === 'request_bill'),
+          .filter((x) => x === 'call_waiter' || x === 'call_hookah' || x === 'request_bill')
+          .filter((x) => orgAllowedTypes.includes(x)),
       ),
     )
     await client

@@ -8,6 +8,7 @@ import {
   sendTelegram,
   type ServiceCallType,
 } from '~/server/utils/serviceCalls'
+import { getOrganizationSettings } from '~/server/utils/organizationStyle'
 
 type Body = {
   orderId?: string
@@ -109,7 +110,15 @@ export default defineEventHandler(async (event) => {
     ? (restaurant as any).service_call_types
     : ['call_waiter', 'call_hookah', 'request_bill']
   const enabledTypes = enabledTypesRaw.map((x: unknown) => String(x))
-  if (!enabledTypes.includes(callTypeRaw)) {
+  const orgSettings = await getOrganizationSettings(event, shopId)
+  const orgButtons = orgSettings.ops.dineInStaffButtons || { waiter: true, hookah: false, requestBill: true }
+  const orgEnabledTypes = [
+    ...(orgButtons.waiter === false ? [] : ['call_waiter']),
+    ...(orgButtons.hookah === true ? ['call_hookah'] : []),
+    ...(orgButtons.requestBill === false ? [] : ['request_bill']),
+  ]
+  const effectiveEnabledTypes = enabledTypes.filter((type) => orgEnabledTypes.includes(type))
+  if (!effectiveEnabledTypes.includes(callTypeRaw)) {
     throw createError({ statusCode: 409, statusMessage: 'Call type disabled for this branch' })
   }
 

@@ -225,7 +225,7 @@ export function getDefaultOrganizationSettings(): OrganizationSettings {
       freeDeliveryFrom: 1000,
       fulfillmentTypes: ['delivery', 'pickup'],
       dineInHallMode: 'to-table',
-      dineInStaffButtons: { waiter: true, hookah: false },
+      dineInStaffButtons: { waiter: true, hookah: false, requestBill: true },
       orderAcceptanceMode: 'manual',
       ordersPaused: false,
       ordersPausedReason: '',
@@ -389,6 +389,7 @@ function normalizeSettings(raw: unknown): OrganizationSettings {
   const dineInStaffButtons = {
     waiter: typeof staffRaw?.waiter === 'boolean' ? staffRaw.waiter : defaults.ops.dineInStaffButtons.waiter,
     hookah: typeof staffRaw?.hookah === 'boolean' ? staffRaw.hookah : defaults.ops.dineInStaffButtons.hookah,
+    requestBill: typeof staffRaw?.requestBill === 'boolean' ? staffRaw.requestBill : defaults.ops.dineInStaffButtons.requestBill,
   }
   const dayKeys: WorkingDayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
   const sourceWorkingHours = ops.workingHours && typeof ops.workingHours === 'object' ? ops.workingHours : {}

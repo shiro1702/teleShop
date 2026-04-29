@@ -1539,10 +1539,22 @@ const selectedRestaurant = computed(() =>
   restaurants.value.find((item: any) => item.id === selectedRestaurantId.value) ?? null,
 )
 
+const orgAllowedServiceCallTypes = computed<Array<'call_waiter' | 'call_hookah' | 'request_bill'>>(() => {
+  const raw = (tenant.value.organizationDineInStaffButtons ?? {}) as Record<string, unknown>
+  return [
+    ...(raw.waiter === false ? [] : ['call_waiter' as const]),
+    ...(raw.hookah === true ? ['call_hookah' as const] : []),
+    ...(raw.requestBill === false ? [] : ['request_bill' as const]),
+  ]
+})
+
 const selectedRestaurantServiceCallTypes = computed<string[]>(() => {
   const raw = (selectedRestaurant.value as any)?.service_call_types
-  if (!Array.isArray(raw)) return ['call_waiter', 'call_hookah', 'request_bill']
-  return raw.map((x: unknown) => String(x))
+  const branchAllowed = Array.isArray(raw)
+    ? raw.map((x: unknown) => String(x))
+    : ['call_waiter', 'call_hookah', 'request_bill']
+  const allowedSet = new Set(orgAllowedServiceCallTypes.value)
+  return branchAllowed.filter((type) => allowedSet.has(type as 'call_waiter' | 'call_hookah' | 'request_bill'))
 })
 
 const showInRestaurantServiceButtons = computed(() =>

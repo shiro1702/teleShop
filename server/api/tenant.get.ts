@@ -43,6 +43,7 @@ export default defineEventHandler(async (event) => {
         radius_card: `${cfg.radii.card}px`,
         organization_timezone: orgSettings.locale.timezone,
         organization_working_hours: orgSettings.ops.workingHours,
+        organization_dine_in_staff_buttons: orgSettings.ops.dineInStaffButtons,
         effective_working_hours: effectiveWorkingHours,
       }
       shopName = cfg.identity.name || shopName
@@ -78,6 +79,7 @@ export default defineEventHandler(async (event) => {
       ...uiSettings,
       organization_timezone: orgSettings.locale.timezone,
       organization_working_hours: orgSettings.ops.workingHours,
+      organization_dine_in_staff_buttons: orgSettings.ops.dineInStaffButtons,
       effective_working_hours: effectiveWorkingHours,
     }
 
@@ -127,6 +129,7 @@ export default defineEventHandler(async (event) => {
       radius_card: `${cfg.radii.card}px`,
       organization_timezone: orgSettings.locale.timezone,
       organization_working_hours: orgSettings.ops.workingHours,
+      organization_dine_in_staff_buttons: orgSettings.ops.dineInStaffButtons,
       effective_working_hours: effectiveWorkingHours,
     }
     shopName = cfg.identity.name || shopName
@@ -162,6 +165,7 @@ export default defineEventHandler(async (event) => {
     ...uiSettings,
     organization_timezone: orgSettings.locale.timezone,
     organization_working_hours: orgSettings.ops.workingHours,
+    organization_dine_in_staff_buttons: orgSettings.ops.dineInStaffButtons,
     effective_working_hours: effectiveWorkingHours,
   }
 
