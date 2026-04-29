@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
 
   const primary = await client
     .from('restaurants')
-    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,is_festival,festival_id,festival_fulfillment_type,festivals(name)')
+    .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,use_organization_working_hours,working_hours,is_active,is_festival,festival_id,festival_fulfillment_type,service_calls_enabled,service_call_types,festivals(name)')
     .eq('shop_id', shopId)
     .eq('is_active', true)
     .order('name', { ascending: true })
@@ -62,7 +62,7 @@ export default defineEventHandler(async (event) => {
   if (error && canRetryWithLegacySchema(error)) {
     const fallback = await client
       .from('restaurants')
-      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active')
+      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active,service_calls_enabled,service_call_types')
       .eq('shop_id', shopId)
       .eq('is_active', true)
       .order('name', { ascending: true })
@@ -78,7 +78,7 @@ export default defineEventHandler(async (event) => {
   if (error && canRetryWithLegacySchema(error)) {
     const legacy = await client
       .from('restaurants')
-      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_qr_menu,supports_showcase_order,is_active')
+      .select('id,name,address,lat,lon,supports_delivery,supports_pickup,supports_qr_menu,supports_showcase_order,is_active,service_calls_enabled,service_call_types')
       .eq('shop_id', shopId)
       .eq('is_active', true)
       .order('name', { ascending: true })
@@ -152,6 +152,10 @@ export default defineEventHandler(async (event) => {
         festival_id: typeof item.festival_id === 'string' ? item.festival_id : null,
         festival_fulfillment_type: festivalFulfillmentType,
         festival_name: typeof item?.festivals?.name === 'string' ? item.festivals.name : null,
+        service_calls_enabled: item.service_calls_enabled === true,
+        service_call_types: Array.isArray(item.service_call_types)
+          ? item.service_call_types
+          : ['call_waiter', 'call_hookah', 'request_bill'],
       }
     }),
   }

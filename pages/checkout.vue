@@ -870,6 +870,45 @@
                 </p>
               </div>
             </div>
+            <div
+              v-if="showInRestaurantServiceButtons"
+              class="mt-3 flex flex-wrap items-center gap-2"
+            >
+              <button
+                v-if="serviceCallTypeEnabled('call_waiter')"
+                type="button"
+                class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="serviceCallSubmitting"
+                @click="triggerInRestaurantServiceCall('call_waiter')"
+              >
+                Позвать официанта
+              </button>
+              <button
+                v-if="serviceCallTypeEnabled('call_hookah')"
+                type="button"
+                class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="serviceCallSubmitting"
+                @click="triggerInRestaurantServiceCall('call_hookah')"
+              >
+                Позвать кальянщика
+              </button>
+              <button
+                v-if="serviceCallTypeEnabled('request_bill')"
+                type="button"
+                class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="serviceCallSubmitting"
+                @click="triggerInRestaurantServiceCall('request_bill')"
+              >
+                Счет
+              </button>
+            </div>
+            <p
+              v-if="showInRestaurantServiceButtons && serviceCallToastMessage"
+              class="mt-2 text-xs"
+              :class="serviceCallToastType === 'ok' ? 'text-emerald-700' : 'text-red-600'"
+            >
+              {{ serviceCallToastMessage }}
+            </p>
           </div>
           </section>
         </Transition>
@@ -884,15 +923,48 @@
         :class="isMessengerMiniApp ? 'pb-20' : ''"
       >
       <!-- Шаг 1: навигация -->
-      <button
-        v-if="state.currentStep === 1"
-        type="button"
-        class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-        :disabled="!canGoToAddress"
-        @click="goToStep(2)"
-      >
-        Далее
-      </button>
+      <div v-if="state.currentStep === 1" class="flex flex-col gap-2">
+        <button
+          type="button"
+          class="w-full rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          :disabled="!canGoToAddress"
+          @click="goToStep(2)"
+        >
+          Далее
+        </button>
+        <div
+          v-if="showInRestaurantServiceButtons"
+          class="flex flex-wrap gap-2"
+        >
+          <button
+            v-if="serviceCallTypeEnabled('call_waiter')"
+            type="button"
+            class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="serviceCallSubmitting"
+            @click="triggerInRestaurantServiceCall('call_waiter')"
+          >
+            Позвать официанта
+          </button>
+          <button
+            v-if="serviceCallTypeEnabled('call_hookah')"
+            type="button"
+            class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="serviceCallSubmitting"
+            @click="triggerInRestaurantServiceCall('call_hookah')"
+          >
+            Позвать кальянщика
+          </button>
+          <button
+            v-if="serviceCallTypeEnabled('request_bill')"
+            type="button"
+            class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="serviceCallSubmitting"
+            @click="triggerInRestaurantServiceCall('request_bill')"
+          >
+            Счет
+          </button>
+        </div>
+      </div>
 
       <!-- Шаг 2: кнопки оформления (скрываем, если виден обычный блок) -->
       <div v-else class="flex flex-col gap-2">
@@ -929,6 +1001,45 @@
         </p>
         <p v-if="state.fulfillmentType === 'delivery' && isResolvingDeliveryFromServer" class="text-xs text-gray-500">
           Проверяем зону...
+        </p>
+        <div
+          v-if="showInRestaurantServiceButtons"
+          class="flex flex-wrap gap-2"
+        >
+          <button
+            v-if="serviceCallTypeEnabled('call_waiter')"
+            type="button"
+            class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="serviceCallSubmitting"
+            @click="triggerInRestaurantServiceCall('call_waiter')"
+          >
+            Позвать официанта
+          </button>
+          <button
+            v-if="serviceCallTypeEnabled('call_hookah')"
+            type="button"
+            class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="serviceCallSubmitting"
+            @click="triggerInRestaurantServiceCall('call_hookah')"
+          >
+            Позвать кальянщика
+          </button>
+          <button
+            v-if="serviceCallTypeEnabled('request_bill')"
+            type="button"
+            class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="serviceCallSubmitting"
+            @click="triggerInRestaurantServiceCall('request_bill')"
+          >
+            Счет
+          </button>
+        </div>
+        <p
+          v-if="showInRestaurantServiceButtons && serviceCallToastMessage"
+          class="text-xs"
+          :class="serviceCallToastType === 'ok' ? 'text-emerald-700' : 'text-red-600'"
+        >
+          {{ serviceCallToastMessage }}
         </p>
       </div>
       </div>
@@ -1263,6 +1374,9 @@ const lastDeliveryCoords = ref<{ lat: number; lon: number } | null>(null)
 const lastGeocodedAddressLine = ref('')
 const isResolvingDeliveryFromServer = ref(false)
 const deliveryResolveRequestSeq = ref(0)
+const serviceCallSubmitting = ref(false)
+const serviceCallToastMessage = ref('')
+const serviceCallToastType = ref<'ok' | 'error'>('ok')
 const editingCartItemId = ref<string | null>(null)
 const editingItemQuantity = ref(1)
 const editingItemProduct = ref<Product | null>(null)
@@ -1404,6 +1518,25 @@ const {
   skipNextDeliveryZoneReset,
   resolveFallbackFulfillmentType: ({ allowed, current }) => resolveCheckoutFulfillment(allowed, current),
 })
+
+const selectedRestaurant = computed(() =>
+  restaurants.value.find((item: any) => item.id === selectedRestaurantId.value) ?? null,
+)
+
+const selectedRestaurantServiceCallTypes = computed<string[]>(() => {
+  const raw = (selectedRestaurant.value as any)?.service_call_types
+  if (!Array.isArray(raw)) return ['call_waiter', 'call_hookah', 'request_bill']
+  return raw.map((x: unknown) => String(x))
+})
+
+const showInRestaurantServiceButtons = computed(() =>
+  state.fulfillmentType === 'qr-menu'
+  && (selectedRestaurant.value as any)?.service_calls_enabled === true,
+)
+
+function serviceCallTypeEnabled(type: 'call_waiter' | 'call_hookah' | 'request_bill') {
+  return selectedRestaurantServiceCallTypes.value.includes(type)
+}
 
 type DeliveryResolveApi = {
   ok: boolean
@@ -3002,6 +3135,32 @@ watch(checkoutStorageKey, async (nextKey: string, prevKey: string) => {
     ) ?? state.fulfillmentType
   }
 })
+
+async function triggerInRestaurantServiceCall(callType: 'call_waiter' | 'call_hookah' | 'request_bill') {
+  if (!showInRestaurantServiceButtons.value || serviceCallSubmitting.value) return
+  serviceCallSubmitting.value = true
+  serviceCallToastMessage.value = ''
+  try {
+    const idempotencyKey = `checkout:${callType}:${Date.now()}`
+    const payload = await $fetch<{ ok: boolean; status?: string }>('/api/service-calls', {
+      method: 'POST',
+      headers: buildMessengerAuthHeaders(checkoutXShopIdHeaders()),
+      body: {
+        restaurantId: selectedRestaurantId.value || null,
+        callType,
+        idempotencyKey,
+      },
+    })
+    if (!payload?.ok) throw new Error('Не удалось отправить запрос персоналу')
+    serviceCallToastType.value = 'ok'
+    serviceCallToastMessage.value = 'Запрос отправлен персоналу'
+  } catch (err: any) {
+    serviceCallToastType.value = 'error'
+    serviceCallToastMessage.value = err?.data?.statusMessage || err?.message || 'Не удалось отправить запрос'
+  } finally {
+    serviceCallSubmitting.value = false
+  }
+}
 
 async function placeOrder() {
   if (isPlacing.value || !cartStore.items.length || !canGoToSummary.value || !isRestaurantOpenNow.value) return

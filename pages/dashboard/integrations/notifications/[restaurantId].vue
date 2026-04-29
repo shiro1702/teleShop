@@ -100,6 +100,87 @@
       <textarea v-model="managerRecipientsRaw" class="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs" rows="5" placeholder='[{"channel":"telegram","targetId":"123456"},{"channel":"max","targetId":"conv_1"}]' :disabled="role !== 'owner'" />
     </article>
 
+    <article class="rounded-xl border border-gray-200 bg-white p-4">
+      <h2 class="text-sm font-semibold">Сервисные вызовы (по филиалу)</h2>
+      <p class="mt-1 text-xs text-gray-500">
+        Управление кнопками «Позвать официанта / кальянщика / выставить счет» отдельно для каждого филиала.
+      </p>
+      <label class="mt-3 inline-flex items-center gap-2 text-sm">
+        <input v-model="serviceCallsEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner'">
+        <span>Включить сервисные вызовы в этом филиале</span>
+      </label>
+      <div class="mt-3 grid gap-2 sm:grid-cols-3">
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input v-model="serviceCallTypeWaiter" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner' || !serviceCallsEnabled">
+          <span>Позвать официанта</span>
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input v-model="serviceCallTypeHookah" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner' || !serviceCallsEnabled">
+          <span>Позвать кальянщика</span>
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input v-model="serviceCallTypeBill" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner' || !serviceCallsEnabled">
+          <span>Выставить счет</span>
+        </label>
+      </div>
+    </article>
+
+    <article class="rounded-xl border border-gray-200 bg-white p-4">
+      <h2 class="text-sm font-semibold">Сервисные вызовы: мониторинг (7 дней)</h2>
+      <div class="mt-2 grid gap-2 sm:grid-cols-4">
+        <div class="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs">Всего: <span class="font-semibold">{{ serviceCallStats.total }}</span></div>
+        <div class="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs">Открытых: <span class="font-semibold">{{ serviceCallStats.open }}</span></div>
+        <div class="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs">Средний 1-й ответ: <span class="font-semibold">{{ serviceCallStats.avgFirstResponseSec != null ? `${serviceCallStats.avgFirstResponseSec} сек` : '—' }}</span></div>
+        <div class="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs">Среднее закрытие: <span class="font-semibold">{{ serviceCallStats.avgResolvedSec != null ? `${serviceCallStats.avgResolvedSec} сек` : '—' }}</span></div>
+      </div>
+    </article>
+
+    <article class="rounded-xl border border-gray-200 bg-white p-4">
+      <h2 class="text-sm font-semibold">Привязка сотрудников ботов</h2>
+      <p class="mt-1 text-xs text-gray-500">
+        Только привязанные сотрудники могут отправлять быстрые ответы по сервисным вызовам.
+      </p>
+      <div class="mt-3 grid gap-2 md:grid-cols-5">
+        <select v-model="newBindingChannel" class="rounded-lg border border-gray-300 px-3 py-2 text-sm" :disabled="role !== 'owner'">
+          <option value="telegram">Telegram</option>
+          <option value="max">MAX</option>
+        </select>
+        <input v-model.trim="newBindingExternalUserId" class="rounded-lg border border-gray-300 px-3 py-2 text-sm md:col-span-2" placeholder="External user id" :disabled="role !== 'owner'">
+        <select v-model="newBindingStaffRole" class="rounded-lg border border-gray-300 px-3 py-2 text-sm" :disabled="role !== 'owner'">
+          <option value="waiter">waiter</option>
+          <option value="hookah">hookah</option>
+          <option value="cashier">cashier</option>
+          <option value="manager">manager</option>
+        </select>
+        <button class="rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner'" @click="saveStaffBinding">
+          Добавить/обновить
+        </button>
+      </div>
+      <div v-if="staffBotBindings.length" class="mt-3 overflow-x-auto">
+        <table class="min-w-full text-xs">
+          <thead>
+            <tr class="text-left text-gray-500">
+              <th class="px-2 py-1">Канал</th>
+              <th class="px-2 py-1">User ID</th>
+              <th class="px-2 py-1">Роль</th>
+              <th class="px-2 py-1">Имя</th>
+              <th class="px-2 py-1">Активен</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in staffBotBindings" :key="item.id" class="border-t border-gray-100">
+              <td class="px-2 py-1">{{ item.channel }}</td>
+              <td class="px-2 py-1 font-mono">{{ item.externalUserId }}</td>
+              <td class="px-2 py-1">{{ item.staffRole }}</td>
+              <td class="px-2 py-1">{{ item.displayName || '—' }}</td>
+              <td class="px-2 py-1">{{ item.isActive ? 'Да' : 'Нет' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="mt-3 text-xs text-gray-500">Пока нет привязанных сотрудников.</p>
+    </article>
+
     <div class="flex flex-wrap gap-2">
       <button class="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50" :disabled="role !== 'owner' || saving" @click="saveSettings">
         Сохранить настройки
@@ -131,6 +212,20 @@ const notificationMode = ref<'group' | 'personal'>('group')
 const managerGroupChatId = ref('')
 const managerMaxChatId = ref('')
 const managerRecipientsRaw = ref('[]')
+const serviceCallsEnabled = ref(false)
+const serviceCallTypeWaiter = ref(true)
+const serviceCallTypeHookah = ref(true)
+const serviceCallTypeBill = ref(true)
+const staffBotBindings = ref<Array<{ id: string; channel: string; externalUserId: string; staffRole: string; displayName: string; isActive: boolean }>>([])
+const serviceCallStats = ref<{ total: number; open: number; avgFirstResponseSec: number | null; avgResolvedSec: number | null }>({
+  total: 0,
+  open: 0,
+  avgFirstResponseSec: null,
+  avgResolvedSec: null,
+})
+const newBindingChannel = ref<'telegram' | 'max'>('telegram')
+const newBindingExternalUserId = ref('')
+const newBindingStaffRole = ref<'waiter' | 'hookah' | 'cashier' | 'manager'>('waiter')
 const saving = ref(false)
 const telegramChatBindDeepLink = ref('')
 const telegramChatBindCommand = ref('')
@@ -164,6 +259,28 @@ async function loadSettings() {
   managerGroupChatId.value = item.managerGroupChatId || ''
   managerMaxChatId.value = item.managerMaxChatId || ''
   managerRecipientsRaw.value = JSON.stringify(item.managerRecipients ?? [], null, 2)
+  serviceCallsEnabled.value = item.serviceCallsEnabled === true
+  const types = Array.isArray(item.serviceCallTypes) ? item.serviceCallTypes : []
+  serviceCallTypeWaiter.value = types.includes('call_waiter')
+  serviceCallTypeHookah.value = types.includes('call_hookah')
+  serviceCallTypeBill.value = types.includes('request_bill')
+  staffBotBindings.value = Array.isArray(item.staffBotBindings) ? item.staffBotBindings : []
+  await loadServiceCallStats()
+}
+
+async function loadServiceCallStats() {
+  const params = new URLSearchParams({ restaurantId })
+  const response = await fetch(`/api/dashboard/service-calls?${params.toString()}`)
+  const payload = await response.json().catch(() => ({} as any))
+  if (!response.ok || !payload?.stats) {
+    return
+  }
+  serviceCallStats.value = {
+    total: Number(payload.stats.total || 0),
+    open: Number(payload.stats.open || 0),
+    avgFirstResponseSec: typeof payload.stats.avgFirstResponseSec === 'number' ? payload.stats.avgFirstResponseSec : null,
+    avgResolvedSec: typeof payload.stats.avgResolvedSec === 'number' ? payload.stats.avgResolvedSec : null,
+  }
 }
 
 async function saveSettings() {
@@ -186,6 +303,12 @@ async function saveSettings() {
         managerGroupChatId: managerGroupChatId.value,
         managerMaxChatId: managerMaxChatId.value,
         managerRecipients: parsedRecipients,
+        serviceCallsEnabled: serviceCallsEnabled.value,
+        serviceCallTypes: [
+          ...(serviceCallTypeWaiter.value ? ['call_waiter'] : []),
+          ...(serviceCallTypeHookah.value ? ['call_hookah'] : []),
+          ...(serviceCallTypeBill.value ? ['request_bill'] : []),
+        ],
       },
     }),
   })
@@ -196,6 +319,33 @@ async function saveSettings() {
     return
   }
   pushToast('ok', 'Настройки сохранены')
+  await loadSettings()
+}
+
+async function saveStaffBinding() {
+  if (!newBindingExternalUserId.value.trim()) {
+    pushToast('error', 'Укажите external user id сотрудника')
+    return
+  }
+  const response = await fetch('/api/dashboard/integrations/notifications', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      staffBindingUpsert: {
+        restaurantId,
+        channel: newBindingChannel.value,
+        externalUserId: newBindingExternalUserId.value.trim(),
+        staffRole: newBindingStaffRole.value,
+      },
+    }),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({} as any))
+    pushToast('error', payload?.statusMessage || 'Не удалось сохранить привязку сотрудника')
+    return
+  }
+  pushToast('ok', 'Привязка сотрудника сохранена')
+  newBindingExternalUserId.value = ''
   await loadSettings()
 }
 

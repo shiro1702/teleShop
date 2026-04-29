@@ -1,6 +1,7 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { buildAuthSiteLinkUrl } from '~/server/utils/authSiteLink'
 import { applyFestivalModerationAction } from '~/server/utils/festivalUgcModeration'
+import { createServiceCallEvent, getStaffResponseText, mapActionToStatus } from '~/server/utils/serviceCalls'
 
 const TELEGRAM_API = (token: string) => `https://api.telegram.org/bot${token}`
 
@@ -123,6 +124,16 @@ function parseBindToken(text: string): string | null {
     return token ? token.trim() : null
   }
   return null
+}
+
+function parseServiceCallbackData(data: string): { action: 'soon' | 'on_my_way' | 'done'; serviceCallId: string } | null {
+  const parts = data.split(':')
+  if (parts.length !== 3 || parts[0] !== 'svc') return null
+  const action = parts[1]
+  const serviceCallId = parts[2]?.trim()
+  if (!serviceCallId) return null
+  if (action !== 'soon' && action !== 'on_my_way' && action !== 'done') return null
+  return { action, serviceCallId }
 }
 
 const CLIENT_MESSAGES: Record<'work' | 'courier' | 'done', (orderRef: string) => string> = {
@@ -652,6 +663,101 @@ export default defineEventHandler(async (event) => {
         show_alert: true,
       })
     }
+    return { ok: true }
+  }
+
+  const serviceCb = parseServiceCallbackData(query.data)
+  if (serviceCb) {
+    const supabase = await serverSupabaseServiceRole(event)
+    const actorTelegramId = String(query.from?.id || '').trim()
+    const { action, serviceCallId } = serviceCb
+    if (!actorTelegramId) {
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: 'Не удалось определить пользователя',
+        show_alert: true,
+      })
+      return { ok: true }
+    }
+
+    const { data: callRow } = await supabase
+      .from('service_calls')
+      .select('id,shop_id,restaurant_id,order_id,customer_telegram_id,customer_max_user_id,customer_max_conversation_id')
+      .eq('id', serviceCallId)
+      .maybeSingle()
+    if (!callRow) {
+      await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id, text: 'Запрос не найден', show_alert: false })
+      return { ok: true }
+    }
+
+    const { data: binding } = await supabase
+      .from('restaurant_staff_bot_bindings')
+      .select('id,display_name,is_active')
+      .eq('shop_id', (callRow as any).shop_id)
+      .eq('restaurant_id', (callRow as any).restaurant_id)
+      .eq('channel', 'telegram')
+      .eq('external_user_id', actorTelegramId)
+      .maybeSingle()
+    if (!binding || !(binding as any).is_active) {
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: 'Вы не привязаны как сотрудник филиала',
+        show_alert: true,
+      })
+      return { ok: true }
+    }
+
+    const nowIso = new Date().toISOString()
+    const nextStatus = mapActionToStatus(action)
+    const updatePatch: Record<string, unknown> = { status: nextStatus, updated_at: nowIso }
+    const { data: callCurrent } = await supabase.from('service_calls').select('first_response_at').eq('id', serviceCallId).maybeSingle()
+    if (!(callCurrent as any)?.first_response_at) updatePatch.first_response_at = nowIso
+    if (nextStatus === 'resolved') updatePatch.resolved_at = nowIso
+    await supabase.from('service_calls').update(updatePatch).eq('id', serviceCallId)
+
+    const actorName = typeof (binding as any).display_name === 'string' && (binding as any).display_name.trim()
+      ? String((binding as any).display_name).trim()
+      : `Сотрудник ${actorTelegramId}`
+    const responseText = getStaffResponseText(action)
+
+    await createServiceCallEvent(event, {
+      serviceCallId,
+      shopId: String((callRow as any).shop_id),
+      restaurantId: String((callRow as any).restaurant_id),
+      orderId: String((callRow as any).order_id),
+      eventType: 'staff_response',
+      eventStatus: nextStatus,
+      channel: 'telegram',
+      actorBindingId: String((binding as any).id),
+      actorExternalUserId: actorTelegramId,
+      actorDisplayName: actorName,
+      message: responseText,
+      extraPayload: { action },
+    })
+
+    const clientText = `Ответ персонала: ${responseText}`
+    const customerTelegramIdRaw = Number((callRow as any).customer_telegram_id)
+    const customerTelegramId = Number.isFinite(customerTelegramIdRaw) && customerTelegramIdRaw > 0 ? customerTelegramIdRaw : null
+    if (customerTelegramId) {
+      await telegram(botToken, 'sendMessage', { chat_id: customerTelegramId, text: clientText }).catch(() => {})
+    }
+    const customerMaxUserId = typeof (callRow as any).customer_max_user_id === 'string' ? String((callRow as any).customer_max_user_id).trim() : ''
+    const customerMaxConversationId = typeof (callRow as any).customer_max_conversation_id === 'string'
+      ? String((callRow as any).customer_max_conversation_id).trim()
+      : ''
+    if ((customerMaxConversationId || customerMaxUserId) && maxApiBaseUrl && maxApiToken) {
+      await sendMaxMessage(maxApiBaseUrl, maxApiToken, {
+        conversationId: customerMaxConversationId || undefined,
+        userId: customerMaxConversationId ? undefined : customerMaxUserId || undefined,
+        text: clientText,
+      }).catch(() => {})
+    }
+
+    await telegram(botToken, 'answerCallbackQuery', {
+      callback_query_id: query.id,
+      text: `Ответ отправлен: ${responseText}`,
+      show_alert: false,
+    })
     return { ok: true }
   }
 

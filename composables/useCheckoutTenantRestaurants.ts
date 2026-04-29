@@ -21,6 +21,8 @@ export type RestaurantItem = {
   supports_delivery: boolean
   supports_pickup: boolean
   supports_qr_menu: boolean
+  service_calls_enabled?: boolean
+  service_call_types?: string[]
   effective_working_hours?: Record<string, any>
 }
 
