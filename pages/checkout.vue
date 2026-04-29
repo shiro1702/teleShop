@@ -2157,11 +2157,12 @@ const upsellRemainingRub = computed(() => {
   if (typeof remaining !== 'number' || !Number.isFinite(remaining) || remaining <= 0) return null
   return Math.floor(remaining)
 })
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_RE.test(value.trim())
+}
 const upsellRestaurantId = computed(() =>
-  selectedRestaurantId.value
-  || selectedPickupPointId.value
-  || restaurants.value[0]?.id
-  || '',
+  [selectedRestaurantId.value, restaurants.value[0]?.id].find((id) => isUuid(id)) || '',
 )
 
 async function runUpsellRecommendations() {
@@ -2875,10 +2876,11 @@ function restoreFromPlainObject(obj: any) {
     changeFrom.value = obj.changeFrom
   }
   if (typeof obj.selectedPickupPointId === 'string') {
-    selectedPickupPointId.value = obj.selectedPickupPointId
+    selectedPickupPointId.value = obj.selectedPickupPointId.trim()
   }
   if (typeof obj.selectedRestaurantId === 'string') {
-    selectedRestaurantId.value = obj.selectedRestaurantId
+    const normalizedRestaurantId = obj.selectedRestaurantId.trim()
+    selectedRestaurantId.value = isUuid(normalizedRestaurantId) ? normalizedRestaurantId : ''
   }
   if (typeof obj.tableSlug === 'string') {
     tableSlug.value = obj.tableSlug.trim()
