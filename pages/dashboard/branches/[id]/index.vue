@@ -71,6 +71,104 @@
         </div>
       </div>
     </div>
+    <div v-if="branch && storefrontPath" class="rounded-xl border border-gray-200 bg-white p-4">
+      <h2 class="text-sm font-semibold text-gray-900">Столики и QR</h2>
+      <p class="mt-1 text-xs text-gray-500">
+        Для каждого столика генерируется отдельная QR-ссылка с контекстом столика.
+      </p>
+      <div class="mt-3 flex flex-col gap-2 sm:flex-row">
+        <input
+          v-model="newTableNumber"
+          class="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm sm:max-w-xs"
+          placeholder="Номер столика, например 12"
+          :disabled="!canEditCritical || creatingTable"
+        >
+        <button
+          type="button"
+          class="rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+          :disabled="!canEditCritical || creatingTable || !newTableNumber.trim()"
+          @click="createTable"
+        >
+          {{ creatingTable ? 'Добавляем...' : 'Добавить столик' }}
+        </button>
+      </div>
+      <div class="mt-2 flex flex-col gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:flex-row sm:items-end">
+        <label class="text-xs text-gray-600">
+          <span class="mb-1 block">От</span>
+          <input
+            v-model.number="bulkFrom"
+            type="number"
+            min="1"
+            class="w-28 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+            :disabled="!canEditCritical || creatingBulkTables"
+          >
+        </label>
+        <label class="text-xs text-gray-600">
+          <span class="mb-1 block">До</span>
+          <input
+            v-model.number="bulkTo"
+            type="number"
+            min="1"
+            class="w-28 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+            :disabled="!canEditCritical || creatingBulkTables"
+          >
+        </label>
+        <button
+          type="button"
+          class="rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-white disabled:opacity-50"
+          :disabled="!canEditCritical || creatingBulkTables"
+          @click="createTablesBulk"
+        >
+          {{ creatingBulkTables ? 'Генерируем...' : 'Сгенерировать диапазон столиков' }}
+        </button>
+      </div>
+      <p v-if="tablesError" class="mt-2 text-xs text-red-600">{{ tablesError }}</p>
+      <div class="mt-4 space-y-2">
+        <div
+          v-for="table in tables"
+          :key="table.id"
+          class="flex flex-col gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:flex-row sm:items-center"
+        >
+          <div class="rounded border border-gray-200 bg-white p-1.5">
+            <img
+              v-if="tableQrDataById[table.id]"
+              :src="tableQrDataById[table.id]"
+              width="84"
+              height="84"
+              class="h-[84px] w-[84px]"
+              :alt="`QR для столика №${table.tableNumber}`"
+            >
+            <div v-else class="flex h-[84px] w-[84px] items-center justify-center text-[10px] text-gray-400">
+              QR...
+            </div>
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-gray-900">Столик №{{ table.tableNumber }}</p>
+            <p class="break-all text-xs text-gray-500">{{ buildTableQrUrl(table) }}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-100 disabled:opacity-50"
+              :disabled="!buildTableQrUrl(table)"
+              @click="copyTableQrUrl(table)"
+            >
+              {{ copyFeedbackByTableId[table.id] || 'Скопировать QR-ссылку' }}
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border px-2.5 py-1.5 text-xs disabled:opacity-50"
+              :class="table.isActive ? 'border-amber-300 text-amber-700 hover:bg-amber-50' : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'"
+              :disabled="!canEditCritical || updatingTableId === table.id"
+              @click="toggleTableActive(table)"
+            >
+              {{ table.isActive ? 'Деактивировать' : 'Активировать' }}
+            </button>
+          </div>
+        </div>
+        <p v-if="!tables.length" class="text-xs text-gray-500">Пока нет столиков.</p>
+      </div>
+    </div>
 
     <div class="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-2">
       <label class="text-sm">
@@ -250,6 +348,12 @@ type Branch = {
   workingHours: Record<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun', { isOpen: boolean; openAt: string; closeAt: string }>
   isActive: boolean
 }
+type RestaurantTable = {
+  id: string
+  tableNumber: string
+  qrSlug: string
+  isActive: boolean
+}
 
 const branch = ref<Branch | null>(null)
 const form = ref({
@@ -292,6 +396,16 @@ const qrDataUrl = ref<string | null>(null)
 const copyFeedback = ref('')
 const suggestItems = ref<DadataSuggestItem[]>([])
 const isSuggestLoading = ref(false)
+const tables = ref<RestaurantTable[]>([])
+const newTableNumber = ref('')
+const creatingTable = ref(false)
+const updatingTableId = ref('')
+const tablesError = ref('')
+const copyFeedbackByTableId = ref<Record<string, string>>({})
+const tableQrDataById = ref<Record<string, string>>({})
+const bulkFrom = ref(1)
+const bulkTo = ref(20)
+const creatingBulkTables = ref(false)
 
 const branchQrUrl = computed(() => {
   if (!import.meta.client || !branch.value || !storefrontPath.value) return ''
@@ -343,6 +457,165 @@ async function copyBranchQrUrl() {
   }
 }
 
+function buildTableQrUrl(table: RestaurantTable): string {
+  if (!import.meta.client || !branch.value || !storefrontPath.value) return ''
+  try {
+    const u = new URL(storefrontPath.value, window.location.origin)
+    u.searchParams.set('branch_id', branch.value.id)
+    u.searchParams.set('qr', '1')
+    u.searchParams.set('table_slug', table.qrSlug)
+    u.searchParams.set('table_number', table.tableNumber)
+    return u.toString()
+  } catch {
+    return ''
+  }
+}
+
+async function copyTableQrUrl(table: RestaurantTable) {
+  const text = buildTableQrUrl(table)
+  if (!text || !import.meta.client) return
+  try {
+    await navigator.clipboard.writeText(text)
+    copyFeedbackByTableId.value = { ...copyFeedbackByTableId.value, [table.id]: 'Скопировано' }
+  } catch {
+    copyFeedbackByTableId.value = { ...copyFeedbackByTableId.value, [table.id]: 'Не удалось скопировать' }
+  }
+  window.setTimeout(() => {
+    const next = { ...copyFeedbackByTableId.value }
+    delete next[table.id]
+    copyFeedbackByTableId.value = next
+  }, 2000)
+}
+
+async function loadTables() {
+  if (!branch.value) return
+  tablesError.value = ''
+  const res = await fetch(`/api/dashboard/branches/${branch.value.id}/tables`)
+  const payload = await res.json().catch(() => ({} as any))
+  if (!res.ok) {
+    tables.value = []
+    tablesError.value = payload?.statusMessage || 'Не удалось загрузить столики'
+    return
+  }
+  tables.value = Array.isArray(payload?.items) ? payload.items : []
+  void rebuildTableQrData()
+}
+
+async function createTable() {
+  if (!branch.value || !canEditCritical.value || creatingTable.value) return
+  creatingTable.value = true
+  tablesError.value = ''
+  try {
+    const res = await fetch(`/api/dashboard/branches/${branch.value.id}/tables`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tableNumber: newTableNumber.value.trim() }),
+    })
+    const payload = await res.json().catch(() => ({} as any))
+    if (!res.ok || !payload?.item) {
+      throw new Error(payload?.statusMessage || 'Не удалось добавить столик')
+    }
+    tables.value = [...tables.value, payload.item].sort((a: RestaurantTable, b: RestaurantTable) => a.tableNumber.localeCompare(b.tableNumber, 'ru'))
+    newTableNumber.value = ''
+    void rebuildTableQrData()
+  } catch (error: any) {
+    tablesError.value = error?.message || 'Не удалось добавить столик'
+  } finally {
+    creatingTable.value = false
+  }
+}
+
+async function createTablesBulk() {
+  if (!branch.value || !canEditCritical.value || creatingBulkTables.value) return
+  const from = Math.max(1, Math.floor(Number(bulkFrom.value || 0)))
+  const to = Math.max(1, Math.floor(Number(bulkTo.value || 0)))
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) {
+    tablesError.value = 'Некорректный диапазон столиков'
+    return
+  }
+  if (to - from + 1 > 200) {
+    tablesError.value = 'Слишком большой диапазон (макс. 200 за раз)'
+    return
+  }
+  creatingBulkTables.value = true
+  tablesError.value = ''
+  let createdCount = 0
+  let skippedCount = 0
+  try {
+    for (let n = from; n <= to; n += 1) {
+      const res = await fetch(`/api/dashboard/branches/${branch.value.id}/tables`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableNumber: String(n) }),
+      })
+      const payload = await res.json().catch(() => ({} as any))
+      if (res.ok && payload?.item) {
+        createdCount += 1
+        tables.value = [...tables.value, payload.item]
+      } else {
+        skippedCount += 1
+      }
+    }
+    tables.value = tables.value
+      .sort((a: RestaurantTable, b: RestaurantTable) => a.tableNumber.localeCompare(b.tableNumber, 'ru'))
+      .filter((item: RestaurantTable, idx: number, arr: RestaurantTable[]) => idx === arr.findIndex((x: RestaurantTable) => x.id === item.id))
+    void rebuildTableQrData()
+    if (createdCount === 0) {
+      tablesError.value = 'Не удалось добавить столики: возможно, они уже существуют'
+    } else if (skippedCount > 0) {
+      tablesError.value = `Добавлено: ${createdCount}. Пропущено: ${skippedCount} (уже существуют или ошибка).`
+    } else {
+      tablesError.value = `Успешно добавлено столиков: ${createdCount}`
+    }
+  } finally {
+    creatingBulkTables.value = false
+  }
+}
+
+async function toggleTableActive(table: RestaurantTable) {
+  if (!branch.value || !canEditCritical.value || updatingTableId.value) return
+  updatingTableId.value = table.id
+  tablesError.value = ''
+  try {
+    const res = await fetch(`/api/dashboard/branches/${branch.value.id}/tables/${table.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: !table.isActive }),
+    })
+    const payload = await res.json().catch(() => ({} as any))
+    if (!res.ok || !payload?.item) {
+      throw new Error(payload?.statusMessage || 'Не удалось обновить столик')
+    }
+    tables.value = tables.value.map((item: RestaurantTable) => (item.id === table.id ? payload.item : item))
+    void rebuildTableQrData()
+  } catch (error: any) {
+    tablesError.value = error?.message || 'Не удалось обновить столик'
+  } finally {
+    updatingTableId.value = ''
+  }
+}
+
+async function rebuildTableQrData() {
+  if (!import.meta.client || !tables.value.length) {
+    tableQrDataById.value = {}
+    return
+  }
+  try {
+    const QRCode = (await import('qrcode')).default
+    const entries = await Promise.all(
+      tables.value.map(async (table: RestaurantTable) => {
+        const url = buildTableQrUrl(table)
+        if (!url) return [table.id, ''] as const
+        const dataUrl = await QRCode.toDataURL(url, { width: 84, margin: 1, errorCorrectionLevel: 'M' })
+        return [table.id, dataUrl] as const
+      }),
+    )
+    tableQrDataById.value = Object.fromEntries(entries.filter((entry: readonly [string, string]) => entry[1]))
+  } catch {
+    tableQrDataById.value = {}
+  }
+}
+
 onMounted(async () => {
   const [restaurantsRes, orgRes, storefrontRes] = await Promise.all([
     fetch('/api/dashboard/restaurants'),
@@ -389,6 +662,7 @@ onMounted(async () => {
       useOrganizationWorkingHours: found.useOrganizationWorkingHours !== false,
       workingHours: found.workingHours,
     }
+    await loadTables()
   }
 })
 

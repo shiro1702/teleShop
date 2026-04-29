@@ -1015,14 +1015,20 @@
           <div class="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl modal-panel">
             <h3 class="text-base font-semibold text-gray-900">Выберите способ входа</h3>
             <p class="mt-1 text-sm text-gray-600">
-              {{ authModalMode === 'auth' ? 'Авторизация для оформления заказа.' : 'Продолжение в выбранном боте.' }}
+              {{
+                authModalMode === 'auth'
+                  ? 'Авторизация для оформления заказа.'
+                  : authModalMode === 'service'
+                    ? 'Статусы сервисного вызова (принят, в пути, выполнен) приходят после авторизации.'
+                    : 'Продолжение в выбранном боте.'
+              }}
             </p>
             <div class="mt-4 space-y-2">
               <button v-if="telegramBotUrl" type="button" class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white" @click="runAuthAction('telegram')">
-                {{ authModalMode === 'auth' ? 'Войти через Telegram' : 'Продолжить в Telegram' }}
+                {{ authModalMode === 'continue' ? 'Продолжить в Telegram' : 'Войти через Telegram' }}
               </button>
               <button v-if="maxBotUrl" type="button" class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary" @click="runAuthAction('max')">
-                {{ authModalMode === 'auth' ? 'Войти через MAX' : 'Продолжить в MAX' }}
+                {{ authModalMode === 'continue' ? 'Продолжить в MAX' : 'Войти через MAX' }}
               </button>
             </div>
           </div>
@@ -1382,7 +1388,7 @@ const isStep1InlineNavVisible = ref(false)
 const isStep2ActionsVisible = ref(false)
 const stepDirection = ref<'forward' | 'backward'>('forward')
 const showAuthModal = ref(false)
-const authModalMode = ref<'auth' | 'continue'>('auth')
+const authModalMode = ref<'auth' | 'continue' | 'service'>('auth')
 const showServiceCallsModal = ref(false)
 const serviceCallOnboardingStorageKey = 'checkout:service-call-onboarding:v1'
 const showServiceCallOnboarding = ref(false)
@@ -1393,6 +1399,8 @@ const lastGeocodedAddressLine = ref('')
 const isResolvingDeliveryFromServer = ref(false)
 const deliveryResolveRequestSeq = ref(0)
 const serviceCallSubmitting = ref(false)
+const tableSlug = ref('')
+const tableNumber = ref('')
 const editingCartItemId = ref<string | null>(null)
 const editingItemQuantity = ref(1)
 const editingItemProduct = ref<Product | null>(null)
@@ -2822,6 +2830,8 @@ function serializeState() {
     changeFrom: changeFrom.value,
     selectedPickupPointId: selectedPickupPointId.value,
     selectedRestaurantId: selectedRestaurantId.value,
+    tableSlug: tableSlug.value,
+    tableNumber: tableNumber.value,
     selectedCustomerAddressId: selectedCustomerAddressId.value,
     promoCodeInput: promoCodeInput.value,
     appliedPromoCode: appliedPromoCode.value,
@@ -2870,6 +2880,12 @@ function restoreFromPlainObject(obj: any) {
   if (typeof obj.selectedRestaurantId === 'string') {
     selectedRestaurantId.value = obj.selectedRestaurantId
   }
+  if (typeof obj.tableSlug === 'string') {
+    tableSlug.value = obj.tableSlug.trim()
+  }
+  if (typeof obj.tableNumber === 'string') {
+    tableNumber.value = obj.tableNumber.trim()
+  }
   if (typeof obj.selectedCustomerAddressId === 'string') {
     selectedCustomerAddressId.value = obj.selectedCustomerAddressId
     const selected = selectSavedAddressById(obj.selectedCustomerAddressId)
@@ -2915,6 +2931,16 @@ function resetScopedCheckoutFields() {
 
 function isClient() {
   return typeof window !== 'undefined'
+}
+
+function readFirstRouteQueryString(key: string): string | null {
+  const value = route.query[key]
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (Array.isArray(value)) {
+    const found = value.find((item): item is string => typeof item === 'string' && !!item.trim())
+    if (found) return found.trim()
+  }
+  return null
 }
 
 function setupInlineNavObservers() {
@@ -3079,6 +3105,8 @@ watch(
     changeFrom: changeFrom.value,
     selectedPickupPointId: selectedPickupPointId.value,
     selectedRestaurantId: selectedRestaurantId.value,
+    tableSlug: tableSlug.value,
+    tableNumber: tableNumber.value,
     selectedCustomerAddressId: selectedCustomerAddressId.value,
     promoCodeInput: promoCodeInput.value,
     appliedPromoCode: appliedPromoCode.value,
@@ -3114,6 +3142,11 @@ onMounted(async () => {
       throw createError({ statusCode: 404, statusMessage: 'Checkout route not found' })
     }
   }
+
+  const routeTableSlug = readFirstRouteQueryString('table_slug')
+  const routeTableNumber = readFirstRouteQueryString('table_number') ?? readFirstRouteQueryString('table')
+  if (routeTableSlug) tableSlug.value = routeTableSlug
+  if (routeTableNumber) tableNumber.value = routeTableNumber
 
   const saved = await loadCheckoutStateCloud()
   if (saved) restoreFromPlainObject(saved)
@@ -3185,6 +3218,10 @@ async function triggerInRestaurantServiceCall(callType: 'call_waiter' | 'call_ho
   serviceCallSubmitting.value = true
   try {
     const idempotencyKey = `checkout:${callType}:${Date.now()}`
+    const routeTableNumber = readFirstRouteQueryString('table_number') ?? readFirstRouteQueryString('table')
+    const routeTableSlug = readFirstRouteQueryString('table_slug')
+    const effectiveTableNumber = routeTableNumber || tableNumber.value || null
+    const effectiveTableSlug = routeTableSlug || tableSlug.value || null
     const payload = await $fetch<{ ok: boolean; status?: string }>('/api/service-calls', {
       method: 'POST',
       headers: buildMessengerAuthHeaders(checkoutXShopIdHeaders()),
@@ -3192,11 +3229,20 @@ async function triggerInRestaurantServiceCall(callType: 'call_waiter' | 'call_ho
         restaurantId: selectedRestaurantId.value || null,
         callType,
         idempotencyKey,
+        tableNumber: effectiveTableNumber,
+        tableSlug: effectiveTableSlug,
       },
     })
     if (!payload?.ok) throw new Error('Не удалось отправить запрос персоналу')
-    pushPromoToast('success', 'Запрос отправлен персоналу', 3200)
+    pushPromoToast('success', effectiveTableNumber ? `Вызов отправлен. Столик №${effectiveTableNumber}` : 'Запрос отправлен персоналу', 3200)
+    if (!isAuthorizedForOrder.value) {
+      openAuthModal('service')
+    }
   } catch (err: any) {
+    const statusCode = Number(err?.status || err?.statusCode || err?.data?.statusCode || 0)
+    if (statusCode === 401) {
+      openAuthModal('service')
+    }
     pushPromoToast('error', err?.data?.statusMessage || err?.message || 'Не удалось отправить запрос', 4200)
   } finally {
     serviceCallSubmitting.value = false
@@ -3355,7 +3401,7 @@ function authAndReturn() {
   void openTelegramAuth()
 }
 
-function openAuthModal(mode: 'auth' | 'continue') {
+function openAuthModal(mode: 'auth' | 'continue' | 'service') {
   authModalMode.value = mode
   showAuthModal.value = true
 }

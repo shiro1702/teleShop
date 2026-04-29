@@ -1,5 +1,17 @@
 <template>
   <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6" :style="pageStyle">
+    <div class="pointer-events-none fixed inset-x-0 top-20 z-[95] mx-auto flex w-full max-w-md flex-col gap-2 px-4">
+      <TransitionGroup name="toast">
+        <div
+          v-for="toast in serviceCallToasts"
+          :key="toast.id"
+          class="pointer-events-auto rounded-lg border px-3 py-2 text-sm shadow-lg"
+          :class="toast.kind === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'"
+        >
+          {{ toast.message }}
+        </div>
+      </TransitionGroup>
+    </div>
     <header class="mb-6">
       <h1 class="text-2xl font-bold" :style="{ color: mainTextColor }">Мои заказы</h1>
       <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">
@@ -368,6 +380,8 @@ const serviceCallSubmitting = ref(false)
 const serviceCallMessage = ref('')
 const serviceCallMessageType = ref<'ok' | 'error'>('ok')
 const serviceCalls = ref<Array<{ id: string; callType: string; status: string }>>([])
+const serviceCallToasts = ref<Array<{ id: number; kind: 'success' | 'error'; message: string }>>([])
+let serviceCallToastSeq = 0
 let detailPollHandle: number | null = null
 const festivalSlug = computed(() => {
   const fromParams = typeof route.params.festival_slug === 'string' ? route.params.festival_slug.trim() : ''
@@ -649,13 +663,25 @@ async function createServiceCall(callType: 'call_waiter' | 'call_hookah' | 'requ
     }
     serviceCallMessageType.value = 'ok'
     serviceCallMessage.value = 'Запрос отправлен персоналу'
+    pushServiceCallToast('success', 'Запрос отправлен персоналу', 3200)
     await loadServiceCalls()
   } catch (err: any) {
     serviceCallMessageType.value = 'error'
     serviceCallMessage.value = err?.message || 'Не удалось отправить запрос'
+    pushServiceCallToast('error', serviceCallMessage.value, 4200)
   } finally {
     serviceCallSubmitting.value = false
   }
+}
+
+function pushServiceCallToast(kind: 'success' | 'error', message: string, durationMs = 2600) {
+  const text = (message || '').trim()
+  if (!text) return
+  const id = ++serviceCallToastSeq
+  serviceCallToasts.value = [...serviceCallToasts.value, { id, kind, message: text }]
+  setTimeout(() => {
+    serviceCallToasts.value = serviceCallToasts.value.filter((item: { id: number }) => item.id !== id)
+  }, durationMs)
 }
 
 onMounted(async () => {

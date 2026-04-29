@@ -78,7 +78,7 @@ export async function createServiceCallEvent(
     serviceCallId: string
     shopId: string
     restaurantId: string
-    orderId: string
+    orderId?: string | null
     eventType: 'created' | 'status_changed' | 'staff_response' | 'system_note'
     eventStatus?: string | null
     channel: 'system' | 'telegram' | 'max' | 'dashboard'
@@ -94,7 +94,7 @@ export async function createServiceCallEvent(
     service_call_id: payload.serviceCallId,
     shop_id: payload.shopId,
     restaurant_id: payload.restaurantId,
-    order_id: payload.orderId,
+    order_id: payload.orderId || null,
     event_type: payload.eventType,
     event_status: payload.eventStatus || null,
     channel: payload.channel,

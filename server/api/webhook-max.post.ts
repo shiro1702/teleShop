@@ -755,7 +755,7 @@ export default defineEventHandler(async (event) => {
         serviceCallId: serviceCommand.serviceCallId,
         shopId: String((callRow as any).shop_id),
         restaurantId: String((callRow as any).restaurant_id),
-        orderId: String((callRow as any).order_id),
+        orderId: (callRow as any).order_id ? String((callRow as any).order_id) : null,
         eventType: 'staff_response',
         eventStatus: nextStatus,
         channel: 'max',

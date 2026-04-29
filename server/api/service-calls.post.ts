@@ -15,6 +15,8 @@ type Body = {
   restaurantId?: string
   callType?: ServiceCallType
   idempotencyKey?: string | null
+  tableNumber?: string | null
+  tableSlug?: string | null
 }
 
 function isAllowedCallType(value: string): value is ServiceCallType {
@@ -29,6 +31,12 @@ export default defineEventHandler(async (event) => {
   const idempotencyKey = typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
     ? body.idempotencyKey.trim().slice(0, 120)
     : null
+  const tableNumberRaw = typeof body.tableNumber === 'string' && body.tableNumber.trim()
+    ? body.tableNumber.trim().slice(0, 64)
+    : ''
+  const tableSlugRaw = typeof body.tableSlug === 'string' && body.tableSlug.trim()
+    ? body.tableSlug.trim().slice(0, 120)
+    : ''
 
   if (!isAllowedCallType(callTypeRaw)) throw createError({ statusCode: 400, statusMessage: 'Invalid callType' })
 
@@ -42,7 +50,6 @@ export default defineEventHandler(async (event) => {
 
   const client = await serverSupabaseServiceRole(event)
   const profileId = await resolveCustomerProfileId(event, botToken).catch(() => '')
-  if (!profileId) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   let order: any | null = null
   if (orderId) {
@@ -53,7 +60,7 @@ export default defineEventHandler(async (event) => {
       .eq('customer_profile_id', profileId)
       .maybeSingle()
     order = directOrder
-  } else if (restaurantIdFromBody) {
+  } else if (restaurantIdFromBody && profileId) {
     const { data: fallbackOrder } = await client
       .from('orders')
       .select('id,shop_id,restaurant_id,customer_profile_id,customer_telegram_id,order_number')
@@ -65,7 +72,7 @@ export default defineEventHandler(async (event) => {
       .maybeSingle()
     order = fallbackOrder
     if (fallbackOrder?.id) orderId = String(fallbackOrder.id)
-  } else {
+  } else if (profileId) {
     const { data: latestOrder } = await client
       .from('orders')
       .select('id,shop_id,restaurant_id,customer_profile_id,customer_telegram_id,order_number')
@@ -77,22 +84,42 @@ export default defineEventHandler(async (event) => {
     order = latestOrder
     if (latestOrder?.id) orderId = String(latestOrder.id)
   }
-  if (!order || !(order as any).restaurant_id) {
+  let shopId = ''
+  let restaurantId = ''
+  if (order && (order as any).restaurant_id) {
+    shopId = String((order as any).shop_id)
+    restaurantId = String((order as any).restaurant_id)
+  } else if (restaurantIdFromBody) {
+    const xShopId = String(getHeader(event, 'x-shop-id') || '').trim()
+    let restaurantQuery = client
+      .from('restaurants')
+      .select('id,shop_id,name,service_calls_enabled,service_call_types,manager_group_chat_id,manager_max_chat_id')
+      .eq('id', restaurantIdFromBody)
+      .limit(1)
+    if (xShopId) restaurantQuery = restaurantQuery.eq('shop_id', xShopId)
+    const { data: fallbackRestaurant } = await restaurantQuery.maybeSingle()
+    if (!fallbackRestaurant) {
+      throw createError({ statusCode: 404, statusMessage: 'Филиал не найден' })
+    }
+    shopId = String((fallbackRestaurant as any).shop_id)
+    restaurantId = String((fallbackRestaurant as any).id)
+  } else {
     throw createError({ statusCode: 404, statusMessage: 'Активный заказ не найден. Сначала оформите заказ.' })
   }
 
-  const shopId = String((order as any).shop_id)
-  const restaurantId = String((order as any).restaurant_id)
-  const customerTelegramIdRaw = Number((order as any).customer_telegram_id)
+  const customerTelegramIdRaw = Number((order as any)?.customer_telegram_id)
   const customerTelegramId = Number.isFinite(customerTelegramIdRaw) && customerTelegramIdRaw > 0
     ? customerTelegramIdRaw
     : null
 
-  const { data: profile } = await client
-    .from('profiles')
-    .select('max_user_id,max_conversation_id')
-    .eq('id', profileId)
-    .maybeSingle()
+  const { data: profile } = profileId
+    ? await client
+      .from('profiles')
+      .select('id,max_user_id,max_conversation_id')
+      .eq('id', profileId)
+      .maybeSingle()
+    : { data: null as any }
+  const resolvedProfileId = typeof (profile as any)?.id === 'string' ? String((profile as any).id) : null
   const customerMaxUserId = typeof (profile as any)?.max_user_id === 'string' ? String((profile as any).max_user_id).trim() : null
   const customerMaxConversationId = typeof (profile as any)?.max_conversation_id === 'string' ? String((profile as any).max_conversation_id).trim() : null
 
@@ -117,14 +144,47 @@ export default defineEventHandler(async (event) => {
     ...(orgButtons.hookah === true ? ['call_hookah'] : []),
     ...(orgButtons.requestBill === false ? [] : ['request_bill']),
   ]
-  const effectiveEnabledTypes = enabledTypes.filter((type) => orgEnabledTypes.includes(type))
+  const effectiveEnabledTypes = enabledTypes.filter((type: string) => orgEnabledTypes.includes(type))
   if (!effectiveEnabledTypes.includes(callTypeRaw)) {
     throw createError({ statusCode: 409, statusMessage: 'Call type disabled for this branch' })
   }
 
+  let resolvedTableNumber = ''
+  if (tableSlugRaw) {
+    const { data: tableBySlug } = await client
+      .from('restaurant_tables')
+      .select('table_number')
+      .eq('restaurant_id', restaurantId)
+      .eq('qr_slug', tableSlugRaw)
+      .eq('is_active', true)
+      .maybeSingle()
+    resolvedTableNumber = typeof (tableBySlug as any)?.table_number === 'string'
+      ? String((tableBySlug as any).table_number).trim().slice(0, 64)
+      : ''
+  }
+  if (!resolvedTableNumber && tableNumberRaw) {
+    const { data: tableByNumber } = await client
+      .from('restaurant_tables')
+      .select('table_number')
+      .eq('restaurant_id', restaurantId)
+      .eq('table_number', tableNumberRaw)
+      .eq('is_active', true)
+      .maybeSingle()
+    resolvedTableNumber = typeof (tableByNumber as any)?.table_number === 'string'
+      ? String((tableByNumber as any).table_number).trim().slice(0, 64)
+      : ''
+  }
+
+  if (!profileId && !resolvedTableNumber) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Для вызова без авторизации отсканируйте QR-код столика.',
+    })
+  }
+
   let serviceCallId = ''
   const nowIso = new Date().toISOString()
-  if (idempotencyKey) {
+  if (idempotencyKey && orderId) {
     const { data: existing } = await client
       .from('service_calls')
       .select('id,status,created_at')
@@ -141,11 +201,12 @@ export default defineEventHandler(async (event) => {
     .insert({
       shop_id: shopId,
       restaurant_id: restaurantId,
-      order_id: orderId,
-      customer_profile_id: profileId,
+      order_id: orderId || null,
+      customer_profile_id: resolvedProfileId,
       customer_telegram_id: customerTelegramId,
       customer_max_user_id: customerMaxUserId || null,
       customer_max_conversation_id: customerMaxConversationId || null,
+      table_number: resolvedTableNumber || null,
       call_type: callTypeRaw,
       status: 'created',
       source_channel: getHeader(event, 'x-messenger-init-data') ? 'chat' : 'web',
@@ -167,18 +228,19 @@ export default defineEventHandler(async (event) => {
     serviceCallId,
     shopId,
     restaurantId,
-    orderId,
+    orderId: orderId || null,
     eventType: 'created',
     eventStatus: 'created',
     channel: 'system',
     message: `Клиент отправил запрос: ${getServiceCallLabel(callTypeRaw)}`,
-    extraPayload: { callType: callTypeRaw },
+    extraPayload: { callType: callTypeRaw, tableNumber: resolvedTableNumber || null },
   })
 
-  const orderRef = String((order as any).order_number || orderId).slice(0, 12)
+  const orderRef = orderId ? String((order as any)?.order_number || orderId).slice(0, 12) : '—'
   const requestText = [
     `🔔 Запрос клиента: ${getServiceCallLabel(callTypeRaw)}`,
     `📦 Заказ #${orderRef}`,
+    `🪑 Столик: ${resolvedTableNumber ? `№${resolvedTableNumber}` : 'не указан'}`,
     `🆔 Call ID: ${serviceCallId}`,
     `🏪 Филиал: ${String((restaurant as any).name || '—')}`,
   ].join('\n')
@@ -218,7 +280,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const clientText = `Запрос отправлен персоналу: ${getServiceCallLabel(callTypeRaw)}`
+  const clientText = `Запрос отправлен персоналу: ${getServiceCallLabel(callTypeRaw)}${resolvedTableNumber ? ` (столик №${resolvedTableNumber})` : ''}`
   if (customerTelegramId) {
     await sendTelegram(botToken, 'sendMessage', {
       chat_id: customerTelegramId,
@@ -233,6 +295,6 @@ export default defineEventHandler(async (event) => {
     }).catch(() => {})
   }
 
-  return { ok: true, callId: serviceCallId, status: 'created' }
+  return { ok: true, callId: serviceCallId, status: 'created', tableNumber: resolvedTableNumber || null }
 })
 

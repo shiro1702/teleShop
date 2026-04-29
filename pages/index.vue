@@ -939,6 +939,8 @@ async function persistCheckoutStateCloud(data: string) {
 
 function persistFulfillmentTypeToCheckout(next: FulfillmentType) {
   const existing = readCheckoutStateLocal() ?? {}
+  const tableSlug = readFirstQueryString('table_slug')
+  const tableNumber = readFirstQueryString('table_number') ?? readFirstQueryString('table')
   const nextState: Record<string, any> = {
     ...existing,
     fulfillmentType: next,
@@ -947,6 +949,8 @@ function persistFulfillmentTypeToCheckout(next: FulfillmentType) {
   if (typeof selectedRestaurantIdForCheckout.value === 'string' && selectedRestaurantIdForCheckout.value) {
     nextState.selectedRestaurantId = selectedRestaurantIdForCheckout.value
   }
+  if (tableSlug) nextState.tableSlug = tableSlug
+  if (tableNumber) nextState.tableNumber = tableNumber
 
   const payload = JSON.stringify(nextState)
   void persistCheckoutStateCloud(payload)
@@ -1272,9 +1276,15 @@ function goToCheckout() {
   // QR-ссылка должна “довозиться” до корзины, чтобы не заставлять пользователя
   // вручную выбирать филиал/ресторан.
   const branchId = readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
+  const tableSlug = readFirstQueryString('table_slug')
+  const tableNumber = readFirstQueryString('table_number') ?? readFirstQueryString('table')
+  const nextQuery: Record<string, string> = { step: '1' }
+  if (branchId) nextQuery.branch_id = branchId
+  if (tableSlug) nextQuery.table_slug = tableSlug
+  if (tableNumber) nextQuery.table_number = tableNumber
   void router.push({
     path: tenantPath('/checkout'),
-    query: branchId ? { branch_id: branchId, step: '1' } : { step: '1' },
+    query: nextQuery,
   })
 }
 
@@ -1302,6 +1312,8 @@ async function triggerCatalogServiceCall(callType: 'call_waiter' | 'call_hookah'
     const idempotencyKey = `catalog:${callType}:${Date.now()}`
     const headers: Record<string, string> = {}
     if (tenantKey.value) headers['x-shop-id'] = tenantKey.value
+    const tableSlug = readFirstQueryString('table_slug')
+    const tableNumber = readFirstQueryString('table_number') ?? readFirstQueryString('table')
     const payload = await $fetch<{ ok: boolean }>('/api/service-calls', {
       method: 'POST',
       headers: Object.keys(headers).length ? headers : undefined,
@@ -1309,10 +1321,12 @@ async function triggerCatalogServiceCall(callType: 'call_waiter' | 'call_hookah'
         restaurantId: selectedRestaurantForCatalogService.value?.id ?? null,
         callType,
         idempotencyKey,
+        tableSlug,
+        tableNumber,
       },
     })
     if (!payload?.ok) throw new Error('Не удалось отправить запрос персоналу')
-    pushServiceCallToast('success', 'Запрос отправлен персоналу', 3200)
+    pushServiceCallToast('success', tableNumber ? `Вызов отправлен. Столик №${tableNumber}` : 'Запрос отправлен персоналу', 3200)
   } catch (err: any) {
     pushServiceCallToast('error', err?.data?.statusMessage || err?.message || 'Не удалось отправить запрос', 4200)
   } finally {
