@@ -45,10 +45,14 @@ export default defineNuxtConfig({
         {
           src: 'https://telegram.org/js/telegram-web-app.js',
           tagPosition: 'head',
+          async: true,
+          defer: true,
         },
         {
           src: 'https://st.max.ru/js/max-web-app.js',
           tagPosition: 'head',
+          async: true,
+          defer: true,
         },
       ],
     },
