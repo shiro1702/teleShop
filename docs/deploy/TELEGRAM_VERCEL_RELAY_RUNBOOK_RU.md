@@ -233,3 +233,135 @@ curl -sS "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
 4. Переключить webhook Telegram на Vercel URL.
 5. Проверить `getWebhookInfo` + E2E.
 
+---
+
+## 14) Отдельный репозиторий: структура папок (рекомендация)
+
+Основной магазин — Nuxt; **релею Nuxt не нужен** (тонкий HTTP-слой). Репозиторий только под прослойку, например `teleShop-telegram-relay` или `pocketmenu-telegram-relay`.
+
+Пример дерева:
+
+```text
+teleShop-telegram-relay/          # отдельный GitHub-репозиторий
+  README.md
+  package.json
+  vercel.json
+  .env.example
+  src/
+    server/                       # или api/ — по шаблону Vercel
+      api/
+        health.get.ts
+        telegram/
+          webhook.post.ts
+          send.post.ts
+    lib/
+      config.ts
+      forwardToBackend.ts
+      invokeTelegramApi.ts
+  types/
+    relay.ts                      # DTO (опционально; можно дублировать в teleShop)
+```
+
+Принцип: в реле **нет** полноценного Nuxt — только маршруты, `fetch`, проверка секретов, прокси.
+
+---
+
+## 15) Варианты стека для Vercel-прослойки
+
+| Вариант | Суть | Плюсы | Минусы |
+|--------|------|--------|--------|
+| **A. Vercel Serverless (Node) + `fetch`** | 2–3 handler-а без фреймворка | Минимум зависимостей, прозрачно | Всё вручную |
+| **B. Hono** (`hono/vercel`) | Маршруты + middleware | Удобные секреты, rate limit | Лишняя зависимость на крошечном сервисе |
+| **C. Nitro standalone** | Мини-проект только с роутами (тот же стек, что у Nuxt под капотом) | Единый стиль с основным приложением | Больше настройки CI, чем у «голого» Vercel API |
+| **D. Vercel Edge** | Прокси на Edge | Низкая задержка | Ограничения Node API; для Bot API чаще проще **Node runtime** |
+
+**Рекомендация:** **A** или **B**. Полноценный Nuxt в реле **не** поднимать — лишний бандл и поверхность.
+
+---
+
+## 16) Где хранить код: отдельный репо vs папка в монорепо
+
+| Подход | Плюсы | Минусы |
+|--------|--------|--------|
+| **Отдельный репозиторий + отдельный Vercel-проект** | Изоляция секретов, независимый деплой/роллбек, узкий доступ к репо | Два репозитория; контракт держать синхронно |
+| **Монорепо:** `packages/telegram-relay` (pnpm/npm workspaces) | Один PR может обновить relay и контракт backend | Нужны два Vercel-проекта с разным Root Directory |
+| **Отдельная ветка только под relay** | Быстрый старт | Не рекомендуется долгосрочно (дрейф веток) |
+
+**Практично:** отдельный репо `teleShop-telegram-relay`, если не хотите усложнять CI. Монорепо — если важен единый PR и общие `types/`.
+
+**Версионирование контракта:** при смене формата — заголовок `x-relay-api-version: 1` или path `/v1/...`, пока оба проекта не обновлены.
+
+---
+
+## 17) Как проекты общаются (сводка контракта)
+
+**Входящий путь:**  
+`Telegram` → Vercel `POST /api/telegram/webhook` → сразу `200` → async `POST` на backend `https://pocketmenu.ru/api/webhook-relay` с `x-relay-secret` и сырым `Update`.
+
+**Исходящий путь:**  
+Backend → `POST https://<relay>/api/telegram/send` с `x-relay-secret` и телом `{ method, payload }` → relay → `https://api.telegram.org/bot<TOKEN>/<method>`.
+
+**Секреты:** одинаковый `RELAY_SHARED_SECRET` на Vercel и на backend. Токен бота хранить в relay (`TELEGRAM_BOT_TOKEN`); при нескольких ботах — whitelist методов и маппинг shop→token на стороне relay (не светить токены в логах).
+
+Дублировать краткое описание контракта в обоих репо (`relay-contract.md` в корне или в `docs/`) — меньше рассинхрона.
+
+---
+
+## 18) Cursor: править relay и backend в одной сессии
+
+Основной продукт — репозиторий `teleShop` (Nuxt). Прослойка — **отдельный** репозиторий. Чтобы агент/Composer видел **оба** дерева и мог менять файлы в одном запросе:
+
+1. **File → Add Folder to Workspace…** — добавьте папку `teleShop` и папку `teleShop-telegram-relay`.
+2. **File → Save Workspace As…** — сохраните, например `teleShop-all.code-workspace` (удобно хранить в `~/workspaces` или в одном из репо).
+
+Альтернатива: открыть родительскую папку, в которой лежат оба клона (`~/projects/teleShop` и `~/projects/teleShop-telegram-relay`), но **multi-root workspace** обычно удобнее.
+
+**Ограничения:** это два независимых git-репозитория — **коммиты и PR остаются два**. Агент может предложить правки в обоих; пуш/мердж — отдельно. Правила `.cursor/rules` действуют **по корню каждого репо**; при необходимости продублируйте короткое правило про синхронизацию контракта в обоих.
+
+---
+
+## 19) Промпт для Cursor: создать репозиторий прослойки (скопировать в чат)
+
+Используйте в **multi-root workspace** (открыты и `teleShop`, и новая/пустая папка под relay), либо сначала создайте пустой репо и клонируйте её.
+
+```text
+Задача: создать минимальный репозиторий Vercel-прослойки для Telegram (отдельный проект, не Nuxt).
+
+Стек: Node.js на Vercel Serverless (или Hono + @hono/node-server / hono/vercel — на твой выбор), без Next.js и без полного Nuxt.
+
+Требования:
+
+1) POST /api/telegram/webhook
+   - Читает JSON body как сырой Telegram Update.
+   - Если задан env TELEGRAM_WEBHOOK_SECRET — проверить заголовок X-Telegram-Bot-Api-Secret-Token.
+   - Немедленно ответить 200 и телом { ok: true } (не ждать backend).
+   - Асинхронно (fire-and-forget без блокировки ответа): POST на BACKEND_WEBHOOK_URL с тем же JSON телом, заголовки:
+     Content-Type: application/json
+     x-relay-secret: <RELAY_SHARED_SECRET>
+     x-relay-source: vercel-telegram
+   - При ошибке forward — только console.error, ответ клиенту уже отправлен.
+
+2) POST /api/telegram/send
+   - Требует заголовок x-relay-secret, совпадающий с RELAY_SHARED_SECRET, иначе 403.
+   - Body JSON: { "method": string, "payload": object }
+   - method whitelist: sendMessage, editMessageText, answerCallbackQuery, getChatMember (расширять только явно).
+   - Вызов https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method} методом POST, body = JSON.stringify(payload).
+   - Вернуть клиенту status и тело ответа Telegram (или ошибку).
+
+3) GET /api/health — { ok: true, service: "telegram-relay" }
+
+4) Файлы: package.json, vercel.json (или эквивалент для выбранного стека), .env.example со всеми переменными:
+   TELEGRAM_BOT_TOKEN, BACKEND_WEBHOOK_URL, RELAY_SHARED_SECRET, TELEGRAM_WEBHOOK_SECRET (optional)
+
+5) README: как задеплоить на Vercel, какие env выставить, как выставить webhook:
+   setWebhook url -> https://<project>.vercel.app/api/telegram/webhook с secret_token.
+
+6) Никаких секретов в репозитории; логи без полного токена.
+
+После генерации кратко опиши структуру папок и команды npm run dev / deploy.
+```
+
+При работе **только** над relay откройте папку нового репозитория; для изменений и в `teleShop` (endpoint `/api/webhook-relay`, `TELEGRAM_TRANSPORT`) — используйте workspace с обоими папками и явно попросите: «обнови и relay, и backend в teleShop по контракту из docs/deploy/TELEGRAM_VERCEL_RELAY_RUNBOOK_RU.md».
+
+---
+
