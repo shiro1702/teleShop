@@ -148,7 +148,7 @@
       </section>
       <template v-else>
         <section
-          v-for="section in cartStore.productsByCategory"
+          v-for="section in sectionsWithStoryCells"
           :key="section.category"
           :id="section.category"
           class="mb-10 scroll-mt-28"
@@ -159,42 +159,25 @@
           <ul
             class="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4"
           >
-            <li v-for="product in section.products" :key="product.id" class="flex">
-              <ProductCard :product="product" @open="openProduct(product)" />
+            <li
+              v-for="(cell, cellIdx) in section.cells"
+              :key="cell.type === 'product' ? cell.product.id : `story-${cell.campaign.id}-${cellIdx}`"
+              class="flex"
+            >
+              <ProductCard
+                v-if="cell.type === 'product'"
+                :product="cell.product"
+                @open="openProduct(cell.product)"
+              />
+              <StoryGridBanner
+                v-else
+                :campaign="cell.campaign"
+                @open="openCatalogStoryCampaign"
+              />
             </li>
           </ul>
         </section>
       </template>
-      <section
-        v-for="section in sectionsWithStoryCells"
-        :key="section.category"
-        :id="section.category"
-        class="mb-10 scroll-mt-28"
-      >
-        <h2 class="mb-4 text-lg font-semibold" :style="{ color: mainTextColor }">
-          {{ section.label }}
-        </h2>
-        <ul
-          class="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4"
-        >
-          <li
-            v-for="(cell, cellIdx) in section.cells"
-            :key="cell.type === 'product' ? cell.product.id : `story-${cell.campaign.id}-${cellIdx}`"
-            class="flex"
-          >
-            <ProductCard
-              v-if="cell.type === 'product'"
-              :product="cell.product"
-              @open="openProduct(cell.product)"
-            />
-            <StoryGridBanner
-              v-else
-              :campaign="cell.campaign"
-              @open="openCatalogStoryCampaign"
-            />
-          </li>
-        </ul>
-      </section>
     </main>
 
     <!-- Модалка успеха заказа после возврата на меню -->
