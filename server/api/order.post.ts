@@ -79,6 +79,16 @@ type PromoBreakdown = {
   subtotalAfterPromo: number
 }
 
+function isMissingMaxConversationIdError(error: any): boolean {
+  const text = String(
+    error?.message
+    || error?.details
+    || error?.hint
+    || '',
+  ).toLowerCase()
+  return text.includes('max_conversation_id') && (text.includes('column') || text.includes('schema cache'))
+}
+
 function buildOrderMessage(
   orderRef: string,
   items: CartItemPayload[],
@@ -373,6 +383,27 @@ export default defineEventHandler(async (event) => {
     : ''
   const serviceClient = await serverSupabaseServiceRole(event)
 
+  async function loadProfileForOrder(profileId: string) {
+    const full = await serviceClient
+      .from('profiles')
+      .select('telegram_id, max_user_id, max_conversation_id')
+      .eq('id', profileId)
+      .maybeSingle()
+    if (!full.error) return full
+    if (!isMissingMaxConversationIdError(full.error)) return full
+    const fallback = await serviceClient
+      .from('profiles')
+      .select('telegram_id, max_user_id')
+      .eq('id', profileId)
+      .maybeSingle()
+    return {
+      data: fallback.data
+        ? { ...(fallback.data as any), max_conversation_id: null }
+        : fallback.data,
+      error: fallback.error,
+    }
+  }
+
   // In mini apps, saved address can be selected while body lat/lon are temporarily absent.
   // Fallback to persisted address coordinates to avoid false 400 "zone required".
   if (fulfillmentType === 'delivery' && !hasDeliveryCoords && customerAddressId) {
@@ -459,11 +490,19 @@ export default defineEventHandler(async (event) => {
       }
       user = parsed
       const maxId = String(parsed.id)
-      const { data: maxProfile } = await serviceClient
+      let { data: maxProfile } = await serviceClient
         .from('profiles')
         .select('id, max_conversation_id')
         .eq('max_user_id', maxId)
         .maybeSingle()
+      if (!maxProfile) {
+        const { data: maxProfileFallback } = await serviceClient
+          .from('profiles')
+          .select('id')
+          .eq('max_user_id', maxId)
+          .maybeSingle()
+        maxProfile = maxProfileFallback
+      }
       customerProfileId = maxProfile?.id ? String(maxProfile.id) : null
       const rawConv = (maxProfile as { max_conversation_id?: string | null } | null)?.max_conversation_id
       maxConversationId = typeof rawConv === 'string' && rawConv.trim() ? rawConv.trim() : null
@@ -499,11 +538,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 401, message: 'Unauthorized' })
     }
     customerProfileId = userId
-    const { data: profile, error: profileError } = await serviceClient
-      .from('profiles')
-      .select('telegram_id, max_user_id, max_conversation_id')
-      .eq('id', userId)
-      .maybeSingle()
+    const { data: profile, error: profileError } = await loadProfileForOrder(userId)
     if (profileError) {
       console.error('Error querying profile for order (WEB):', profileError)
       throw createError({ statusCode: 500, message: 'Failed to read profile' })
