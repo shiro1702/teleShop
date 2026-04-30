@@ -692,20 +692,12 @@ export default defineEventHandler(async (event) => {
 
     const { data: binding } = await supabase
       .from('restaurant_staff_bot_bindings')
-      .select('id,display_name,is_active')
+      .select('id,display_name')
       .eq('shop_id', (callRow as any).shop_id)
       .eq('restaurant_id', (callRow as any).restaurant_id)
       .eq('channel', 'telegram')
       .eq('external_user_id', actorTelegramId)
       .maybeSingle()
-    if (!binding || !(binding as any).is_active) {
-      await telegram(botToken, 'answerCallbackQuery', {
-        callback_query_id: query.id,
-        text: 'Вы не привязаны как сотрудник филиала',
-        show_alert: true,
-      })
-      return { ok: true }
-    }
 
     const nowIso = new Date().toISOString()
     const nextStatus = mapActionToStatus(action)
@@ -728,7 +720,7 @@ export default defineEventHandler(async (event) => {
       eventType: 'staff_response',
       eventStatus: nextStatus,
       channel: 'telegram',
-      actorBindingId: String((binding as any).id),
+      actorBindingId: (binding as any)?.id ? String((binding as any).id) : null,
       actorExternalUserId: actorTelegramId,
       actorDisplayName: actorName,
       message: responseText,

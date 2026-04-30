@@ -1054,12 +1054,35 @@
             <p class="mt-1 text-sm text-gray-600">
               Выберите действие для вызова персонала.
             </p>
+            <div class="mt-3 space-y-2">
+              <label class="block text-sm">
+                <span class="mb-1 block text-gray-600">Филиал</span>
+                <select
+                  v-model="serviceCallDraftRestaurantId"
+                  class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Выберите филиал</option>
+                  <option v-for="branch in restaurants" :key="branch.id" :value="branch.id">
+                    {{ branch.name }}
+                  </option>
+                </select>
+              </label>
+              <label class="block text-sm">
+                <span class="mb-1 block text-gray-600">Столик (необязательно)</span>
+                <input
+                  v-model.trim="serviceCallDraftTableNumber"
+                  type="text"
+                  placeholder="Например: 12"
+                  class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+              </label>
+            </div>
             <div class="mt-4 space-y-2">
               <button
                 v-if="serviceCallTypeEnabled('call_waiter')"
                 type="button"
                 class="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-                :disabled="serviceCallSubmitting"
+                :disabled="serviceCallSubmitting || !serviceCallDraftRestaurantId"
                 @click="triggerInRestaurantServiceCall('call_waiter')"
               >
                 Позвать официанта
@@ -1068,7 +1091,7 @@
                 v-if="serviceCallTypeEnabled('call_hookah')"
                 type="button"
                 class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                :disabled="serviceCallSubmitting"
+                :disabled="serviceCallSubmitting || !serviceCallDraftRestaurantId"
                 @click="triggerInRestaurantServiceCall('call_hookah')"
               >
                 Позвать кальянщика
@@ -1077,7 +1100,7 @@
                 v-if="serviceCallTypeEnabled('request_bill')"
                 type="button"
                 class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                :disabled="serviceCallSubmitting"
+                :disabled="serviceCallSubmitting || !serviceCallDraftRestaurantId"
                 @click="triggerInRestaurantServiceCall('request_bill')"
               >
                 Счет
@@ -1401,6 +1424,8 @@ const deliveryResolveRequestSeq = ref(0)
 const serviceCallSubmitting = ref(false)
 const tableSlug = ref('')
 const tableNumber = ref('')
+const serviceCallDraftRestaurantId = ref('')
+const serviceCallDraftTableNumber = ref('')
 const editingCartItemId = ref<string | null>(null)
 const editingItemQuantity = ref(1)
 const editingItemProduct = ref<Product | null>(null)
@@ -3217,18 +3242,22 @@ watch(checkoutStorageKey, async (nextKey: string, prevKey: string) => {
 
 async function triggerInRestaurantServiceCall(callType: 'call_waiter' | 'call_hookah' | 'request_bill') {
   if (!showInRestaurantServiceButtons.value || serviceCallSubmitting.value) return
+  if (!serviceCallDraftRestaurantId.value) {
+    pushPromoToast('error', 'Выберите филиал', 3200)
+    return
+  }
   serviceCallSubmitting.value = true
   try {
     const idempotencyKey = `checkout:${callType}:${Date.now()}`
     const routeTableNumber = readFirstRouteQueryString('table_number') ?? readFirstRouteQueryString('table')
     const routeTableSlug = readFirstRouteQueryString('table_slug')
-    const effectiveTableNumber = routeTableNumber || tableNumber.value || null
+    const effectiveTableNumber = routeTableNumber || serviceCallDraftTableNumber.value || tableNumber.value || null
     const effectiveTableSlug = routeTableSlug || tableSlug.value || null
     const payload = await $fetch<{ ok: boolean; status?: string }>('/api/service-calls', {
       method: 'POST',
       headers: buildMessengerAuthHeaders(checkoutXShopIdHeaders()),
       body: {
-        restaurantId: selectedRestaurantId.value || null,
+        restaurantId: serviceCallDraftRestaurantId.value || null,
         callType,
         idempotencyKey,
         tableNumber: effectiveTableNumber,
@@ -3415,6 +3444,9 @@ function closeAuthModal() {
 function openServiceCallsModal() {
   if (!showInRestaurantServiceButtons.value) return
   dismissServiceCallOnboarding()
+  serviceCallDraftRestaurantId.value = selectedRestaurantId.value || restaurants.value[0]?.id || ''
+  const routeTableNumber = readFirstRouteQueryString('table_number') ?? readFirstRouteQueryString('table')
+  serviceCallDraftTableNumber.value = routeTableNumber || tableNumber.value || ''
   showServiceCallsModal.value = true
 }
 

@@ -718,21 +718,12 @@ export default defineEventHandler(async (event) => {
       const externalUserId = String(actorUserId)
       const { data: binding } = await supabase
         .from('restaurant_staff_bot_bindings')
-        .select('id,display_name,is_active')
+        .select('id,display_name')
         .eq('shop_id', (callRow as any).shop_id)
         .eq('restaurant_id', (callRow as any).restaurant_id)
         .eq('channel', 'max')
         .eq('external_user_id', externalUserId)
         .maybeSingle()
-      if (!binding || !(binding as any).is_active) {
-        await sendMaxDmPlain({
-          baseUrl: maxBaseUrl,
-          token: maxToken,
-          userId: actorUserId,
-          text: 'Вы не привязаны как сотрудник этого филиала.',
-        }).catch(() => {})
-        return { ok: true }
-      }
 
       const nowIso = new Date().toISOString()
       const nextStatus = mapActionToStatus(serviceCommand.action)
@@ -759,7 +750,7 @@ export default defineEventHandler(async (event) => {
         eventType: 'staff_response',
         eventStatus: nextStatus,
         channel: 'max',
-        actorBindingId: String((binding as any).id),
+        actorBindingId: (binding as any)?.id ? String((binding as any).id) : null,
         actorExternalUserId: externalUserId,
         actorDisplayName: actorName,
         message: responseText,

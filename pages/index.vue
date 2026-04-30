@@ -508,12 +508,35 @@
           <p class="mt-1 text-sm text-gray-600">
             Выберите действие для вызова персонала.
           </p>
+            <div class="mt-3 space-y-2">
+              <label class="block text-sm">
+                <span class="mb-1 block text-gray-600">Филиал</span>
+                <select
+                  v-model="catalogServiceCallDraftRestaurantId"
+                  class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Выберите филиал</option>
+                  <option v-for="branch in restaurantOps" :key="branch.id" :value="branch.id">
+                    Филиал {{ branch.id.slice(0, 8) }}
+                  </option>
+                </select>
+              </label>
+              <label class="block text-sm">
+                <span class="mb-1 block text-gray-600">Столик (необязательно)</span>
+                <input
+                  v-model.trim="catalogServiceCallDraftTableNumber"
+                  type="text"
+                  placeholder="Например: 12"
+                  class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+              </label>
+            </div>
           <div class="mt-4 space-y-2">
             <button
               v-if="catalogServiceCallTypeEnabled('call_waiter')"
               type="button"
               class="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-              :disabled="serviceCallSubmitting"
+                :disabled="serviceCallSubmitting || !catalogServiceCallDraftRestaurantId"
               @click="triggerCatalogServiceCall('call_waiter')"
             >
               Позвать официанта
@@ -522,7 +545,7 @@
               v-if="catalogServiceCallTypeEnabled('call_hookah')"
               type="button"
               class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="serviceCallSubmitting"
+                :disabled="serviceCallSubmitting || !catalogServiceCallDraftRestaurantId"
               @click="triggerCatalogServiceCall('call_hookah')"
             >
               Позвать кальянщика
@@ -531,7 +554,7 @@
               v-if="catalogServiceCallTypeEnabled('request_bill')"
               type="button"
               class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="serviceCallSubmitting"
+                :disabled="serviceCallSubmitting || !catalogServiceCallDraftRestaurantId"
               @click="triggerCatalogServiceCall('request_bill')"
             >
               Счет
@@ -566,6 +589,7 @@ import StoryViewer from '../components/stories/StoryViewer.vue'
 import { useStories } from '../composables/useStories'
 import type { StoryCampaignDto, StorySlideDto } from '../types/stories'
 import { buildDefaultCartSelections, findProductById } from '../utils/storyCart'
+import { useTelegram } from '../composables/useTelegram'
 
 const cartStore = useCartStore()
 const { canUseMessengerStorage, setItem } = useMessengerStorage()
@@ -679,6 +703,8 @@ const showOrderSuccess = ref(false)
 const lastOrderId = ref<string | null>(null)
 const showCatalogServiceCallsModal = ref(false)
 const serviceCallSubmitting = ref(false)
+const catalogServiceCallDraftRestaurantId = ref('')
+const catalogServiceCallDraftTableNumber = ref('')
 const serviceCallToasts = ref<Array<{ id: number; kind: 'success' | 'error'; message: string }>>([])
 let serviceCallToastSeq = 0
 const catalogServiceCallOnboardingKey = 'catalog:service-call-onboarding:v1'
@@ -867,6 +893,7 @@ watch(showCatalogServiceCallButton, (enabled: boolean) => {
 const selectedRestaurantIdForCheckout = computed(() => {
   return restaurantOps.value.length === 1 ? restaurantOps.value[0].id : null
 })
+const { messengerInitData } = useTelegram()
 const citySlug = computed(() => {
   const raw = route.params.city_slug
   return typeof raw === 'string' && raw.trim() ? raw.trim() : null
@@ -1298,6 +1325,9 @@ function openCatalogServiceCallsModal() {
   if (typeof window !== 'undefined') {
     localStorage.setItem(catalogServiceCallOnboardingKey, '1')
   }
+  catalogServiceCallDraftRestaurantId.value = selectedRestaurantForCatalogService.value?.id || restaurantOps.value[0]?.id || ''
+  const tableNumber = readFirstQueryString('table_number') ?? readFirstQueryString('table')
+  catalogServiceCallDraftTableNumber.value = tableNumber || ''
   showCatalogServiceCallsModal.value = true
 }
 
@@ -1307,22 +1337,26 @@ function closeCatalogServiceCallsModal() {
 
 async function triggerCatalogServiceCall(callType: 'call_waiter' | 'call_hookah' | 'request_bill') {
   if (!showCatalogServiceCallButton.value || serviceCallSubmitting.value) return
+  if (!catalogServiceCallDraftRestaurantId.value) {
+    pushServiceCallToast('error', 'Выберите филиал', 3200)
+    return
+  }
   serviceCallSubmitting.value = true
   try {
     const idempotencyKey = `catalog:${callType}:${Date.now()}`
     const headers: Record<string, string> = {}
     if (tenantKey.value) headers['x-shop-id'] = tenantKey.value
     const tableSlug = readFirstQueryString('table_slug')
-    const tableNumber = readFirstQueryString('table_number') ?? readFirstQueryString('table')
+    const tableNumber = (readFirstQueryString('table_number') ?? readFirstQueryString('table') ?? catalogServiceCallDraftTableNumber.value ?? '').trim()
     const payload = await $fetch<{ ok: boolean }>('/api/service-calls', {
       method: 'POST',
       headers: Object.keys(headers).length ? headers : undefined,
       body: {
-        restaurantId: selectedRestaurantForCatalogService.value?.id ?? null,
+        restaurantId: catalogServiceCallDraftRestaurantId.value,
         callType,
         idempotencyKey,
         tableSlug,
-        tableNumber,
+        tableNumber: tableNumber || null,
       },
     })
     if (!payload?.ok) throw new Error('Не удалось отправить запрос персоналу')
@@ -1369,6 +1403,14 @@ watch(tenantKey, () => {
   void loadCatalog()
   void loadRestaurantModes()
 })
+
+watch(
+  () => messengerInitData.value,
+  async (next: string, prev: string) => {
+    if (!next || next === prev) return
+    await loadRestaurantModes()
+  },
+)
 
 watch(
   () => [route.query.branch_id, route.query.restaurant_id] as const,

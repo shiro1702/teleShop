@@ -426,6 +426,11 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function isUnauthorizedErrorMessage(message: unknown): boolean {
+  const text = String(message || '').toLowerCase()
+  return text.includes('unauthorized') || text.includes('не авториз')
+}
+
 async function waitForMessengerInitData(timeoutMs = 2500) {
   if (!isMessengerMiniApp.value || messengerInitData.value) return
   const startedAt = Date.now()
@@ -574,18 +579,21 @@ async function loadDetailOrderStatus() {
   if (!selectedOrderId.value) return
   detailErrorMessage.value = ''
   try {
-    const res = await fetch(
-      `/api/client-order-status?orderId=${encodeURIComponent(selectedOrderId.value)}`,
-      {
-        method: 'GET',
-        headers: requestHeaders(),
-      },
-    )
-    if (!res.ok) {
-      const errJson = (await res.json().catch(() => null)) as any
-      throw new Error(errJson?.statusMessage || errJson?.message || 'Не удалось загрузить статус заказа')
+    const fetchDetail = async () => {
+      const res = await fetch(
+        `/api/client-order-status?orderId=${encodeURIComponent(selectedOrderId.value)}`,
+        {
+          method: 'GET',
+          headers: requestHeaders(),
+        },
+      )
+      if (!res.ok) {
+        const errJson = (await res.json().catch(() => null)) as any
+        throw new Error(errJson?.statusMessage || errJson?.message || 'Не удалось загрузить статус заказа')
+      }
+      return (await res.json()) as { ok: boolean; order?: ClientOrderStatusDetail }
     }
-    const json = (await res.json()) as { ok: boolean; order?: ClientOrderStatusDetail }
+    const json = await fetchDetail()
     if (!json?.ok || !json.order) {
       throw new Error('Некорректный ответ сервера')
     }
@@ -599,7 +607,34 @@ async function loadDetailOrderStatus() {
       }
     }
   } catch (e: any) {
-    detailErrorMessage.value = e?.message || 'Не удалось загрузить статус заказа'
+    const maybeUnauthorized = isUnauthorizedErrorMessage(e?.message)
+    if (isMessengerMiniApp.value && maybeUnauthorized && !messengerInitData.value) {
+      try {
+        await waitForMessengerInitData(4000)
+        const retryRes = await fetch(
+          `/api/client-order-status?orderId=${encodeURIComponent(selectedOrderId.value)}`,
+          {
+            method: 'GET',
+            headers: requestHeaders(),
+          },
+        )
+        if (!retryRes.ok) {
+          const retryErrJson = (await retryRes.json().catch(() => null)) as any
+          throw new Error(retryErrJson?.statusMessage || retryErrJson?.message || 'Не удалось загрузить статус заказа')
+        }
+        const retryJson = (await retryRes.json()) as { ok: boolean; order?: ClientOrderStatusDetail }
+        if (!retryJson?.ok || !retryJson.order) {
+          throw new Error('Некорректный ответ сервера')
+        }
+        detailOrder.value = retryJson.order
+        detailErrorMessage.value = ''
+        await loadServiceCalls()
+      } catch (retryError: any) {
+        detailErrorMessage.value = retryError?.message || 'Не удалось загрузить статус заказа'
+      }
+    } else {
+      detailErrorMessage.value = e?.message || 'Не удалось загрузить статус заказа'
+    }
   }
 }
 
@@ -694,7 +729,7 @@ onMounted(async () => {
       await loadFestivalEligibility()
     }
   } catch (error: any) {
-    const maybeUnauthorized = String(error?.message || '').toLowerCase().includes('unauthorized')
+    const maybeUnauthorized = isUnauthorizedErrorMessage(error?.message)
     if (isMessengerMiniApp.value && maybeUnauthorized && !messengerInitData.value) {
       try {
         await waitForMessengerInitData(4000)
