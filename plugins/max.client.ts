@@ -2,11 +2,44 @@ import { setOrderContinuationHint } from '~/composables/useTelegram'
 
 const MAX_BRIDGE_TOKEN_CACHE_KEY = 'teleshop_max_bridge_token'
 
+function firstNonEmpty(values: Array<unknown>): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
+}
+
+function readStartParamFromInitData(wa: any): string {
+  try {
+    const fromUnsafe = firstNonEmpty([
+      wa?.initDataUnsafe?.start_param,
+      wa?.initDataUnsafe?.startapp,
+      wa?.initDataUnsafe?.tgWebAppStartParam,
+    ])
+    if (fromUnsafe) return fromUnsafe
+
+    const rawInitData = typeof wa?.initData === 'string' ? wa.initData.trim() : ''
+    if (!rawInitData) return ''
+    const parsed = new URLSearchParams(rawInitData)
+    return firstNonEmpty([
+      parsed.get('start_param'),
+      parsed.get('startapp'),
+      parsed.get('tgWebAppStartParam'),
+    ])
+  } catch {
+    return ''
+  }
+}
+
 function readStartParamFromLocation(): string {
   if (!process.client) return ''
   try {
     const search = new URLSearchParams(window.location.search)
-    const fromSearch = search.get('startapp') || search.get('start_param') || ''
+    const fromSearch = firstNonEmpty([
+      search.get('startapp'),
+      search.get('start_param'),
+      search.get('tgWebAppStartParam'),
+    ])
     if (fromSearch.trim()) return fromSearch.trim()
 
     const hashRaw = window.location.hash.startsWith('#')
@@ -14,7 +47,11 @@ function readStartParamFromLocation(): string {
       : window.location.hash
     if (!hashRaw) return ''
     const hashParams = new URLSearchParams(hashRaw)
-    const fromHash = hashParams.get('startapp') || hashParams.get('start_param') || ''
+    const fromHash = firstNonEmpty([
+      hashParams.get('startapp'),
+      hashParams.get('start_param'),
+      hashParams.get('tgWebAppStartParam'),
+    ])
     return fromHash.trim()
   } catch {
     return ''
@@ -46,7 +83,10 @@ function runMaxCartBridge() {
   if (typeof wa.ready === 'function') wa.ready()
 
   const cartStore = useCartStore()
-  const startParam = String(wa.initDataUnsafe?.start_param || readStartParamFromLocation()).trim()
+  const startParam = firstNonEmpty([
+    readStartParamFromInitData(wa),
+    readStartParamFromLocation(),
+  ])
   if (!startParam) return
   if (isStartParamAlreadyHandled(startParam)) return
 

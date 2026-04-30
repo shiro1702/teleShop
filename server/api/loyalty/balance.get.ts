@@ -6,7 +6,8 @@ import { resolveCustomerProfileId } from '~/server/utils/customerProfile'
 import {
   getMaxBotTokenForShop,
   getMessengerInitDataFromEvent,
-  validateWebAppInitData,
+  uniqueNonEmptyTokens,
+  validateWebAppInitDataAnyToken,
 } from '~/server/utils/messengerInitData'
 
 export default defineEventHandler(async (event) => {
@@ -43,8 +44,20 @@ export default defineEventHandler(async (event) => {
         maxMiniAppBotToken: config.maxMiniAppBotToken as string | undefined,
         maxApiToken: config.maxApiToken as string | undefined,
       })
+      const telegramCandidateTokens = uniqueNonEmptyTokens([
+        botTokenFromShop,
+        botToken,
+        config.botToken as string | undefined,
+      ])
+      const maxCandidateTokens = uniqueNonEmptyTokens([
+        typeof integrationKeys.max_bot_token === 'string' ? integrationKeys.max_bot_token : undefined,
+        config.maxMiniAppBotToken as string | undefined,
+        config.maxApiToken as string | undefined,
+        maxBotToken,
+      ])
       const isValidMessengerUser =
-        !!validateWebAppInitData(initData, botToken) || !!validateWebAppInitData(initData, maxBotToken)
+        !!validateWebAppInitDataAnyToken(initData, telegramCandidateTokens)
+        || !!validateWebAppInitDataAnyToken(initData, maxCandidateTokens)
       if (isValidMessengerUser) {
         return { ok: true, balance: 0 }
       }

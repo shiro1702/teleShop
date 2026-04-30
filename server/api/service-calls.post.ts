@@ -12,7 +12,8 @@ import { getOrganizationSettings } from '~/server/utils/organizationStyle'
 import {
   getMaxBotTokenForShop,
   getMessengerInitDataFromEvent,
-  validateWebAppInitData,
+  uniqueNonEmptyTokens,
+  validateWebAppInitDataAnyToken,
 } from '~/server/utils/messengerInitData'
 
 type Body = {
@@ -56,13 +57,28 @@ export default defineEventHandler(async (event) => {
   const client = await serverSupabaseServiceRole(event)
   const profileId = await resolveCustomerProfileId(event, botToken).catch(() => '')
   const initData = getMessengerInitDataFromEvent(event)
-  const telegramUserId = initData ? validateWebAppInitData(initData, botToken)?.id ?? null : null
+  const telegramCandidateTokens = uniqueNonEmptyTokens([
+    typeof tenant?.telegramBotToken === 'string' ? tenant.telegramBotToken : undefined,
+    botToken,
+    config.botToken as string | undefined,
+  ])
+  const telegramUserId = initData
+    ? validateWebAppInitDataAnyToken(initData, telegramCandidateTokens)?.id ?? null
+    : null
   const tenantIntegrationKeys = (event.context?.tenant as { integrationKeys?: Record<string, unknown> } | undefined)?.integrationKeys
   const maxMiniToken = getMaxBotTokenForShop(tenantIntegrationKeys, {
     maxMiniAppBotToken: config.maxMiniAppBotToken as string | undefined,
     maxApiToken: config.maxApiToken as string | undefined,
   })
-  const maxUserId = initData && maxMiniToken ? String(validateWebAppInitData(initData, maxMiniToken)?.id || '').trim() : ''
+  const maxCandidateTokens = uniqueNonEmptyTokens([
+    typeof tenantIntegrationKeys?.max_bot_token === 'string' ? tenantIntegrationKeys.max_bot_token : undefined,
+    config.maxMiniAppBotToken as string | undefined,
+    config.maxApiToken as string | undefined,
+    maxMiniToken,
+  ])
+  const maxUserId = initData
+    ? String(validateWebAppInitDataAnyToken(initData, maxCandidateTokens)?.id || '').trim()
+    : ''
   let fallbackProfileId = ''
   if (!profileId && maxUserId) {
     const { data: maxProfile } = await client

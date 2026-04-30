@@ -569,7 +569,7 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
           try {
             const customerBridgeToken = await createOrderBridgeToken(event, input.tenantContext.shopId, input.orderContext.orderId, 'customer')
             const customerMaxMiniAppUrl = customerBridgeToken && maxBotUrl
-              ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(customerBridgeToken)}`
+              ? `${maxBotUrl}${maxBotUrl.includes('?') ? '&' : '?'}startapp=${encodeURIComponent(customerBridgeToken)}&start_param=${encodeURIComponent(customerBridgeToken)}`
               : ''
             const maxAttachments: Array<Record<string, unknown>> = []
             const buttons: Array<Array<Record<string, string>>> = []

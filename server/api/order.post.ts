@@ -29,7 +29,8 @@ import { enqueueQuickRestoOrderOutbox, getQuickRestoClient } from '~/server/util
 import { enqueueIikoOrderOutbox, getIikoClient } from '~/server/utils/iiko'
 import {
   getMaxBotTokenForShop,
-  validateWebAppInitData,
+  uniqueNonEmptyTokens,
+  validateWebAppInitDataAnyToken,
   type WebAppInitUser,
 } from '~/server/utils/messengerInitData'
 
@@ -301,7 +302,9 @@ export default defineEventHandler(async (event) => {
   const { shopId: tenantShopId, shop: tenantShop } = await requireTenantShop(event)
   const tenantIntegrationKeys = tenantShop.integration_keys ?? {}
   const tenant = event.context.tenant
-  const botToken = tenant?.telegramBotToken || (config.botToken as string)
+  const tenantBotToken = tenant?.telegramBotToken
+  const fallbackBotToken = config.botToken as string
+  const botToken = tenantBotToken || fallbackBotToken
   const tenantFulfillmentRaw = typeof tenantIntegrationKeys.fulfillment_types === 'string'
     ? tenantIntegrationKeys.fulfillment_types
     : (config.public?.fulfillmentTypes as string | undefined)
@@ -504,10 +507,15 @@ export default defineEventHandler(async (event) => {
         maxMiniAppBotToken: config.maxMiniAppBotToken as string | undefined,
         maxApiToken: config.maxApiToken as string | undefined,
       })
-      if (!maxTok) {
+      const maxCandidateTokens = uniqueNonEmptyTokens([
+        (tenantIntegrationKeys as Record<string, unknown>)?.max_bot_token as string | undefined,
+        config.maxMiniAppBotToken as string | undefined,
+        config.maxApiToken as string | undefined,
+      ])
+      if (!maxTok || maxCandidateTokens.length === 0) {
         throw createError({ statusCode: 500, message: 'Server config: MAX bot token missing' })
       }
-      const parsed = validateWebAppInitData(body.initData, maxTok)
+      const parsed = validateWebAppInitDataAnyToken(body.initData, maxCandidateTokens)
       if (!parsed) {
         throw createError({ statusCode: 401, message: 'Invalid initData' })
       }
@@ -531,7 +539,8 @@ export default defineEventHandler(async (event) => {
       maxConversationId = typeof rawConv === 'string' && rawConv.trim() ? rawConv.trim() : null
       customerTelegramIdForInsert = null
     } else {
-      const parsed = validateWebAppInitData(body.initData, botToken)
+      const telegramCandidateTokens = uniqueNonEmptyTokens([tenantBotToken, fallbackBotToken])
+      const parsed = validateWebAppInitDataAnyToken(body.initData, telegramCandidateTokens)
       if (!parsed) {
         throw createError({ statusCode: 401, message: 'Invalid initData' })
       }
