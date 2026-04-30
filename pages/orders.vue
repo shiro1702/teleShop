@@ -374,6 +374,8 @@ type ClientOrderStatusDetail = {
   timeline: Array<{ at: string; label: string }>
 }
 
+const activeOrderStatuses = new Set(['new', 'in_progress', 'ready_for_pickup', 'out_for_delivery'])
+
 const detailErrorMessage = ref('')
 const detailOrder = ref<ClientOrderStatusDetail | null>(null)
 const serviceCallSubmitting = ref(false)
@@ -598,6 +600,7 @@ async function loadDetailOrderStatus() {
       throw new Error('Некорректный ответ сервера')
     }
     detailOrder.value = json.order
+    syncListOrderWithDetail(json.order)
     await loadServiceCalls()
     const st = (json.order.status || '').toLowerCase()
     if (st === 'cancelled' || st === 'handed_to_customer' || st === 'done') {
@@ -627,6 +630,7 @@ async function loadDetailOrderStatus() {
           throw new Error('Некорректный ответ сервера')
         }
         detailOrder.value = retryJson.order
+        syncListOrderWithDetail(retryJson.order)
         detailErrorMessage.value = ''
         await loadServiceCalls()
       } catch (retryError: any) {
@@ -636,6 +640,23 @@ async function loadDetailOrderStatus() {
       detailErrorMessage.value = e?.message || 'Не удалось загрузить статус заказа'
     }
   }
+}
+
+function syncListOrderWithDetail(detail: ClientOrderStatusDetail) {
+  const current = data.value?.items || []
+  if (!current.length) return
+  const next = current.map((item: ClientOrder) => {
+    if (item.id !== detail.id) return item
+    const normalizedStatus = (detail.status || '').toLowerCase()
+    return {
+      ...item,
+      status: normalizedStatus || item.status,
+      total: Number.isFinite(detail.total) ? detail.total : item.total,
+      restaurantName: detail.restaurantName || item.restaurantName,
+      isActive: activeOrderStatuses.has(normalizedStatus),
+    }
+  })
+  data.value = { ...(data.value || { ok: true, items: [] }), items: next }
 }
 
 function serviceCallTypeLabel(type: string) {
