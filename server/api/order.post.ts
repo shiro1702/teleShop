@@ -79,14 +79,15 @@ type PromoBreakdown = {
   subtotalAfterPromo: number
 }
 
-function isMissingMaxConversationIdError(error: any): boolean {
+function isMissingProfileColumnError(error: any, column: string): boolean {
   const text = String(
     error?.message
     || error?.details
     || error?.hint
     || '',
   ).toLowerCase()
-  return text.includes('max_conversation_id') && (text.includes('column') || text.includes('schema cache'))
+  const col = column.toLowerCase()
+  return text.includes(col) && (text.includes('column') || text.includes('schema cache'))
 }
 
 function buildOrderMessage(
@@ -384,23 +385,45 @@ export default defineEventHandler(async (event) => {
   const serviceClient = await serverSupabaseServiceRole(event)
 
   async function loadProfileForOrder(profileId: string) {
-    const full = await serviceClient
-      .from('profiles')
-      .select('telegram_id, max_user_id, max_conversation_id')
-      .eq('id', profileId)
-      .maybeSingle()
-    if (!full.error) return full
-    if (!isMissingMaxConversationIdError(full.error)) return full
-    const fallback = await serviceClient
-      .from('profiles')
-      .select('telegram_id, max_user_id')
-      .eq('id', profileId)
-      .maybeSingle()
+    const attempts = [
+      ['telegram_id', 'max_user_id', 'max_conversation_id'],
+      ['telegram_id', 'max_user_id'],
+      ['telegram_id'],
+      ['max_user_id', 'max_conversation_id'],
+      ['max_user_id'],
+      ['max_conversation_id'],
+      [] as string[],
+    ]
+
+    for (const columns of attempts) {
+      const selectExpr = columns.length ? columns.join(', ') : 'id'
+      const result = await serviceClient
+        .from('profiles')
+        .select(selectExpr)
+        .eq('id', profileId)
+        .maybeSingle()
+
+      if (!result.error) {
+        if (!result.data) return result
+        const row = result.data as Record<string, unknown>
+        return {
+          data: {
+            ...row,
+            telegram_id: columns.includes('telegram_id') ? row.telegram_id ?? null : null,
+            max_user_id: columns.includes('max_user_id') ? row.max_user_id ?? null : null,
+            max_conversation_id: columns.includes('max_conversation_id') ? row.max_conversation_id ?? null : null,
+          },
+          error: null,
+        }
+      }
+
+      const missingColumn = columns.find((column) => isMissingProfileColumnError(result.error, column))
+      if (!missingColumn) return result
+    }
+
     return {
-      data: fallback.data
-        ? { ...(fallback.data as any), max_conversation_id: null }
-        : fallback.data,
-      error: fallback.error,
+      data: null,
+      error: { message: 'Failed to read profile: no compatible column set on profiles' },
     }
   }
 
