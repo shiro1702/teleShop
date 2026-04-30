@@ -1,6 +1,7 @@
 import { computed } from 'vue'
 
 const BRIDGE_CONTINUATION_KEY = 'teleshop_order_continuation'
+const MESSENGER_INIT_DATA_CACHE_KEY = 'teleshop_messenger_init_data'
 
 export type MessengerClientChannel = 'web' | 'telegram_mini' | 'max_mini'
 export type OrderContinuationHint = 'web_to_telegram' | 'web_to_max' | null
@@ -36,6 +37,27 @@ export function setOrderContinuationHint(hint: OrderContinuationHint) {
 
 export function useTelegram() {
   const isClient = process.client
+
+  function readCachedInitData(): string {
+    if (!isClient) return ''
+    try {
+      const raw = sessionStorage.getItem(MESSENGER_INIT_DATA_CACHE_KEY) || ''
+      return raw.trim()
+    } catch {
+      return ''
+    }
+  }
+
+  function cacheInitData(value: string) {
+    if (!isClient) return
+    const trimmed = value.trim()
+    if (!trimmed) return
+    try {
+      sessionStorage.setItem(MESSENGER_INIT_DATA_CACHE_KEY, trimmed)
+    } catch {
+      // ignore storage errors
+    }
+  }
 
   function readInitDataFromUrl(): string {
     if (!isClient) return ''
@@ -107,8 +129,16 @@ export function useTelegram() {
 
   const messengerInitData = computed(() => {
     const fromBridge = messengerWebApp.value?.initData ?? ''
-    if (fromBridge) return fromBridge
-    return readInitDataFromUrl()
+    if (fromBridge) {
+      cacheInitData(fromBridge)
+      return fromBridge
+    }
+    const fromUrl = readInitDataFromUrl()
+    if (fromUrl) {
+      cacheInitData(fromUrl)
+      return fromUrl
+    }
+    return readCachedInitData()
   })
 
   /** Заголовки для API: тот же initData, legacy-имя + явный алиас. */

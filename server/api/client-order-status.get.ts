@@ -6,6 +6,11 @@ import {
   normalizeDashboardStatus,
   type TimelineEntry,
 } from '~/server/utils/dashboardOrders'
+import {
+  getMaxBotTokenForShop,
+  getMessengerInitDataFromEvent,
+  validateWebAppInitData,
+} from '~/server/utils/messengerInitData'
 import { resolveCustomerProfileId } from '~/server/utils/customerProfile'
 
 export default defineEventHandler(async (event: H3Event) => {
@@ -33,7 +38,16 @@ export default defineEventHandler(async (event: H3Event) => {
   }
 
   const profileId = await resolveCustomerProfileId(event, botToken).catch(() => '')
-  if (!profileId) {
+  const initData = getMessengerInitDataFromEvent(event)
+  const telegramUserId = initData ? validateWebAppInitData(initData, botToken)?.id ?? null : null
+  const tenantKeys = (tenant as { integrationKeys?: Record<string, unknown> } | undefined)?.integrationKeys
+  const maxToken = getMaxBotTokenForShop(tenantKeys, {
+    maxMiniAppBotToken: config.maxMiniAppBotToken as string | undefined,
+    maxApiToken: config.maxApiToken as string | undefined,
+  })
+  const maxUserId = initData && maxToken ? String(validateWebAppInitData(initData, maxToken)?.id || '').trim() : ''
+  const hasMessengerIdentity = telegramUserId != null || !!maxUserId
+  if (!profileId && !hasMessengerIdentity) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
@@ -58,7 +72,22 @@ export default defineEventHandler(async (event: H3Event) => {
     .eq('id', orderId)
     .eq('shop_id', tenantShopId)
 
-  query = query.eq('customer_profile_id', profileId)
+  if (profileId) {
+    query = query.eq('customer_profile_id', profileId)
+  } else if (telegramUserId != null) {
+    query = query.eq('customer_telegram_id', telegramUserId)
+  } else if (maxUserId) {
+    const { data: maxProfile } = await client
+      .from('profiles')
+      .select('id')
+      .eq('max_user_id', maxUserId)
+      .maybeSingle()
+    const maxProfileId = maxProfile?.id ? String(maxProfile.id) : ''
+    if (!maxProfileId) {
+      throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+    }
+    query = query.eq('customer_profile_id', maxProfileId)
+  }
 
   const { data, error } = await query.maybeSingle()
   if (error) {
