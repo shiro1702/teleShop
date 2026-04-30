@@ -517,6 +517,7 @@ const festivalPlace = computed(() => {
 })
 const festivalStoryViewerOpen = ref(false)
 const festivalStoryViewerCampaign = ref<StoryCampaignDto | null>(null)
+const userModeTouched = ref(false)
 const festivalLiveUgc = ref<Array<{
   id: string
   kind: 'story' | 'video_review'
@@ -953,6 +954,7 @@ function persistCityMode(mode: 'delivery' | 'pickup' | 'dine-in') {
 }
 
 function selectListMode(mode: 'delivery' | 'pickup' | 'dine-in') {
+  userModeTouched.value = true
   listMode.value = mode
   // Пишем сразу, чтобы переход в ресторан после клика не терял выбор из-за отложенного watch.
   persistCityMode(mode)
@@ -989,7 +991,10 @@ function restoreListMode(list: ShopItem[]) {
     return
   }
   if (!list.length) {
-    listMode.value = 'delivery'
+    // Пока список не загружен, не перетираем ручной выбор пользователя.
+    return
+  }
+  if (userModeTouched.value && modeAllowed(listMode.value, list)) {
     return
   }
   if (typeof window === 'undefined') {
@@ -1019,4 +1024,8 @@ watch(shops, (list: ShopItem[]) => {
 watch(shops, (list: ShopItem[]) => {
   restoreListMode(list)
 }, { immediate: true })
+
+watch(citySlug, () => {
+  userModeTouched.value = false
+})
 </script>
