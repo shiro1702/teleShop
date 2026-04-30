@@ -70,6 +70,12 @@ export function isOpenNowBySchedule(
   timezone: string,
   now = new Date(),
 ): { isOpen: boolean; dayKey: WorkingDayKey; nowHHMM: string } {
+  // Если расписание пустое или не передано, считаем открытым по умолчанию
+  if (!workingHours || Object.keys(workingHours).length === 0) {
+    const local = getTimezoneLocalParts(now, timezone)
+    return { isOpen: true, dayKey: local.dayKey, nowHHMM: local.hhmm }
+  }
+
   const local = getTimezoneLocalParts(now, timezone)
   const row = workingHours[local.dayKey]
   if (!row || !row.isOpen) {
