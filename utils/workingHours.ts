@@ -20,7 +20,7 @@ const DAY_INDEX_TO_KEY: Record<number, WorkingDayKey> = {
 const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
 
 export function normalizeWeeklyWorkingHours(input: unknown, fallback: WeeklyWorkingHours): WeeklyWorkingHours {
-  const source = input && typeof input === 'object' ? input as Record<string, any> : {}
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, any> : {}
   const out = {} as WeeklyWorkingHours
   for (const day of WORKING_DAY_KEYS) {
     const row = source[day] && typeof source[day] === 'object' ? source[day] : {}
