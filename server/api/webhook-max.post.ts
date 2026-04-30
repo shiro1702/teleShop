@@ -2,6 +2,7 @@ import { createError, defineEventHandler, getHeader, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { buildAuthSiteLinkUrl, parseAuthLinkTokenUuidFromText } from '~/server/utils/authSiteLink'
 import { applyFestivalModerationAction } from '~/server/utils/festivalUgcModeration'
+import { createServiceCallEvent, getStaffResponseText, mapActionToStatus, sendMax } from '~/server/utils/serviceCalls'
 
 type MaxMessage = {
   sender?: { user_id?: number | string; is_bot?: boolean }
@@ -108,6 +109,18 @@ function extractMaxBindTokenFromUpdate(update: MaxUpdate, messageText: string): 
   const dump = JSON.stringify(update)
   const match = /(?:^|["\s:/])\/?bindmax(?:@[\w.-]+)?[\s_]+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(dump)
   return match?.[1]?.trim() || null
+}
+
+function parseMaxServiceCommand(text: string): { serviceCallId: string; action: 'soon' | 'on_my_way' | 'done' } | null {
+  const parts = text.trim().split(/\s+/)
+  if (parts.length < 3) return null
+  const cmd = parts[0].toLowerCase()
+  if (cmd !== '/sc' && cmd !== 'sc') return null
+  const serviceCallId = parts[1]?.trim()
+  const actionRaw = parts[2]?.trim().toLowerCase()
+  if (!serviceCallId) return null
+  if (actionRaw !== 'soon' && actionRaw !== 'on_my_way' && actionRaw !== 'done') return null
+  return { serviceCallId, action: actionRaw }
 }
 
 function extractMaxConversationId(update: MaxUpdate): string | null {
@@ -671,6 +684,112 @@ export default defineEventHandler(async (event) => {
       tokenPrefix: bindToken.slice(0, 8),
     })
     return { ok: true }
+  }
+
+  if (actorUserId != null) {
+    const serviceCommand = parseMaxServiceCommand(messageTextRaw)
+    if (serviceCommand) {
+      const conversationId = extractMaxConversationId(body)
+      if (!conversationId) {
+        await sendMaxDmPlain({
+          baseUrl: maxBaseUrl,
+          token: maxToken,
+          userId: actorUserId,
+          text: 'Команду /sc нужно отправлять из рабочего MAX-группового чата.',
+        }).catch(() => {})
+        return { ok: true }
+      }
+      const supabase = await serverSupabaseServiceRole(event)
+      const { data: callRow } = await supabase
+        .from('service_calls')
+        .select('id,shop_id,restaurant_id,order_id,customer_telegram_id,customer_max_user_id,customer_max_conversation_id')
+        .eq('id', serviceCommand.serviceCallId)
+        .maybeSingle()
+      if (!callRow) {
+        await sendMaxDmPlain({
+          baseUrl: maxBaseUrl,
+          token: maxToken,
+          userId: actorUserId,
+          text: 'Service call не найден.',
+        }).catch(() => {})
+        return { ok: true }
+      }
+
+      const externalUserId = String(actorUserId)
+      const { data: binding } = await supabase
+        .from('restaurant_staff_bot_bindings')
+        .select('id,display_name')
+        .eq('shop_id', (callRow as any).shop_id)
+        .eq('restaurant_id', (callRow as any).restaurant_id)
+        .eq('channel', 'max')
+        .eq('external_user_id', externalUserId)
+        .maybeSingle()
+
+      const nowIso = new Date().toISOString()
+      const nextStatus = mapActionToStatus(serviceCommand.action)
+      const { data: currentCall } = await supabase
+        .from('service_calls')
+        .select('first_response_at')
+        .eq('id', serviceCommand.serviceCallId)
+        .maybeSingle()
+      const patch: Record<string, unknown> = { status: nextStatus, updated_at: nowIso }
+      if (!(currentCall as any)?.first_response_at) patch.first_response_at = nowIso
+      if (nextStatus === 'resolved') patch.resolved_at = nowIso
+      await supabase.from('service_calls').update(patch).eq('id', serviceCommand.serviceCallId)
+
+      const responseText = getStaffResponseText(serviceCommand.action)
+      const actorName = typeof (binding as any).display_name === 'string' && (binding as any).display_name.trim()
+        ? String((binding as any).display_name).trim()
+        : `Сотрудник ${externalUserId}`
+
+      await createServiceCallEvent(event, {
+        serviceCallId: serviceCommand.serviceCallId,
+        shopId: String((callRow as any).shop_id),
+        restaurantId: String((callRow as any).restaurant_id),
+        orderId: (callRow as any).order_id ? String((callRow as any).order_id) : null,
+        eventType: 'staff_response',
+        eventStatus: nextStatus,
+        channel: 'max',
+        actorBindingId: (binding as any)?.id ? String((binding as any).id) : null,
+        actorExternalUserId: externalUserId,
+        actorDisplayName: actorName,
+        message: responseText,
+        extraPayload: { action: serviceCommand.action, conversationId },
+      })
+
+      const customerText = `Ответ персонала: ${responseText}`
+      const botToken = String((config.botToken as string) || '').trim()
+      const customerTelegramIdRaw = Number((callRow as any).customer_telegram_id)
+      const customerTelegramId = Number.isFinite(customerTelegramIdRaw) && customerTelegramIdRaw > 0 ? customerTelegramIdRaw : null
+      if (customerTelegramId && botToken) {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: customerTelegramId, text: customerText }),
+        }).catch(() => {})
+      }
+      const customerMaxConversationId = typeof (callRow as any).customer_max_conversation_id === 'string'
+        ? String((callRow as any).customer_max_conversation_id).trim()
+        : ''
+      const customerMaxUserId = typeof (callRow as any).customer_max_user_id === 'string'
+        ? String((callRow as any).customer_max_user_id).trim()
+        : ''
+      if (customerMaxConversationId || customerMaxUserId) {
+        await sendMax(maxBaseUrl, maxToken, {
+          conversationId: customerMaxConversationId || undefined,
+          userId: customerMaxConversationId ? undefined : customerMaxUserId || undefined,
+          text: customerText,
+        }).catch(() => {})
+      }
+
+      await sendMaxDmPlain({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        userId: actorUserId,
+        text: `Ответ отправлен: ${responseText}`,
+      }).catch(() => {})
+      return { ok: true }
+    }
   }
 
   if (actorUserId != null && /^ugc\s+/i.test(messageTextRaw)) {

@@ -19,6 +19,7 @@ type TenantState = {
   ogrn: string | null
   organizationTimezone: string | null
   organizationWorkingHours: Record<string, any> | null
+  organizationDineInStaffButtons: Record<string, any> | null
   effectiveWorkingHours: Record<string, any> | null
 }
 
@@ -161,6 +162,7 @@ export function useTenant() {
     ogrn: null,
     organizationTimezone: null,
     organizationWorkingHours: null,
+    organizationDineInStaffButtons: null,
     effectiveWorkingHours: null,
   }))
 
@@ -185,6 +187,7 @@ export function useTenant() {
     state.value.ogrn = typeof payload.shop?.ogrn === 'string' ? payload.shop.ogrn : null
     state.value.organizationTimezone = getStringSetting(payload.uiSettings ?? null, 'organization_timezone')
     state.value.organizationWorkingHours = getObjectSetting(payload.uiSettings ?? null, 'organization_working_hours')
+    state.value.organizationDineInStaffButtons = getObjectSetting(payload.uiSettings ?? null, 'organization_dine_in_staff_buttons')
     state.value.effectiveWorkingHours = getObjectSetting(payload.uiSettings ?? null, 'effective_working_hours')
     state.value.loaded = true
     state.value.loading = false
@@ -359,6 +362,7 @@ export function useTenant() {
       state.value.ogrn = null
       state.value.organizationTimezone = null
       state.value.organizationWorkingHours = null
+      state.value.organizationDineInStaffButtons = null
       state.value.effectiveWorkingHours = null
       state.value.theme = {}
       try {

@@ -1,5 +1,17 @@
 <template>
   <div class="min-h-screen" :style="pageStyle">
+    <div class="pointer-events-none fixed inset-x-0 top-20 z-[95] mx-auto flex w-full max-w-md flex-col gap-2 px-4">
+      <TransitionGroup name="toast">
+        <div
+          v-for="toast in serviceCallToasts"
+          :key="toast.id"
+          class="pointer-events-auto rounded-lg border px-3 py-2 text-sm shadow-lg"
+          :class="toast.kind === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'"
+        >
+          {{ toast.message }}
+        </div>
+      </TransitionGroup>
+    </div>
     <StoriesTopBar
       v-if="storiesLoading || storiesTopBar.length"
       :campaigns="storiesTopBar"
@@ -271,26 +283,44 @@
         </button>
       </div>
 
-      <button
-        type="button"
-        class="flex w-full items-center justify-between gap-3 rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary shadow-md"
-        @click="goToCheckout"
-      >
-        <div class="flex items-center gap-2">
-          <svg class="h-5 w-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-          <span>Корзина</span>
+      <div class="relative flex items-center gap-2">
+        <button
+          type="button"
+          class="flex w-full items-center justify-between gap-3 rounded-lg bg-primary px-4 py-3 text-base font-medium text-on-primary shadow-md"
+          @click="goToCheckout"
+        >
+          <div class="flex items-center gap-2">
+            <svg class="h-5 w-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <span>Корзина</span>
+          </div>
+          <div v-if="cartStore.count > 0" class="flex items-center gap-2">
+            <span class="text-sm text-orange-100">
+              {{ cartStore.count }} шт.
+            </span>
+            <span class="text-sm font-semibold">
+              {{ formatPrice(cartStore.total) }}
+            </span>
+          </div>
+        </button>
+        <button
+          v-if="showCatalogServiceCallButton"
+          type="button"
+          class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-lg text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="serviceCallSubmitting"
+          aria-label="Позвать персонал"
+          @click="openCatalogServiceCallsModal"
+        >
+          <span aria-hidden="true">👋</span>
+        </button>
+        <div
+          v-if="showCatalogServiceCallButton && showCatalogServiceCallOnboarding"
+          class="absolute -top-14 right-0 z-20 w-44 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 shadow-sm"
+        >
+          Нажмите, чтобы вызвать официанта или кальянщика.
         </div>
-        <div v-if="cartStore.count > 0" class="flex items-center gap-2">
-          <span class="text-sm text-orange-100">
-            {{ cartStore.count }} шт.
-          </span>
-          <span class="text-sm font-semibold">
-            {{ formatPrice(cartStore.total) }}
-          </span>
-        </div>
-      </button>
+      </div>
     </div>
 
     <!-- Модалка с информацией о товаре и модификаторами -->
@@ -460,6 +490,79 @@
       @campaign-change="viewerCampaign = $event"
       @action="onStoryAction"
     />
+    <Teleport to="body">
+      <div v-if="showCatalogServiceCallsModal" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40" @click="closeCatalogServiceCallsModal" />
+        <div class="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
+          <button
+            type="button"
+            class="absolute right-3 top-3 z-10 rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+            aria-label="Закрыть"
+            @click="closeCatalogServiceCallsModal"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <h3 class="text-base font-semibold text-gray-900">Сервис в зале</h3>
+          <p class="mt-1 text-sm text-gray-600">
+            Выберите действие для вызова персонала.
+          </p>
+            <div class="mt-3 space-y-2">
+              <label class="block text-sm">
+                <span class="mb-1 block text-gray-600">Филиал</span>
+                <select
+                  v-model="catalogServiceCallDraftRestaurantId"
+                  class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Выберите филиал</option>
+                  <option v-for="branch in restaurantOps" :key="branch.id" :value="branch.id">
+                    Филиал {{ branch.id.slice(0, 8) }}
+                  </option>
+                </select>
+              </label>
+              <label class="block text-sm">
+                <span class="mb-1 block text-gray-600">Столик (необязательно)</span>
+                <input
+                  v-model.trim="catalogServiceCallDraftTableNumber"
+                  type="text"
+                  placeholder="Например: 12"
+                  class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+              </label>
+            </div>
+          <div class="mt-4 space-y-2">
+            <button
+              v-if="catalogServiceCallTypeEnabled('call_waiter')"
+              type="button"
+              class="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-600 active:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                :disabled="serviceCallSubmitting || !catalogServiceCallDraftRestaurantId"
+              @click="triggerCatalogServiceCall('call_waiter')"
+            >
+              Позвать официанта
+            </button>
+            <button
+              v-if="catalogServiceCallTypeEnabled('call_hookah')"
+              type="button"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="serviceCallSubmitting || !catalogServiceCallDraftRestaurantId"
+              @click="triggerCatalogServiceCall('call_hookah')"
+            >
+              Позвать кальянщика
+            </button>
+            <button
+              v-if="catalogServiceCallTypeEnabled('request_bill')"
+              type="button"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="serviceCallSubmitting || !catalogServiceCallDraftRestaurantId"
+              @click="triggerCatalogServiceCall('request_bill')"
+            >
+              Счет
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -486,6 +589,7 @@ import StoryViewer from '../components/stories/StoryViewer.vue'
 import { useStories } from '../composables/useStories'
 import type { StoryCampaignDto, StorySlideDto } from '../types/stories'
 import { buildDefaultCartSelections, findProductById } from '../utils/storyCart'
+import { useTelegram } from '../composables/useTelegram'
 
 const cartStore = useCartStore()
 const { canUseMessengerStorage, setItem } = useMessengerStorage()
@@ -597,6 +701,14 @@ function onStoryAction(payload: { slide: StorySlideDto; actionType: string }) {
 const selectedProduct = ref<Product | null>(null)
 const showOrderSuccess = ref(false)
 const lastOrderId = ref<string | null>(null)
+const showCatalogServiceCallsModal = ref(false)
+const serviceCallSubmitting = ref(false)
+const catalogServiceCallDraftRestaurantId = ref('')
+const catalogServiceCallDraftTableNumber = ref('')
+const serviceCallToasts = ref<Array<{ id: number; kind: 'success' | 'error'; message: string }>>([])
+let serviceCallToastSeq = 0
+const catalogServiceCallOnboardingKey = 'catalog:service-call-onboarding:v1'
+const showCatalogServiceCallOnboarding = ref(false)
 const isCatalogLoading = ref(false)
 const tenantName = computed(() => tenant.value.shopName || 'Ресторан')
 const tenantLogoUrl = computed(() => tenant.value.logoLargeUrl || tenant.value.logoUrl || '/logo.webp')
@@ -675,6 +787,8 @@ type RestaurantOps = {
   supports_qr_menu?: boolean
   /** Витрина: org dine-in + филиал «в зале» (в т.ч. режим только просмотра меню). */
   supports_in_restaurant?: boolean
+  service_calls_enabled?: boolean
+  service_call_types?: string[]
 }
 
 const CHECKOUT_STORAGE_KEY = 'teleshop_checkout_state'
@@ -740,10 +854,46 @@ const hasDeliveryOption = computed(() => derivedAllowedFulfillmentTypes.value.in
 const hasPickupOption = computed(() => derivedAllowedFulfillmentTypes.value.includes('pickup'))
 const hasQrMenuOption = computed(() => derivedAllowedFulfillmentTypes.value.includes('qr-menu'))
 const showFulfillmentSelector = computed(() => derivedAllowedFulfillmentTypes.value.length > 1)
+const selectedRestaurantForCatalogService = computed(() => {
+  if (restaurantOps.value.length === 1) return restaurantOps.value[0]
+  const fromQuery = getCurrentRestaurantIdFromQuery()
+  if (fromQuery) {
+    const exact = restaurantOps.value.find((r) => r.id === fromQuery)
+    if (exact) return exact
+  }
+  // Fallback для витрины без branch_id: берем первый филиал,
+  // где включены сервисные вызовы в режиме "в ресторане".
+  const serviceEnabled = restaurantOps.value.find((r) =>
+    (r.supports_qr_menu === true || r.supports_in_restaurant === true)
+    && r.service_calls_enabled === true,
+  )
+  if (serviceEnabled) return serviceEnabled
+  // Последний fallback: первый филиал "в ресторане" (если флаг придет позже/частично).
+  return restaurantOps.value.find((r) => r.supports_qr_menu === true || r.supports_in_restaurant === true) ?? null
+})
+const showCatalogServiceCallButton = computed(() =>
+  selectedFulfillmentType.value === 'qr-menu'
+  && selectedRestaurantForCatalogService.value?.service_calls_enabled === true,
+)
+const catalogServiceCallTypes = computed<string[]>(() => {
+  const raw = selectedRestaurantForCatalogService.value?.service_call_types
+  if (!Array.isArray(raw)) return ['call_waiter', 'call_hookah', 'request_bill']
+  return raw.map((x) => String(x))
+})
+
+watch(showCatalogServiceCallButton, (enabled: boolean) => {
+  if (!enabled) {
+    showCatalogServiceCallOnboarding.value = false
+    return
+  }
+  if (typeof window === 'undefined') return
+  showCatalogServiceCallOnboarding.value = localStorage.getItem(catalogServiceCallOnboardingKey) !== '1'
+}, { immediate: true })
 
 const selectedRestaurantIdForCheckout = computed(() => {
   return restaurantOps.value.length === 1 ? restaurantOps.value[0].id : null
 })
+const { messengerInitData } = useTelegram()
 const citySlug = computed(() => {
   const raw = route.params.city_slug
   return typeof raw === 'string' && raw.trim() ? raw.trim() : null
@@ -816,6 +966,8 @@ async function persistCheckoutStateCloud(data: string) {
 
 function persistFulfillmentTypeToCheckout(next: FulfillmentType) {
   const existing = readCheckoutStateLocal() ?? {}
+  const tableSlug = readFirstQueryString('table_slug')
+  const tableNumber = readFirstQueryString('table_number') ?? readFirstQueryString('table')
   const nextState: Record<string, any> = {
     ...existing,
     fulfillmentType: next,
@@ -824,6 +976,8 @@ function persistFulfillmentTypeToCheckout(next: FulfillmentType) {
   if (typeof selectedRestaurantIdForCheckout.value === 'string' && selectedRestaurantIdForCheckout.value) {
     nextState.selectedRestaurantId = selectedRestaurantIdForCheckout.value
   }
+  if (tableSlug) nextState.tableSlug = tableSlug
+  if (tableNumber) nextState.tableNumber = tableNumber
 
   const payload = JSON.stringify(nextState)
   void persistCheckoutStateCloud(payload)
@@ -1149,10 +1303,79 @@ function goToCheckout() {
   // QR-ссылка должна “довозиться” до корзины, чтобы не заставлять пользователя
   // вручную выбирать филиал/ресторан.
   const branchId = readFirstQueryString('branch_id') ?? readFirstQueryString('restaurant_id')
+  const tableSlug = readFirstQueryString('table_slug')
+  const tableNumber = readFirstQueryString('table_number') ?? readFirstQueryString('table')
+  const nextQuery: Record<string, string> = { step: '1' }
+  if (branchId) nextQuery.branch_id = branchId
+  if (tableSlug) nextQuery.table_slug = tableSlug
+  if (tableNumber) nextQuery.table_number = tableNumber
   void router.push({
     path: tenantPath('/checkout'),
-    query: branchId ? { branch_id: branchId, step: '1' } : { step: '1' },
+    query: nextQuery,
   })
+}
+
+function catalogServiceCallTypeEnabled(type: 'call_waiter' | 'call_hookah' | 'request_bill') {
+  return catalogServiceCallTypes.value.includes(type)
+}
+
+function openCatalogServiceCallsModal() {
+  if (!showCatalogServiceCallButton.value) return
+  showCatalogServiceCallOnboarding.value = false
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(catalogServiceCallOnboardingKey, '1')
+  }
+  catalogServiceCallDraftRestaurantId.value = selectedRestaurantForCatalogService.value?.id || restaurantOps.value[0]?.id || ''
+  const tableNumber = readFirstQueryString('table_number') ?? readFirstQueryString('table')
+  catalogServiceCallDraftTableNumber.value = tableNumber || ''
+  showCatalogServiceCallsModal.value = true
+}
+
+function closeCatalogServiceCallsModal() {
+  showCatalogServiceCallsModal.value = false
+}
+
+async function triggerCatalogServiceCall(callType: 'call_waiter' | 'call_hookah' | 'request_bill') {
+  if (!showCatalogServiceCallButton.value || serviceCallSubmitting.value) return
+  if (!catalogServiceCallDraftRestaurantId.value) {
+    pushServiceCallToast('error', 'Выберите филиал', 3200)
+    return
+  }
+  serviceCallSubmitting.value = true
+  try {
+    const idempotencyKey = `catalog:${callType}:${Date.now()}`
+    const headers: Record<string, string> = {}
+    if (tenantKey.value) headers['x-shop-id'] = tenantKey.value
+    const tableSlug = readFirstQueryString('table_slug')
+    const tableNumber = (readFirstQueryString('table_number') ?? readFirstQueryString('table') ?? catalogServiceCallDraftTableNumber.value ?? '').trim()
+    const payload = await $fetch<{ ok: boolean }>('/api/service-calls', {
+      method: 'POST',
+      headers: Object.keys(headers).length ? headers : undefined,
+      body: {
+        restaurantId: catalogServiceCallDraftRestaurantId.value,
+        callType,
+        idempotencyKey,
+        tableSlug,
+        tableNumber: tableNumber || null,
+      },
+    })
+    if (!payload?.ok) throw new Error('Не удалось отправить запрос персоналу')
+    pushServiceCallToast('success', tableNumber ? `Вызов отправлен. Столик №${tableNumber}` : 'Запрос отправлен персоналу', 3200)
+  } catch (err: any) {
+    pushServiceCallToast('error', err?.data?.statusMessage || err?.message || 'Не удалось отправить запрос', 4200)
+  } finally {
+    serviceCallSubmitting.value = false
+  }
+}
+
+function pushServiceCallToast(kind: 'success' | 'error', message: string, durationMs = 2600) {
+  const text = (message || '').trim()
+  if (!text) return
+  const id = ++serviceCallToastSeq
+  serviceCallToasts.value = [...serviceCallToasts.value, { id, kind, message: text }]
+  setTimeout(() => {
+    serviceCallToasts.value = serviceCallToasts.value.filter((item: { id: number }) => item.id !== id)
+  }, durationMs)
 }
 
 function formatPrice(price: number) {
@@ -1180,6 +1403,14 @@ watch(tenantKey, () => {
   void loadCatalog()
   void loadRestaurantModes()
 })
+
+watch(
+  () => messengerInitData.value,
+  async (next: string, prev: string) => {
+    if (!next || next === prev) return
+    await loadRestaurantModes()
+  },
+)
 
 watch(
   () => [route.query.branch_id, route.query.restaurant_id] as const,
@@ -1306,5 +1537,15 @@ async function loadCityFestival() {
   .product-leave-to .max-w-md {
     transform: scale(0.95);
   }
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 </style>

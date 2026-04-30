@@ -51,6 +51,7 @@ export type OrganizationDineInHallMode = 'qr-menu-browse' | 'to-table' | 'pickup
 export type OrganizationDineInStaffButtons = {
   waiter: boolean
   hookah: boolean
+  requestBill: boolean
 }
 
 export type OrganizationOpsSettings = {

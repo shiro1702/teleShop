@@ -1,9 +1,37 @@
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 
 const BRIDGE_CONTINUATION_KEY = 'teleshop_order_continuation'
 
 export type MessengerClientChannel = 'web' | 'telegram_mini' | 'max_mini'
 export type OrderContinuationHint = 'web_to_telegram' | 'web_to_max' | null
+
+// Глобальный триггер для обновления computed-свойств после асинхронной загрузки скриптов
+const messengerScriptsLoadedTrigger = ref(0)
+
+// Функция для запуска поллинга загрузки скриптов
+function startMessengerScriptsPolling() {
+  if (!process.client) return
+  let attempts = 0
+  const interval = setInterval(() => {
+    attempts++
+    let updated = false
+    if (window.Telegram?.WebApp?.initData) {
+      updated = true
+    }
+    if (window.WebApp?.initData) {
+      updated = true
+    }
+    if (updated || attempts > 50) { // 5 секунд
+      messengerScriptsLoadedTrigger.value++
+      if (updated) clearInterval(interval)
+      if (attempts > 50) clearInterval(interval)
+    }
+  }, 100)
+}
+
+if (process.client) {
+  startMessengerScriptsPolling()
+}
 
 export function readOrderContinuationHint(): OrderContinuationHint {
   if (!process.client) return null
@@ -74,22 +102,46 @@ export function useTelegram() {
   }
 
   const isTelegram = computed(() => {
+    messengerScriptsLoadedTrigger.value
     if (!isClient) return false
     // @ts-ignore: Telegram WebApp может быть не объявлен
     const webApp = window.Telegram?.WebApp
-    return typeof webApp !== 'undefined' && !!webApp.initData
+    if (typeof webApp !== 'undefined' && !!webApp.initData) return true
+    
+    // Синхронная проверка по URL для предотвращения моргания UI
+    const search = new URLSearchParams(window.location.search)
+    const hashRaw = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
+    const hashParams = new URLSearchParams(hashRaw)
+    return search.has('tgWebAppData') || hashParams.has('tgWebAppData')
   })
 
   /** MAX мини-приложение: глобальный window.WebApp с initData (не пересекается с Telegram.WebApp). */
   const isMaxMiniApp = computed(() => {
+    messengerScriptsLoadedTrigger.value
     if (!isClient) return false
     if (window.Telegram?.WebApp?.initData) return false
-    return typeof window.WebApp !== 'undefined' && !!window.WebApp?.initData
+    if (typeof window.WebApp !== 'undefined' && !!window.WebApp?.initData) return true
+    
+    // Синхронная проверка по URL для предотвращения моргания UI
+    // Если есть initData, но нет tgWebAppData, считаем, что это MAX
+    const search = new URLSearchParams(window.location.search)
+    const hashRaw = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
+    const hashParams = new URLSearchParams(hashRaw)
+    const hasInitData = search.has('initData') || hashParams.has('initData')
+    const hasTgData = search.has('tgWebAppData') || hashParams.has('tgWebAppData')
+    return hasInitData && !hasTgData
   })
 
-  const isMessengerMiniApp = computed(() => isTelegram.value || isMaxMiniApp.value)
+  const isMessengerMiniApp = computed(() => {
+    messengerScriptsLoadedTrigger.value
+    if (!isClient) return false
+    if (isTelegram.value || isMaxMiniApp.value) return true
+    // Синхронная проверка по URL, чтобы избежать моргания UI до загрузки скриптов
+    return !!readInitDataFromUrl()
+  })
 
   const webApp = computed(() => {
+    messengerScriptsLoadedTrigger.value
     if (!isClient) return null
     // @ts-ignore: Telegram WebApp может быть не объявлен
     return window.Telegram?.WebApp ?? null
@@ -97,6 +149,7 @@ export function useTelegram() {
 
   /** Активный WebApp: Telegram или MAX — для initData и кросс-мессенджерного storage. */
   const messengerWebApp = computed(() => {
+    messengerScriptsLoadedTrigger.value
     if (!isClient) return null
     const tg = window.Telegram?.WebApp
     if (tg?.initData) return tg

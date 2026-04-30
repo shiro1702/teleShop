@@ -272,7 +272,7 @@
               </label>
             </div>
             <div v-if="settings.ops.dineInHallMode === 'to-table'" class="mt-3 rounded border border-gray-200 bg-white p-3">
-              <p class="text-sm font-medium text-gray-700">Кнопки для гостя (экран стола)</p>
+              <p class="text-sm font-medium text-gray-700">Глобально разрешенные сервисные вызовы (экран стола)</p>
               <label class="mt-2 flex items-center gap-2 text-sm text-gray-700">
                 <input v-model="settings.ops.dineInStaffButtons.waiter" type="checkbox" class="rounded border-gray-300" :disabled="isReadonly">
                 Позвать официанта
@@ -280,6 +280,10 @@
               <label class="mt-1 flex items-center gap-2 text-sm text-gray-700">
                 <input v-model="settings.ops.dineInStaffButtons.hookah" type="checkbox" class="rounded border-gray-300" :disabled="isReadonly">
                 Позвать кальянщика
+              </label>
+              <label class="mt-1 flex items-center gap-2 text-sm text-gray-700">
+                <input v-model="settings.ops.dineInStaffButtons.requestBill" type="checkbox" class="rounded border-gray-300" :disabled="isReadonly">
+                Выставить счет
               </label>
             </div>
           </div>
@@ -563,7 +567,7 @@ const settings = reactive<OrganizationSettings>({
     freeDeliveryFrom: 1000,
     fulfillmentTypes: ['delivery', 'pickup'],
     dineInHallMode: 'to-table',
-    dineInStaffButtons: { waiter: true, hookah: false },
+    dineInStaffButtons: { waiter: true, hookah: false, requestBill: true },
     orderAcceptanceMode: 'manual',
     ordersPaused: false,
     ordersPausedReason: '',
@@ -753,7 +757,7 @@ function fillSettings(next: OrganizationSettings) {
   settings.ops.deliveryFee = next.ops.deliveryFee ?? 150
   settings.ops.freeDeliveryFrom = next.ops.freeDeliveryFrom ?? 1000
   settings.ops.dineInHallMode = next.ops.dineInHallMode ?? 'to-table'
-  settings.ops.dineInStaffButtons = next.ops.dineInStaffButtons ?? { waiter: true, hookah: false }
+  settings.ops.dineInStaffButtons = next.ops.dineInStaffButtons ?? { waiter: true, hookah: false, requestBill: true }
 }
 
 function syncCuisineToSettings() {

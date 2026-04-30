@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
 
   let restaurantsQuery = client
     .from('restaurants')
-    .select('id,name,manager_notification_mode,manager_group_chat_id,manager_max_chat_id,manager_recipients')
+    .select('id,name,manager_notification_mode,manager_group_chat_id,manager_max_chat_id,manager_recipients,service_calls_enabled,service_call_types')
     .eq('shop_id', access.shopId)
     .order('created_at', { ascending: false })
   if (restaurantId) restaurantsQuery = restaurantsQuery.eq('id', restaurantId)
@@ -29,6 +29,31 @@ export default defineEventHandler(async (event) => {
 
   const rows = restaurants ?? []
   const pagedRows = rows.slice(0, pageSize)
+  const restaurantIds = pagedRows.map((row: any) => row.id).filter(Boolean)
+  let bindingsByRestaurant = new Map<string, Array<Record<string, unknown>>>()
+  if (restaurantIds.length) {
+    const { data: bindings } = await client
+      .from('restaurant_staff_bot_bindings')
+      .select('id,restaurant_id,channel,external_user_id,staff_role,display_name,is_active,updated_at')
+      .in('restaurant_id', restaurantIds)
+      .order('updated_at', { ascending: false })
+    const grouped = new Map<string, Array<Record<string, unknown>>>()
+    for (const row of bindings || []) {
+      const restaurantIdValue = String((row as any).restaurant_id || '')
+      if (!restaurantIdValue) continue
+      const current = grouped.get(restaurantIdValue) || []
+      current.push({
+        id: String((row as any).id),
+        channel: String((row as any).channel),
+        externalUserId: String((row as any).external_user_id || ''),
+        staffRole: String((row as any).staff_role || ''),
+        displayName: typeof (row as any).display_name === 'string' ? String((row as any).display_name) : '',
+        isActive: Boolean((row as any).is_active),
+      })
+      grouped.set(restaurantIdValue, current)
+    }
+    bindingsByRestaurant = grouped
+  }
 
   return {
     ok: true,
@@ -40,6 +65,9 @@ export default defineEventHandler(async (event) => {
       managerGroupChatId: row.manager_group_chat_id || '',
       managerMaxChatId: row.manager_max_chat_id || '',
       managerRecipients: Array.isArray(row.manager_recipients) ? row.manager_recipients : [],
+      serviceCallsEnabled: row.service_calls_enabled === true,
+      serviceCallTypes: Array.isArray(row.service_call_types) ? row.service_call_types : ['call_waiter', 'call_hookah', 'request_bill'],
+      staffBotBindings: bindingsByRestaurant.get(String(row.id)) || [],
     })),
     pagination: {
       page,

@@ -1,5 +1,17 @@
 <template>
   <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6" :style="pageStyle">
+    <div class="pointer-events-none fixed inset-x-0 top-20 z-[95] mx-auto flex w-full max-w-md flex-col gap-2 px-4">
+      <TransitionGroup name="toast">
+        <div
+          v-for="toast in serviceCallToasts"
+          :key="toast.id"
+          class="pointer-events-auto rounded-lg border px-3 py-2 text-sm shadow-lg"
+          :class="toast.kind === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'"
+        >
+          {{ toast.message }}
+        </div>
+      </TransitionGroup>
+    </div>
     <header class="mb-6">
       <h1 class="text-2xl font-bold" :style="{ color: mainTextColor }">Мои заказы</h1>
       <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">
@@ -128,6 +140,29 @@
             <li v-for="(t, idx) in detailOrder.timeline" :key="`${t.at}-${idx}`" class="flex items-center justify-between gap-3">
               <span>{{ t.label }}</span>
               <span class="text-xs text-gray-500">{{ formatAt(t.at) }}</span>
+            </li>
+          </ul>
+        </div>
+        <div class="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <h3 class="text-sm font-semibold text-gray-900">Сервис в зале</h3>
+          <p class="mt-1 text-xs text-gray-600">Можно отправить запрос персоналу прямо из заказа.</p>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <button class="rounded border border-gray-300 px-2.5 py-1 text-xs hover:bg-white disabled:opacity-50" :disabled="serviceCallSubmitting" @click="createServiceCall('call_waiter')">
+              Позвать официанта
+            </button>
+            <button class="rounded border border-gray-300 px-2.5 py-1 text-xs hover:bg-white disabled:opacity-50" :disabled="serviceCallSubmitting" @click="createServiceCall('call_hookah')">
+              Позвать кальянщика
+            </button>
+            <button class="rounded border border-gray-300 px-2.5 py-1 text-xs hover:bg-white disabled:opacity-50" :disabled="serviceCallSubmitting" @click="createServiceCall('request_bill')">
+              Выставить счет
+            </button>
+          </div>
+          <p v-if="serviceCallMessage" class="mt-2 text-xs" :class="serviceCallMessageType === 'ok' ? 'text-emerald-700' : 'text-red-700'">
+            {{ serviceCallMessage }}
+          </p>
+          <ul v-if="serviceCalls.length" class="mt-2 space-y-1 text-xs text-gray-700">
+            <li v-for="item in serviceCalls" :key="item.id" class="rounded border border-gray-200 bg-white px-2 py-1">
+              {{ serviceCallTypeLabel(item.callType) }} — {{ serviceCallStatusLabel(item.status) }}
             </li>
           </ul>
         </div>
@@ -341,6 +376,12 @@ type ClientOrderStatusDetail = {
 
 const detailErrorMessage = ref('')
 const detailOrder = ref<ClientOrderStatusDetail | null>(null)
+const serviceCallSubmitting = ref(false)
+const serviceCallMessage = ref('')
+const serviceCallMessageType = ref<'ok' | 'error'>('ok')
+const serviceCalls = ref<Array<{ id: string; callType: string; status: string }>>([])
+const serviceCallToasts = ref<Array<{ id: number; kind: 'success' | 'error'; message: string }>>([])
+let serviceCallToastSeq = 0
 let detailPollHandle: number | null = null
 const festivalSlug = computed(() => {
   const fromParams = typeof route.params.festival_slug === 'string' ? route.params.festival_slug.trim() : ''
@@ -383,6 +424,11 @@ function requestHeaders() {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isUnauthorizedErrorMessage(message: unknown): boolean {
+  const text = String(message || '').toLowerCase()
+  return text.includes('unauthorized') || text.includes('не авториз')
 }
 
 async function waitForMessengerInitData(timeoutMs = 2500) {
@@ -533,22 +579,26 @@ async function loadDetailOrderStatus() {
   if (!selectedOrderId.value) return
   detailErrorMessage.value = ''
   try {
-    const res = await fetch(
-      `/api/client-order-status?orderId=${encodeURIComponent(selectedOrderId.value)}`,
-      {
-        method: 'GET',
-        headers: requestHeaders(),
-      },
-    )
-    if (!res.ok) {
-      const errJson = (await res.json().catch(() => null)) as any
-      throw new Error(errJson?.statusMessage || errJson?.message || 'Не удалось загрузить статус заказа')
+    const fetchDetail = async () => {
+      const res = await fetch(
+        `/api/client-order-status?orderId=${encodeURIComponent(selectedOrderId.value)}`,
+        {
+          method: 'GET',
+          headers: requestHeaders(),
+        },
+      )
+      if (!res.ok) {
+        const errJson = (await res.json().catch(() => null)) as any
+        throw new Error(errJson?.statusMessage || errJson?.message || 'Не удалось загрузить статус заказа')
+      }
+      return (await res.json()) as { ok: boolean; order?: ClientOrderStatusDetail }
     }
-    const json = (await res.json()) as { ok: boolean; order?: ClientOrderStatusDetail }
+    const json = await fetchDetail()
     if (!json?.ok || !json.order) {
       throw new Error('Некорректный ответ сервера')
     }
     detailOrder.value = json.order
+    await loadServiceCalls()
     const st = (json.order.status || '').toLowerCase()
     if (st === 'cancelled' || st === 'handed_to_customer' || st === 'done') {
       if (detailPollHandle != null) {
@@ -557,8 +607,116 @@ async function loadDetailOrderStatus() {
       }
     }
   } catch (e: any) {
-    detailErrorMessage.value = e?.message || 'Не удалось загрузить статус заказа'
+    const maybeUnauthorized = isUnauthorizedErrorMessage(e?.message)
+    if (isMessengerMiniApp.value && maybeUnauthorized && !messengerInitData.value) {
+      try {
+        await waitForMessengerInitData(4000)
+        const retryRes = await fetch(
+          `/api/client-order-status?orderId=${encodeURIComponent(selectedOrderId.value)}`,
+          {
+            method: 'GET',
+            headers: requestHeaders(),
+          },
+        )
+        if (!retryRes.ok) {
+          const retryErrJson = (await retryRes.json().catch(() => null)) as any
+          throw new Error(retryErrJson?.statusMessage || retryErrJson?.message || 'Не удалось загрузить статус заказа')
+        }
+        const retryJson = (await retryRes.json()) as { ok: boolean; order?: ClientOrderStatusDetail }
+        if (!retryJson?.ok || !retryJson.order) {
+          throw new Error('Некорректный ответ сервера')
+        }
+        detailOrder.value = retryJson.order
+        detailErrorMessage.value = ''
+        await loadServiceCalls()
+      } catch (retryError: any) {
+        detailErrorMessage.value = retryError?.message || 'Не удалось загрузить статус заказа'
+      }
+    } else {
+      detailErrorMessage.value = e?.message || 'Не удалось загрузить статус заказа'
+    }
   }
+}
+
+function serviceCallTypeLabel(type: string) {
+  if (type === 'call_waiter') return 'Позвать официанта'
+  if (type === 'call_hookah') return 'Позвать кальянщика'
+  if (type === 'request_bill') return 'Выставить счет'
+  return type
+}
+
+function serviceCallStatusLabel(status: string) {
+  if (status === 'created') return 'Отправлен'
+  if (status === 'acknowledged') return 'Скоро подойдут'
+  if (status === 'in_progress') return 'Уже идут'
+  if (status === 'resolved') return 'Выполнено'
+  if (status === 'cancelled') return 'Отменен'
+  return status
+}
+
+async function loadServiceCalls() {
+  if (!selectedOrderId.value) return
+  const res = await fetch(`/api/service-calls?orderId=${encodeURIComponent(selectedOrderId.value)}`, {
+    method: 'GET',
+    headers: requestHeaders(),
+  })
+  const payload = await res.json().catch(() => ({} as any))
+  if (!res.ok) {
+    serviceCalls.value = []
+    return
+  }
+  serviceCalls.value = Array.isArray(payload?.items)
+    ? payload.items.map((x: any) => ({
+      id: String(x.id),
+      callType: String(x.callType || ''),
+      status: String(x.status || ''),
+    }))
+    : []
+}
+
+async function createServiceCall(callType: 'call_waiter' | 'call_hookah' | 'request_bill') {
+  if (!selectedOrderId.value) return
+  serviceCallSubmitting.value = true
+  serviceCallMessage.value = ''
+  const idempotencyKey = `${callType}:${Date.now()}`
+  try {
+    const res = await fetch('/api/service-calls', {
+      method: 'POST',
+      headers: {
+        ...requestHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        orderId: selectedOrderId.value,
+        callType,
+        idempotencyKey,
+      }),
+    })
+    const payload = await res.json().catch(() => ({} as any))
+    if (!res.ok) {
+      throw new Error(payload?.statusMessage || 'Не удалось отправить запрос')
+    }
+    serviceCallMessageType.value = 'ok'
+    serviceCallMessage.value = 'Запрос отправлен персоналу'
+    pushServiceCallToast('success', 'Запрос отправлен персоналу', 3200)
+    await loadServiceCalls()
+  } catch (err: any) {
+    serviceCallMessageType.value = 'error'
+    serviceCallMessage.value = err?.message || 'Не удалось отправить запрос'
+    pushServiceCallToast('error', serviceCallMessage.value, 4200)
+  } finally {
+    serviceCallSubmitting.value = false
+  }
+}
+
+function pushServiceCallToast(kind: 'success' | 'error', message: string, durationMs = 2600) {
+  const text = (message || '').trim()
+  if (!text) return
+  const id = ++serviceCallToastSeq
+  serviceCallToasts.value = [...serviceCallToasts.value, { id, kind, message: text }]
+  setTimeout(() => {
+    serviceCallToasts.value = serviceCallToasts.value.filter((item: { id: number }) => item.id !== id)
+  }, durationMs)
 }
 
 onMounted(async () => {
@@ -571,7 +729,7 @@ onMounted(async () => {
       await loadFestivalEligibility()
     }
   } catch (error: any) {
-    const maybeUnauthorized = String(error?.message || '').toLowerCase().includes('unauthorized')
+    const maybeUnauthorized = isUnauthorizedErrorMessage(error?.message)
     if (isMessengerMiniApp.value && maybeUnauthorized && !messengerInitData.value) {
       try {
         await waitForMessengerInitData(4000)
