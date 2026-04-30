@@ -9,6 +9,11 @@ import {
   type ServiceCallType,
 } from '~/server/utils/serviceCalls'
 import { getOrganizationSettings } from '~/server/utils/organizationStyle'
+import {
+  getMaxBotTokenForShop,
+  getMessengerInitDataFromEvent,
+  validateWebAppInitData,
+} from '~/server/utils/messengerInitData'
 
 type Body = {
   orderId?: string
@@ -50,21 +55,45 @@ export default defineEventHandler(async (event) => {
 
   const client = await serverSupabaseServiceRole(event)
   const profileId = await resolveCustomerProfileId(event, botToken).catch(() => '')
+  const initData = getMessengerInitDataFromEvent(event)
+  const telegramUserId = initData ? validateWebAppInitData(initData, botToken)?.id ?? null : null
+  const tenantIntegrationKeys = (event.context?.tenant as { integrationKeys?: Record<string, unknown> } | undefined)?.integrationKeys
+  const maxMiniToken = getMaxBotTokenForShop(tenantIntegrationKeys, {
+    maxMiniAppBotToken: config.maxMiniAppBotToken as string | undefined,
+    maxApiToken: config.maxApiToken as string | undefined,
+  })
+  const maxUserId = initData && maxMiniToken ? String(validateWebAppInitData(initData, maxMiniToken)?.id || '').trim() : ''
+  let fallbackProfileId = ''
+  if (!profileId && maxUserId) {
+    const { data: maxProfile } = await client
+      .from('profiles')
+      .select('id')
+      .eq('max_user_id', maxUserId)
+      .maybeSingle()
+    fallbackProfileId = maxProfile?.id ? String(maxProfile.id) : ''
+  }
+  const resolvedProfileFilterId = profileId || fallbackProfileId
 
   let order: any | null = null
   if (orderId) {
-    const { data: directOrder } = await client
+    let directOrderQuery = client
       .from('orders')
       .select('id,shop_id,restaurant_id,customer_profile_id,customer_telegram_id,order_number')
       .eq('id', orderId)
-      .eq('customer_profile_id', profileId)
-      .maybeSingle()
+    if (resolvedProfileFilterId) {
+      directOrderQuery = directOrderQuery.eq('customer_profile_id', resolvedProfileFilterId)
+    } else if (telegramUserId != null) {
+      directOrderQuery = directOrderQuery.eq('customer_telegram_id', telegramUserId)
+    } else {
+      throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+    }
+    const { data: directOrder } = await directOrderQuery.maybeSingle()
     order = directOrder
-  } else if (restaurantIdFromBody && profileId) {
+  } else if (restaurantIdFromBody && resolvedProfileFilterId) {
     const { data: fallbackOrder } = await client
       .from('orders')
       .select('id,shop_id,restaurant_id,customer_profile_id,customer_telegram_id,order_number')
-      .eq('customer_profile_id', profileId)
+      .eq('customer_profile_id', resolvedProfileFilterId)
       .eq('restaurant_id', restaurantIdFromBody)
       .in('status', ['new', 'in_progress', 'ready_for_pickup', 'out_for_delivery'])
       .order('created_at', { ascending: false })
@@ -72,11 +101,11 @@ export default defineEventHandler(async (event) => {
       .maybeSingle()
     order = fallbackOrder
     if (fallbackOrder?.id) orderId = String(fallbackOrder.id)
-  } else if (profileId) {
+  } else if (resolvedProfileFilterId) {
     const { data: latestOrder } = await client
       .from('orders')
       .select('id,shop_id,restaurant_id,customer_profile_id,customer_telegram_id,order_number')
-      .eq('customer_profile_id', profileId)
+      .eq('customer_profile_id', resolvedProfileFilterId)
       .in('status', ['new', 'in_progress', 'ready_for_pickup', 'out_for_delivery'])
       .order('created_at', { ascending: false })
       .limit(1)
@@ -112,11 +141,11 @@ export default defineEventHandler(async (event) => {
     ? customerTelegramIdRaw
     : null
 
-  const { data: profile } = profileId
+  const { data: profile } = resolvedProfileFilterId
     ? await client
       .from('profiles')
       .select('id,max_user_id,max_conversation_id')
-      .eq('id', profileId)
+      .eq('id', resolvedProfileFilterId)
       .maybeSingle()
     : { data: null as any }
   const resolvedProfileId = typeof (profile as any)?.id === 'string' ? String((profile as any).id) : null

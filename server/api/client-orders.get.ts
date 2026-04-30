@@ -2,6 +2,11 @@ import { createError, defineEventHandler } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { normalizeDashboardStatus, type DashboardOrderStatus } from '~/utils/dashboardOrderStatus'
 import { resolveCustomerProfileId } from '~/server/utils/customerProfile'
+import {
+  getMaxBotTokenForShop,
+  getMessengerInitDataFromEvent,
+  validateWebAppInitData,
+} from '~/server/utils/messengerInitData'
 
 type OrderRow = {
   id: string
@@ -34,21 +39,45 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: 'Bot token missing' })
   }
 
-  let profileId: string
-  try {
-    profileId = await resolveCustomerProfileId(event, botToken)
-  } catch {
+  const profileId = await resolveCustomerProfileId(event, botToken).catch(() => '')
+  const initData = getMessengerInitDataFromEvent(event)
+  const telegramUserId = initData ? validateWebAppInitData(initData, botToken)?.id ?? null : null
+  const tenantIntegrationKeys = (event.context?.tenant as { integrationKeys?: Record<string, unknown> } | undefined)?.integrationKeys
+  const maxToken = getMaxBotTokenForShop(tenantIntegrationKeys, {
+    maxMiniAppBotToken: config.maxMiniAppBotToken as string | undefined,
+    maxApiToken: config.maxApiToken as string | undefined,
+  })
+  const maxUserId = initData && maxToken ? String(validateWebAppInitData(initData, maxToken)?.id || '').trim() : ''
+  const hasMessengerIdentity = telegramUserId != null || !!maxUserId
+  if (!profileId && !hasMessengerIdentity) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
   const client = await serverSupabaseServiceRole(event)
 
-  const { data: ordersData, error: ordersError } = await client
+  let ordersQuery = client
     .from('orders')
     .select('id,shop_id,restaurant_id,status,fulfillment_type,payment_method,subtotal,delivery_cost,total,items,created_at')
-    .eq('customer_profile_id', profileId)
     .order('created_at', { ascending: false })
     .limit(200)
+  if (profileId) {
+    ordersQuery = ordersQuery.eq('customer_profile_id', profileId)
+  } else if (telegramUserId != null) {
+    ordersQuery = ordersQuery.eq('customer_telegram_id', telegramUserId)
+  } else if (maxUserId) {
+    const { data: maxProfile } = await client
+      .from('profiles')
+      .select('id')
+      .eq('max_user_id', maxUserId)
+      .maybeSingle()
+    const maxProfileId = maxProfile?.id ? String(maxProfile.id) : ''
+    if (!maxProfileId) {
+      throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+    }
+    ordersQuery = ordersQuery.eq('customer_profile_id', maxProfileId)
+  }
+
+  const { data: ordersData, error: ordersError } = await ordersQuery
 
   if (ordersError) {
     console.error('Failed to load client orders:', ordersError)
