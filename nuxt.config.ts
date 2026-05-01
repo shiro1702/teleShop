@@ -19,6 +19,12 @@ export default defineNuxtConfig({
     /** Валидация initData мини-приложения MAX (HMAC WebAppData); при отсутствии — fallback на maxApiToken. */
     maxMiniAppBotToken: process.env.NUXT_MAX_MINIAPP_BOT_TOKEN ?? '',
     maxWebhookSecret: process.env.NUXT_MAX_WEBHOOK_SECRET ?? '',
+    /** Telegram transport mode: direct (legacy) | relay (via Vercel relay service) */
+    telegramTransport: process.env.NUXT_TELEGRAM_TRANSPORT ?? 'direct',
+    /** Relay endpoint for Telegram methods, e.g. https://<relay>.vercel.app/api/telegram/send */
+    telegramRelayUrl: process.env.NUXT_TELEGRAM_RELAY_URL ?? '',
+    /** Shared secret between main backend and relay service (x-relay-secret). */
+    relaySharedSecret: process.env.NUXT_RELAY_SHARED_SECRET ?? '',
     vkIdClientSecret: process.env.NUXT_VK_ID_CLIENT_SECRET ?? '',
     /** Must match redirect URL in VK ID app settings (e.g. https://your.app/api/auth/vk-id/callback) */
     vkIdRedirectUri: process.env.NUXT_VK_ID_REDIRECT_URI ?? '',
