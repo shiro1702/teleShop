@@ -5,7 +5,10 @@ import { resolveCustomerProfileId } from '~/server/utils/customerProfile'
 
 export default defineEventHandler(async (event) => {
   const { shopId, shop } = await requireTenantShop(event)
-  const customerProfileId = await resolveCustomerProfileId(event, shop.telegram_bot_token)
+  const customerProfileId = await resolveCustomerProfileId(event, shop.telegram_bot_token).catch(() => '')
+  if (!customerProfileId) {
+    return { ok: true, skipped: true }
+  }
   const client = await serverSupabaseServiceRole(event)
   const body = await readBody<{
     addressLine?: string | null

@@ -1,6 +1,10 @@
 import { createError, getHeader, type H3Event } from 'h3'
 import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
-import { getMaxBotTokenForShop, validateWebAppInitData } from '~/server/utils/messengerInitData'
+import {
+  getMaxBotTokenForShop,
+  uniqueNonEmptyTokens,
+  validateWebAppInitDataAnyToken,
+} from '~/server/utils/messengerInitData'
 
 function maskToken(token: string | null | undefined): string {
   if (typeof token !== 'string') return 'missing'
@@ -46,8 +50,14 @@ export async function resolveCustomerProfileId(event: H3Event, botToken: string 
     maxMiniAppBotToken: config.maxMiniAppBotToken as string | undefined,
     maxApiToken: config.maxApiToken as string | undefined,
   })
+  const telegramTokens = uniqueNonEmptyTokens([tenant?.telegramBotToken, botToken, config.botToken as string | undefined])
+  const maxTokens = uniqueNonEmptyTokens([
+    typeof integrationKeys.max_bot_token === 'string' ? integrationKeys.max_bot_token : undefined,
+    config.maxMiniAppBotToken as string | undefined,
+    config.maxApiToken as string | undefined,
+  ])
 
-  const tgUser = validateWebAppInitData(initData, botToken)
+  const tgUser = validateWebAppInitDataAnyToken(initData, telegramTokens)
   if (tgUser) {
     const client = await serverSupabaseServiceRole(event)
     const { data: profile } = await client
@@ -70,8 +80,8 @@ export async function resolveCustomerProfileId(event: H3Event, botToken: string 
     path: event.path,
   })
 
-  if (maxTok) {
-    const maxUser = validateWebAppInitData(initData, maxTok)
+  if (maxTok && maxTokens.length > 0) {
+    const maxUser = validateWebAppInitDataAnyToken(initData, maxTokens)
     if (maxUser) {
       const client = await serverSupabaseServiceRole(event)
       const { data: profile } = await client

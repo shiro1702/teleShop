@@ -198,6 +198,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, message: 'Server config: bot token missing' })
   }
 
+  try {
   const body = await readBody<{
     message?: {
       text?: string
@@ -1004,4 +1005,10 @@ export default defineEventHandler(async (event) => {
 
   await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id })
   return { ok: true }
+  } catch (error) {
+    // Telegram retries updates aggressively on non-2xx.
+    // Fail-safe: log internal error and acknowledge update to stop retry storm.
+    console.error('webhook telegram handler failed:', error)
+    return { ok: true }
+  }
 })

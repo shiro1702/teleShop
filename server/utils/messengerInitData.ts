@@ -50,6 +50,30 @@ export function validateWebAppInitData(
   }
 }
 
+export function uniqueNonEmptyTokens(tokens: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const token of tokens) {
+    if (typeof token !== 'string') continue
+    const trimmed = token.trim()
+    if (!trimmed || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    result.push(trimmed)
+  }
+  return result
+}
+
+export function validateWebAppInitDataAnyToken(
+  initData: string | null | undefined,
+  tokens: Array<string | null | undefined>,
+): WebAppInitUser | null {
+  for (const token of uniqueNonEmptyTokens(tokens)) {
+    const parsed = validateWebAppInitData(initData, token)
+    if (parsed) return parsed
+  }
+  return null
+}
+
 export function getMaxBotTokenForShop(
   integrationKeys: Record<string, unknown> | null | undefined,
   config: { maxMiniAppBotToken?: string; maxApiToken?: string },

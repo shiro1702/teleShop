@@ -29,7 +29,8 @@ import { enqueueQuickRestoOrderOutbox, getQuickRestoClient } from '~/server/util
 import { enqueueIikoOrderOutbox, getIikoClient } from '~/server/utils/iiko'
 import {
   getMaxBotTokenForShop,
-  validateWebAppInitData,
+  uniqueNonEmptyTokens,
+  validateWebAppInitDataAnyToken,
   type WebAppInitUser,
 } from '~/server/utils/messengerInitData'
 
@@ -77,6 +78,17 @@ type PromoBreakdown = {
   discountAmount: number
   bonusSpent: number
   subtotalAfterPromo: number
+}
+
+function isMissingProfileColumnError(error: any, column: string): boolean {
+  const text = String(
+    error?.message
+    || error?.details
+    || error?.hint
+    || '',
+  ).toLowerCase()
+  const col = column.toLowerCase()
+  return text.includes(col) && (text.includes('column') || text.includes('schema cache'))
 }
 
 function buildOrderMessage(
@@ -290,7 +302,9 @@ export default defineEventHandler(async (event) => {
   const { shopId: tenantShopId, shop: tenantShop } = await requireTenantShop(event)
   const tenantIntegrationKeys = tenantShop.integration_keys ?? {}
   const tenant = event.context.tenant
-  const botToken = tenant?.telegramBotToken || (config.botToken as string)
+  const tenantBotToken = tenant?.telegramBotToken
+  const fallbackBotToken = config.botToken as string
+  const botToken = tenantBotToken || fallbackBotToken
   const tenantFulfillmentRaw = typeof tenantIntegrationKeys.fulfillment_types === 'string'
     ? tenantIntegrationKeys.fulfillment_types
     : (config.public?.fulfillmentTypes as string | undefined)
@@ -373,6 +387,49 @@ export default defineEventHandler(async (event) => {
     : ''
   const serviceClient = await serverSupabaseServiceRole(event)
 
+  async function loadProfileForOrder(profileId: string) {
+    const attempts = [
+      ['telegram_id', 'max_user_id', 'max_conversation_id'],
+      ['telegram_id', 'max_user_id'],
+      ['telegram_id'],
+      ['max_user_id', 'max_conversation_id'],
+      ['max_user_id'],
+      ['max_conversation_id'],
+      [] as string[],
+    ]
+
+    for (const columns of attempts) {
+      const selectExpr = columns.length ? columns.join(', ') : 'id'
+      const result = await serviceClient
+        .from('profiles')
+        .select(selectExpr)
+        .eq('id', profileId)
+        .maybeSingle()
+
+      if (!result.error) {
+        if (!result.data) return result
+        const row = result.data as Record<string, unknown>
+        return {
+          data: {
+            ...row,
+            telegram_id: columns.includes('telegram_id') ? row.telegram_id ?? null : null,
+            max_user_id: columns.includes('max_user_id') ? row.max_user_id ?? null : null,
+            max_conversation_id: columns.includes('max_conversation_id') ? row.max_conversation_id ?? null : null,
+          },
+          error: null,
+        }
+      }
+
+      const missingColumn = columns.find((column) => isMissingProfileColumnError(result.error, column))
+      if (!missingColumn) return result
+    }
+
+    return {
+      data: null,
+      error: { message: 'Failed to read profile: no compatible column set on profiles' },
+    }
+  }
+
   // In mini apps, saved address can be selected while body lat/lon are temporarily absent.
   // Fallback to persisted address coordinates to avoid false 400 "zone required".
   if (fulfillmentType === 'delivery' && !hasDeliveryCoords && customerAddressId) {
@@ -450,26 +507,40 @@ export default defineEventHandler(async (event) => {
         maxMiniAppBotToken: config.maxMiniAppBotToken as string | undefined,
         maxApiToken: config.maxApiToken as string | undefined,
       })
-      if (!maxTok) {
+      const maxCandidateTokens = uniqueNonEmptyTokens([
+        (tenantIntegrationKeys as Record<string, unknown>)?.max_bot_token as string | undefined,
+        config.maxMiniAppBotToken as string | undefined,
+        config.maxApiToken as string | undefined,
+      ])
+      if (!maxTok || maxCandidateTokens.length === 0) {
         throw createError({ statusCode: 500, message: 'Server config: MAX bot token missing' })
       }
-      const parsed = validateWebAppInitData(body.initData, maxTok)
+      const parsed = validateWebAppInitDataAnyToken(body.initData, maxCandidateTokens)
       if (!parsed) {
         throw createError({ statusCode: 401, message: 'Invalid initData' })
       }
       user = parsed
       const maxId = String(parsed.id)
-      const { data: maxProfile } = await serviceClient
+      let { data: maxProfile } = await serviceClient
         .from('profiles')
         .select('id, max_conversation_id')
         .eq('max_user_id', maxId)
         .maybeSingle()
+      if (!maxProfile) {
+        const { data: maxProfileFallback } = await serviceClient
+          .from('profiles')
+          .select('id')
+          .eq('max_user_id', maxId)
+          .maybeSingle()
+        maxProfile = maxProfileFallback
+      }
       customerProfileId = maxProfile?.id ? String(maxProfile.id) : null
       const rawConv = (maxProfile as { max_conversation_id?: string | null } | null)?.max_conversation_id
       maxConversationId = typeof rawConv === 'string' && rawConv.trim() ? rawConv.trim() : null
       customerTelegramIdForInsert = null
     } else {
-      const parsed = validateWebAppInitData(body.initData, botToken)
+      const telegramCandidateTokens = uniqueNonEmptyTokens([tenantBotToken, fallbackBotToken])
+      const parsed = validateWebAppInitDataAnyToken(body.initData, telegramCandidateTokens)
       if (!parsed) {
         throw createError({ statusCode: 401, message: 'Invalid initData' })
       }
@@ -499,11 +570,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 401, message: 'Unauthorized' })
     }
     customerProfileId = userId
-    const { data: profile, error: profileError } = await serviceClient
-      .from('profiles')
-      .select('telegram_id, max_user_id, max_conversation_id')
-      .eq('id', userId)
-      .maybeSingle()
+    const { data: profile, error: profileError } = await loadProfileForOrder(userId)
     if (profileError) {
       console.error('Error querying profile for order (WEB):', profileError)
       throw createError({ statusCode: 500, message: 'Failed to read profile' })

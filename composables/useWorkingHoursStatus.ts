@@ -80,10 +80,18 @@ export function useWorkingHoursStatus(options: UseWorkingHoursStatusOptions) {
   const refreshStatus = (force = false) => {
     const schedule = options.workingHours.value
     const timezone = options.timezone.value || 'Asia/Irkutsk'
-    if (!schedule) {
-      snapshot.value = null
-      persistSnapshot(null)
-      clearRefreshTimer()
+    
+    // Если расписание не передано, считаем открытым по умолчанию (если задан флаг)
+    if (!schedule || Object.keys(schedule).length === 0) {
+      const nowMs = Date.now()
+      const nextSnapshot: WorkingHoursSnapshot = {
+        isOpen: defaultIsOpenWhenNoSchedule,
+        checkedAtMs: nowMs,
+        nextRefreshAtMs: getNextMinuteTimestamp(nowMs),
+      }
+      snapshot.value = nextSnapshot
+      persistSnapshot(nextSnapshot)
+      scheduleNextRefresh()
       return
     }
 
@@ -147,7 +155,13 @@ export function useWorkingHoursStatus(options: UseWorkingHoursStatusOptions) {
   })
 
   return {
-    isOpenNow: computed(() => snapshot.value?.isOpen ?? defaultIsOpenWhenNoSchedule),
+    isOpenNow: computed(() => {
+      // Если расписание не загружено или пустое, возвращаем дефолтное значение
+      if (!options.workingHours.value || Object.keys(options.workingHours.value).length === 0) {
+        return defaultIsOpenWhenNoSchedule
+      }
+      return snapshot.value?.isOpen ?? defaultIsOpenWhenNoSchedule
+    }),
     lastCheckedAtMs: computed(() => snapshot.value?.checkedAtMs ?? null),
     refreshWorkingHoursStatus: refreshStatus,
   }

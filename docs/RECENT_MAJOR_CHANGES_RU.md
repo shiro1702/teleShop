@@ -82,3 +82,38 @@
 
 - Интеграции (дашборд): `pages/dashboard/integrations.md`
 - Правило UX для ошибок API в дашборде: `.cursor/rules/dashboard-api-toasts.mdc`
+
+---
+
+## `local` — VK ID OAuth авторизация (в работе)
+
+**Дата:** 2026-05-01
+
+**Суть:** добавлен новый канал авторизации через **VK ID OAuth 2.1 + PKCE** в текущий omnichannel-паттерн (`auth_tokens -> link page -> exchange session`), без внедрения отдельного VK-бота.
+
+**Что уже реализовано:**
+
+- Миграция `045_vk_oauth.sql`:
+  - `auth_tokens`: `vk_user_id`, `vk_state`, `vk_code_verifier`, `vk_device_id`;
+  - `profiles`: `vk_user_id`, `vk_email`, `vk_phone`;
+  - unique partial индексы на `vk_state` и `vk_user_id`.
+- Серверные роуты:
+  - `POST /api/auth/request-vk-link`
+  - `GET /api/auth/vk-id/callback`
+  - `GET /api/auth/vk-link-status`
+  - `POST /api/auth/exchange-vk-session`
+- Утилиты:
+  - `server/utils/vkOAuth.ts` (PKCE, authorize URL, token exchange, user_info)
+  - `server/utils/authSiteLink.ts` расширен до `link-vk`.
+- Клиент:
+  - `pages/link-vk.vue`
+  - `components/AppHeader.vue` — кнопка «Войти через VK» и запуск flow.
+- Конфиг:
+  - добавлены `NUXT_VK_ID_*` переменные в `.env.example`
+  - обновлён `runtimeConfig` в `nuxt.config.ts`.
+
+**Что нужно до production:**
+
+- Заполнить prod env `NUXT_VK_ID_CLIENT_ID`, `NUXT_VK_ID_CLIENT_SECRET`, `NUXT_VK_ID_REDIRECT_URI`.
+- Настроить redirect URI в кабинете VK ID на `/api/auth/vk-id/callback`.
+- Пройти smoke-сценарий end-to-end на production-домене.

@@ -20,7 +20,7 @@ const DAY_INDEX_TO_KEY: Record<number, WorkingDayKey> = {
 const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
 
 export function normalizeWeeklyWorkingHours(input: unknown, fallback: WeeklyWorkingHours): WeeklyWorkingHours {
-  const source = input && typeof input === 'object' ? input as Record<string, any> : {}
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, any> : {}
   const out = {} as WeeklyWorkingHours
   for (const day of WORKING_DAY_KEYS) {
     const row = source[day] && typeof source[day] === 'object' ? source[day] : {}
@@ -70,6 +70,12 @@ export function isOpenNowBySchedule(
   timezone: string,
   now = new Date(),
 ): { isOpen: boolean; dayKey: WorkingDayKey; nowHHMM: string } {
+  // Если расписание пустое или не передано, считаем открытым по умолчанию
+  if (!workingHours || Object.keys(workingHours).length === 0) {
+    const local = getTimezoneLocalParts(now, timezone)
+    return { isOpen: true, dayKey: local.dayKey, nowHHMM: local.hhmm }
+  }
+
   const local = getTimezoneLocalParts(now, timezone)
   const row = workingHours[local.dayKey]
   if (!row || !row.isOpen) {

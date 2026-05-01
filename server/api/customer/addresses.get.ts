@@ -14,7 +14,10 @@ function normalizeCoord(value: unknown): number | null {
 
 export default defineEventHandler(async (event) => {
   const { shopId, shop } = await requireTenantShop(event)
-  const customerProfileId = await resolveCustomerProfileId(event, shop.telegram_bot_token)
+  const customerProfileId = await resolveCustomerProfileId(event, shop.telegram_bot_token).catch(() => '')
+  if (!customerProfileId) {
+    return { ok: true, items: [] }
+  }
   const client = await serverSupabaseServiceRole(event)
 
   const { data, error } = await client
