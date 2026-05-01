@@ -19,13 +19,12 @@ function sanitizeInternalPath(path: unknown): string {
 export default defineEventHandler(async (event) => {
   const body = await readBody<Body>(event)
   const shopId = typeof body?.shopId === 'string' ? body.shopId.trim() : ''
-  if (!shopId) {
-    throw createError({ statusCode: 400, statusMessage: 'shopId is required' })
-  }
-
-  const shop = await getShopById(event, shopId)
-  if (!shop) {
-    throw createError({ statusCode: 404, statusMessage: 'Shop not found' })
+  let shop: Awaited<ReturnType<typeof getShopById>> | null = null
+  if (shopId) {
+    shop = await getShopById(event, shopId)
+    if (!shop) {
+      throw createError({ statusCode: 404, statusMessage: 'Shop not found' })
+    }
   }
 
   const config = useRuntimeConfig()
@@ -42,7 +41,7 @@ export default defineEventHandler(async (event) => {
   let bridgePayload: Record<string, unknown> = {}
 
   const rawBridge = typeof body?.bridgeKey === 'string' ? body.bridgeKey.trim() : ''
-  if (rawBridge) {
+  if (rawBridge && shop) {
     const { data: bridgeRow } = await serviceClient
       .from('auth_bridge_sessions')
       .select('payload, shop_id, expires_at')
@@ -61,10 +60,10 @@ export default defineEventHandler(async (event) => {
   }
 
   bridgePayload.link_context = {
-    shop_slug: shop.slug,
+    shop_slug: shop?.slug || undefined,
     city_slug: citySlug,
     redirect_path: redirectPath,
-    custom_domain_hostname: shop.custom_domain ? String(shop.custom_domain).trim() : null,
+    custom_domain_hostname: shop?.custom_domain ? String(shop.custom_domain).trim() : null,
   }
 
   const token = randomUUID()
