@@ -206,7 +206,7 @@
 
         <!-- Не авторизован: на мобилке — компактно, на десктопе — текст -->
         <button
-          v-else-if="telegramBotUrl || maxBotUrl"
+          v-else-if="telegramBotUrl || maxBotUrl || vkAuthEnabled"
           type="button"
           class="rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50 active:bg-primary-100 sm:rounded-lg"
           @click="openAuthModal"
@@ -223,7 +223,7 @@
           <div class="absolute inset-0 bg-black/40" @click="closeAuthModal" />
           <div class="relative w-full max-w-sm rounded-2xl p-5 shadow-xl modal-panel" :style="menuStyle">
             <h3 class="text-base font-semibold" :style="{ color: mainTextColor }">Выберите способ входа</h3>
-            <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">Доступна авторизация через Telegram или MAX.</p>
+            <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">Доступна авторизация через Telegram, MAX или VK ID.</p>
             <div class="mt-4 space-y-2">
               <button
                 v-if="telegramBotUrl"
@@ -240,6 +240,14 @@
                 @click="openMaxAuth"
               >
                 Войти через MAX
+              </button>
+              <button
+                v-if="vkAuthEnabled"
+                type="button"
+                class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50"
+                @click="openVkAuth"
+              >
+                Войти через VK
               </button>
             </div>
           </div>
@@ -277,6 +285,10 @@ const maxBotUrl = computed(() => {
   const raw = (config.public.maxBotUrl as string | undefined) || ''
   const trimmed = raw.trim()
   return trimmed || null
+})
+const vkAuthEnabled = computed(() => {
+  const appId = (config.public.vkIdClientId as string | undefined) || ''
+  return Boolean(appId.trim())
 })
 const homeLink = computed(() => tenantPath('/'))
 const festivalBackLink = computed(() => {
@@ -364,6 +376,7 @@ const isNonTenantRoute = computed(() => {
     '/platform',
     '/link-telegram',
     '/link-max',
+    '/link-vk',
   ]
   return nonTenantPrefixes.some((prefix) => routePath.startsWith(prefix))
 })
@@ -502,6 +515,45 @@ async function openMaxAuth() {
     })
   } catch {
     window.alert('Не удалось начать вход через MAX. Попробуйте ещё раз.')
+  }
+}
+
+async function openVkAuth() {
+  showAuthModal.value = false
+  if (typeof window === 'undefined') return
+  const shopRef = tenantKey.value?.trim() || ''
+  if (!shopRef) {
+    window.alert('Откройте вход из страницы ресторана.')
+    return
+  }
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  try {
+    const res = await $fetch<{ ok: boolean; token: string; authorizeUrl: string }>(
+      '/api/auth/request-vk-link',
+      {
+        method: 'POST',
+        headers: { 'x-shop-id': shopRef },
+        body: {
+          shopId: shopRef,
+          citySlug: citySlug || undefined,
+          redirectPath: `${tenantPath('/checkout')}?step=1`,
+        },
+      },
+    )
+    if (!res?.ok || !res.token || !res.authorizeUrl) {
+      throw new Error('bad_response')
+    }
+    await router.push({
+      path: '/link-vk',
+      query: {
+        token: res.token,
+        redirect: `${tenantPath('/checkout')}?step=1`,
+        shop_id: shopRef,
+      },
+    })
+    window.location.href = res.authorizeUrl
+  } catch {
+    window.alert('Не удалось начать вход через VK. Попробуйте ещё раз.')
   }
 }
 

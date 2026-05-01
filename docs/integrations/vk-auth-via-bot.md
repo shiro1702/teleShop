@@ -1,6 +1,6 @@
-# VK-бот для авторизации на сайте (по паттерну Telegram/MAX)
+# VK ID OAuth для авторизации на сайте (по паттерну Telegram/MAX)
 
-Документ описывает, как внедрить вход через VK в текущую архитектуру teleShop без изобретения новой схемы.
+Документ описывает, как внедрён вход через VK ID в текущую архитектуру teleShop без изобретения новой схемы.
 Ориентиром служит уже рабочий flow для Telegram/MAX:
 
 - генерация токена: `server/api/auth/request-telegram-link.post.ts`, `server/api/auth/request-max-link.post.ts`;
@@ -10,42 +10,71 @@
 - клиентский экран завершения входа: `pages/link-telegram.vue`, `pages/link-max.vue`;
 - старт входа из UI: `components/AppHeader.vue`.
 
-Ниже blueprint, привязанный к реальному коду проекта, чтобы по нему можно было сразу реализовать VK-канал.
+Ниже blueprint, привязанный к реальному коду проекта, плюс пометки о фактически выполненной работе.
+
+## Статус реализации
+
+### Уже сделано в коде
+
+- Добавлена миграция `supabase/migrations/045_vk_oauth.sql`:
+  - `auth_tokens`: `vk_user_id`, `vk_state`, `vk_code_verifier`, `vk_device_id`
+  - `profiles`: `vk_user_id`, `vk_email`, `vk_phone`
+  - unique partial индексы на `auth_tokens.vk_state` и `profiles.vk_user_id`
+- Добавлен runtime/env конфиг VK ID:
+  - `nuxt.config.ts`: `vkIdClientSecret`, `vkIdRedirectUri`, `vkIdBaseUrl`, `public.vkIdClientId`
+  - `.env.example`: `NUXT_VK_ID_CLIENT_ID`, `NUXT_PUBLIC_VK_ID_CLIENT_ID`, `NUXT_VK_ID_CLIENT_SECRET`, `NUXT_VK_ID_REDIRECT_URI`, `NUXT_VK_ID_BASE_URL`
+- Реализован helper OAuth PKCE: `server/utils/vkOAuth.ts`
+- Расширен helper линков: `server/utils/authSiteLink.ts` (`link-vk`)
+- Реализованы API для VK:
+  - `server/api/auth/request-vk-link.post.ts`
+  - `server/api/auth/vk-id/callback.get.ts`
+  - `server/api/auth/vk-link-status.get.ts`
+  - `server/api/auth/exchange-vk-session.post.ts`
+- Добавлена страница завершения входа: `pages/link-vk.vue`
+- Обновлён UI входа: `components/AppHeader.vue` (кнопка "Войти через VK", `openVkAuth`, маршрут `/link-vk` в non-tenant)
+- Прогнан `npm run build` после изменений (успешно).
+
+### Что осталось для запуска в production
+
+- Создать/настроить VK ID приложение в кабинете VK.
+- Заполнить production env:
+  - `NUXT_VK_ID_CLIENT_ID`
+  - `NUXT_VK_ID_CLIENT_SECRET`
+  - `NUXT_VK_ID_REDIRECT_URI` (должен совпадать с настройкой в VK ID)
+  - при необходимости `NUXT_VK_ID_BASE_URL`
+- Проверить E2E на prod-домене: `request-vk-link -> callback -> link-vk -> exchange-vk-session -> redirect`.
 
 ## 1) Цель и ожидаемый UX
 
 - Пользователь на сайте жмет "Войти через VK".
-- Сайт выдает одноразовый токен и ссылку в VK-бот (`start=link_<uuid>`).
-- Пользователь подтверждает вход в диалоге с ботом.
-- Бот сохраняет `vk_user_id` в токене и отправляет ссылку обратно на сайт.
+- Сайт выдает одноразовый токен и `authorizeUrl` VK ID (OAuth 2.1 + PKCE).
+- Пользователь подтверждает вход в VK ID.
+- Callback (`/api/auth/vk-id/callback`) сохраняет `vk_user_id` в `auth_tokens`.
 - Страница `link-vk` завершает вход (через `exchange-vk-session`) и редиректит в нужный `redirect`.
 
 ## 2) Что нужно в VK заранее
 
-1. Создать/подготовить сообщество VK для бота.
-2. Включить сообщения сообщества.
-3. Включить Callback API:
-   - URL вебхука: `https://<app-domain>/api/webhook-vk`
-   - Secret key: уникальный секрет для проверки подписи callback.
-4. Получить access token сообщества (для отправки сообщений от бота).
-5. Настроить deep-link в бота:
-   - формат старт-параметра: `link_<uuid>`
-   - ссылка вида `https://vk.me/<short_name>?ref=link_<uuid>` (или эквивалентный механизм стартового payload в вашем VK-сценарии).
+1. Создать/подключить VK ID приложение.
+2. Настроить redirect URI в кабинете VK ID:
+   - `https://<app-domain>/api/auth/vk-id/callback`
+3. Получить `client_id` и `client_secret`.
+4. Разрешить нужные scope (минимум: `email phone vkid.personal_info`).
 
 ## 3) Переменные окружения
 
-Добавить в `.env`:
+Используются переменные:
 
-- `VK_BOT_TOKEN` — токен сообщества для VK API.
-- `VK_WEBHOOK_SECRET` — secret из Callback API (валидация входящих событий).
-- `VK_GROUP_ID` — ID сообщества (полезен для валидации и исходящих вызовов).
-- `NUXT_PUBLIC_VK_BOT_URL` — ссылка для открытия диалога (`vk.me/...`).
-- `APP_URL` — базовый URL сайта (уже используется в helper сборки ссылок).
+- `NUXT_VK_ID_CLIENT_ID` — VK ID app id (fallback для public)
+- `NUXT_PUBLIC_VK_ID_CLIENT_ID` — публичный app id для фронта
+- `NUXT_VK_ID_CLIENT_SECRET` — серверный секрет VK ID
+- `NUXT_VK_ID_REDIRECT_URI` — callback URI
+- `NUXT_VK_ID_BASE_URL` — по умолчанию `https://id.vk.com`
+- `NUXT_APP_URL` — базовый URL сайта (уже используется в helper сборки ссылок)
 
 По аналогии с текущими переменными:
 - Telegram: `public.telegramBotName`;
 - MAX: `public.maxBotUrl`, `maxApiBaseUrl`, `maxApiToken`;
-- VK стоит завести в том же стиле (`public.vkBotUrl` + серверные `vk*` ключи).
+- VK реализован как VK ID OAuth, не через bot URL.
 
 ## 4) Данные и миграции
 
@@ -136,18 +165,16 @@ create unique index if not exists idx_profiles_vk_user_id_unique
   - `custom_domain_hostname`
 - `channel` строго `'vk'`.
 
-## 5.2 `POST /api/webhook-vk`
+## 5.2 `GET /api/auth/vk-id/callback`
 
 Задача:
-- валидировать подпись/секрет callback (`VK_WEBHOOK_SECRET`);
-- вытащить:
-  - текст команды (включая стартовый параметр `link_<uuid>`),
-  - `vk_user_id`,
-  - `peer_id`/conversation id (опционально);
-- найти токен в `auth_tokens`:
-  - `token = uuid`,
-  - `channel = 'vk'`,
-  - не просрочен.
+- принять `code`, `state`, `device_id`, `error` из query;
+- найти токен в `auth_tokens` по `vk_state`;
+- проверить `channel='vk'` и TTL;
+- обменять `code` на токены через `/oauth2/auth`;
+- получить профиль пользователя через `/oauth2/user_info`;
+- записать `vk_user_id` и данные в `bridge_payload`;
+- сделать redirect на `link-vk`.
 
 Правила:
 - если токен просрочен -> удалить токен, отправить пользователю сообщение "Ссылка истекла".
@@ -155,20 +182,14 @@ create unique index if not exists idx_profiles_vk_user_id_unique
 - если пусто -> записать `vk_user_id` (и при желании `vk_conversation_id`).
 
 Базироваться на:
-- Telegram handler: `server/api/webhook.post.ts`
-- MAX handler: `server/api/webhook-max.post.ts`
-- helper ссылок: `server/utils/authSiteLink.ts`
+- `server/utils/vkOAuth.ts`
+- `server/utils/authSiteLink.ts`
+- `server/api/auth/vk-id/callback.get.ts`
 
 Ключевые требования реализации:
-- сделать раннюю проверку секрета webhook (как в MAX: `x-max-bot-api-secret`);
-- извлечь `tokenUuid` из старт-параметра по паттерну `link_<uuid>`;
-- читать токен из `auth_tokens` и проверять:
-  - row существует;
-  - `channel === 'vk'`;
-  - не истек (`expires_at`);
-- защита от гонок:
-  - апдейт `vk_user_id` делать условно (`is null`) по аналогии с Telegram/MAX;
-  - если условный update не сработал, перечитать row и проверить, что там тот же `vk_user_id`.
+- проверка `state` через `auth_tokens.vk_state`;
+- защита от гонок при записи `vk_user_id` (conditional update);
+- безопасный redirect на `link-vk` через `buildAuthSiteLinkUrl(...)`.
 
 После подтверждения:
 - собрать ссылку завершения входа через `buildAuthSiteLinkUrl(...)`.
@@ -182,10 +203,7 @@ linkPath: 'link-telegram' | 'link-max'
 linkPath: 'link-telegram' | 'link-max' | 'link-vk'
 ```
 
-Пользователю в VK отправлять:
-- сообщение "VK подтвержден";
-- кнопку-ссылку на `.../link-vk?token=...&redirect=...&shop_id=...`;
-- fallback: plain URL, если кнопка не отрисовалась/не поддерживается.
+Пользователь после VK consent сразу редиректится на `link-vk`.
 
 ## 5.3 `GET /api/auth/vk-link-status`
 
@@ -326,13 +344,13 @@ linkPath: 'link-telegram' | 'link-max' | 'link-vk'
 1. Миграция `auth_tokens` под `vk_user_id`.
 2. Реализованы роуты:
    - `/api/auth/request-vk-link`
-   - `/api/webhook-vk`
+   - `/api/auth/vk-id/callback`
    - `/api/auth/vk-link-status`
    - `/api/auth/exchange-vk-session`
 3. Создана `pages/link-vk.vue`.
 4. Добавлена кнопка "Войти через VK" на сайте.
-5. Настроены env (`VK_BOT_TOKEN`, `VK_WEBHOOK_SECRET`, `VK_GROUP_ID`, `NUXT_PUBLIC_VK_BOT_URL`).
-6. Callback API в VK указывает на прод-URL `/api/webhook-vk`.
+5. Настроены env (`NUXT_VK_ID_CLIENT_ID`, `NUXT_VK_ID_CLIENT_SECRET`, `NUXT_VK_ID_REDIRECT_URI`, `NUXT_PUBLIC_VK_ID_CLIENT_ID`).
+6. Redirect URI в VK ID указывает на прод-URL `/api/auth/vk-id/callback`.
 7. Пройден E2E сценарий:
    - запрос токена на сайте,
    - подтверждение в VK,

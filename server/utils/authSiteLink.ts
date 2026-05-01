@@ -22,7 +22,7 @@ export type LinkContextPayload = {
 }
 
 export function buildAuthSiteLinkUrl(options: {
-  linkPath: 'link-telegram' | 'link-max'
+  linkPath: 'link-telegram' | 'link-max' | 'link-vk'
   appUrlBase: string
   defaultCitySlug: string
   token: string
