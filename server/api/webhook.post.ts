@@ -10,14 +10,34 @@ async function telegram(
   method: string,
   body: Record<string, unknown>,
 ): Promise<unknown> {
-  const res = await fetch(`${TELEGRAM_API(token)}/${method}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  const config = useRuntimeConfig()
+  const transport = String((config.telegramTransport as string) || 'direct').trim().toLowerCase()
+  const relayUrl = String((config.telegramRelayUrl as string) || '').trim()
+  const relaySecret = String((config.relaySharedSecret as string) || '').trim()
+
+  const useRelay = transport === 'relay' && !!relayUrl
+  const res = useRelay
+    ? await fetch(relayUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(relaySecret ? { 'x-relay-secret': relaySecret } : {}),
+        },
+        body: JSON.stringify({
+          method,
+          payload: body,
+          botToken: token,
+        }),
+      })
+    : await fetch(`${TELEGRAM_API(token)}/${method}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`Telegram ${method}: ${res.status} ${text}`)
+    const mode = useRelay ? 'Relay' : 'Telegram'
+    throw new Error(`${mode} ${method}: ${res.status} ${text}`)
   }
   return res.json()
 }
@@ -177,6 +197,14 @@ function appendOrderDetails(baseText: string, details: {
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
+  const relaySecret = String((config.relaySharedSecret as string) || '').trim()
+  const isRelayEndpoint = String(event.path || '').startsWith('/api/webhook-relay')
+  if (isRelayEndpoint && relaySecret) {
+    const providedSecret = String(getHeader(event, 'x-relay-secret') || '').trim()
+    if (providedSecret !== relaySecret) {
+      throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
+    }
+  }
   const tenant = event.context.tenant
   const botToken = tenant?.telegramBotToken || (config.botToken as string)
   const maxApiBaseUrl = String((config.maxApiBaseUrl as string) || '').trim()
