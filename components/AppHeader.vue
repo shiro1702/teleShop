@@ -437,27 +437,34 @@ function onDocumentClickCapture(e: MouseEvent) {
   }
 }
 
+function resolvePostLoginRedirectPath(): string {
+  const raw = typeof route.fullPath === 'string' ? route.fullPath.trim() : ''
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) {
+    return tenantPath('/checkout') + '?step=1'
+  }
+  return raw
+}
+
 async function openTelegramAuth() {
   showAuthModal.value = false
   if (!telegramBotUrl.value || typeof window === 'undefined') return
   const shopRef = tenantKey.value?.trim() || ''
-  if (!shopRef) {
-    window.alert('Откройте вход из страницы ресторана.')
-    return
-  }
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const redirectPath = resolvePostLoginRedirectPath()
   try {
+    const requestHeaders = shopRef ? ({ 'x-shop-id': shopRef } as Record<string, string>) : undefined
+    const requestOptions: any = {
+      method: 'POST',
+      headers: requestHeaders,
+      body: {
+        shopId: shopRef || undefined,
+        citySlug: citySlug || undefined,
+        redirectPath,
+      },
+    }
     const res = await $fetch<{ ok: boolean; token: string; botStartParam: string }>(
       '/api/auth/request-telegram-link',
-      {
-        method: 'POST',
-        headers: { 'x-shop-id': shopRef },
-        body: {
-          shopId: shopRef,
-          citySlug: citySlug || undefined,
-          redirectPath: `${tenantPath('/checkout')}?step=1`,
-        },
-      },
+      requestOptions,
     )
     if (!res?.ok || !res.token || !res.botStartParam) {
       throw new Error('bad_response')
@@ -468,8 +475,8 @@ async function openTelegramAuth() {
       path: '/link-telegram',
       query: {
         token: res.token,
-        redirect: `${tenantPath('/checkout')}?step=1`,
-        shop_id: shopRef,
+        redirect: redirectPath,
+        ...(shopRef ? { shop_id: shopRef } : {}),
       },
     })
   } catch {
@@ -481,23 +488,22 @@ async function openMaxAuth() {
   showAuthModal.value = false
   if (!maxBotUrl.value || typeof window === 'undefined') return
   const shopRef = tenantKey.value?.trim() || ''
-  if (!shopRef) {
-    window.alert('Откройте вход из страницы ресторана.')
-    return
-  }
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const redirectPath = resolvePostLoginRedirectPath()
   try {
+    const requestHeaders = shopRef ? ({ 'x-shop-id': shopRef } as Record<string, string>) : undefined
+    const requestOptions: any = {
+      method: 'POST',
+      headers: requestHeaders,
+      body: {
+        shopId: shopRef || undefined,
+        citySlug: citySlug || undefined,
+        redirectPath,
+      },
+    }
     const res = await $fetch<{ ok: boolean; token: string; botStartParam: string }>(
       '/api/auth/request-max-link',
-      {
-        method: 'POST',
-        headers: { 'x-shop-id': shopRef },
-        body: {
-          shopId: shopRef,
-          citySlug: citySlug || undefined,
-          redirectPath: `${tenantPath('/checkout')}?step=1`,
-        },
-      },
+      requestOptions,
     )
     if (!res?.ok || !res.token || !res.botStartParam) {
       throw new Error('bad_response')
@@ -509,8 +515,8 @@ async function openMaxAuth() {
       path: '/link-max',
       query: {
         token: res.token,
-        redirect: `${tenantPath('/checkout')}?step=1`,
-        shop_id: shopRef,
+        redirect: redirectPath,
+        ...(shopRef ? { shop_id: shopRef } : {}),
       },
     })
   } catch {
@@ -522,23 +528,22 @@ async function openVkAuth() {
   showAuthModal.value = false
   if (typeof window === 'undefined') return
   const shopRef = tenantKey.value?.trim() || ''
-  if (!shopRef) {
-    window.alert('Откройте вход из страницы ресторана.')
-    return
-  }
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const redirectPath = resolvePostLoginRedirectPath()
   try {
+    const requestHeaders = shopRef ? ({ 'x-shop-id': shopRef } as Record<string, string>) : undefined
+    const requestOptions: any = {
+      method: 'POST',
+      headers: requestHeaders,
+      body: {
+        shopId: shopRef || undefined,
+        citySlug: citySlug || undefined,
+        redirectPath,
+      },
+    }
     const res = await $fetch<{ ok: boolean; token: string; authorizeUrl: string }>(
       '/api/auth/request-vk-link',
-      {
-        method: 'POST',
-        headers: { 'x-shop-id': shopRef },
-        body: {
-          shopId: shopRef,
-          citySlug: citySlug || undefined,
-          redirectPath: `${tenantPath('/checkout')}?step=1`,
-        },
-      },
+      requestOptions,
     )
     if (!res?.ok || !res.token || !res.authorizeUrl) {
       throw new Error('bad_response')
@@ -547,8 +552,8 @@ async function openVkAuth() {
       path: '/link-vk',
       query: {
         token: res.token,
-        redirect: `${tenantPath('/checkout')}?step=1`,
-        shop_id: shopRef,
+        redirect: redirectPath,
+        ...(shopRef ? { shop_id: shopRef } : {}),
       },
     })
     window.location.href = res.authorizeUrl
