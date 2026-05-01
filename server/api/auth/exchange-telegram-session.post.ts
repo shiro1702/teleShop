@@ -96,14 +96,28 @@ export default defineEventHandler(async (event) => {
   const sharedPhone =
     typeof sharedPhoneRaw === 'string' && sharedPhoneRaw.trim() ? sharedPhoneRaw.trim() : ''
 
-  const telegramId: number = tokenRow.telegram_id
+  const rawTg = tokenRow.telegram_id as unknown
+  const telegramId =
+    typeof rawTg === 'number' && Number.isFinite(rawTg)
+      ? rawTg
+      : typeof rawTg === 'string'
+        ? Number.parseInt(rawTg, 10)
+        : Number(rawTg)
+  if (!Number.isFinite(telegramId)) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Invalid telegram id on token',
+    })
+  }
 
-  // Пытаемся найти существующий профиль по telegram_id
-  const { data: existingProfile, error: profileError } = await serviceClient
+  // Пытаемся найти существующий профиль по telegram_id (.limit(1): maybeSingle падает при дубликатах строк)
+  const { data: profileRows, error: profileError } = await serviceClient
     .from('profiles')
     .select('id')
     .eq('telegram_id', telegramId)
-    .maybeSingle()
+    .limit(1)
+
+  const existingProfile = profileRows?.[0] ?? null
 
   if (profileError) {
     console.error('Error querying profiles by telegram_id in exchange-session:', profileError)
