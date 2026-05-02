@@ -1055,7 +1055,7 @@
               Выберите действие для вызова персонала.
             </p>
             <div class="mt-3 space-y-2">
-              <label class="block text-sm">
+              <label v-if="restaurants.length > 1" class="block text-sm">
                 <span class="mb-1 block text-gray-600">Филиал</span>
                 <select
                   v-model="serviceCallDraftRestaurantId"
@@ -1063,7 +1063,7 @@
                 >
                   <option value="">Выберите филиал</option>
                   <option v-for="branch in restaurants" :key="branch.id" :value="branch.id">
-                    {{ branch.name }}
+                    {{ serviceCallBranchLabel(branch) }}
                   </option>
                 </select>
               </label>
@@ -1248,7 +1248,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRef, w
 import { useRoute, useRouter } from 'vue-router'
 import { useCheckoutAddress } from '~/composables/useCheckoutAddress'
 import { useCheckoutTenantRestaurants } from '~/composables/useCheckoutTenantRestaurants'
-import type { DineInHallMode, FulfillmentType } from '~/composables/useCheckoutTenantRestaurants'
+import type { DineInHallMode, FulfillmentType, RestaurantItem } from '~/composables/useCheckoutTenantRestaurants'
 import { useMessengerStorage } from '~/composables/useMessengerStorage'
 import {
   clearOrderContinuationHint,
@@ -3441,10 +3441,19 @@ function closeAuthModal() {
   showAuthModal.value = false
 }
 
+function serviceCallBranchLabel(branch: Pick<RestaurantItem, 'name' | 'address'>) {
+  const addr = typeof branch.address === 'string' ? branch.address.trim() : ''
+  if (addr) return addr
+  const name = typeof branch.name === 'string' ? branch.name.trim() : ''
+  if (name) return name
+  return 'Адрес не указан'
+}
+
 function openServiceCallsModal() {
   if (!showInRestaurantServiceButtons.value) return
   dismissServiceCallOnboarding()
-  serviceCallDraftRestaurantId.value = selectedRestaurantId.value || restaurants.value[0]?.id || ''
+  const singleId = restaurants.value.length === 1 ? restaurants.value[0]?.id : null
+  serviceCallDraftRestaurantId.value = singleId || selectedRestaurantId.value || restaurants.value[0]?.id || ''
   const routeTableNumber = readFirstRouteQueryString('table_number') ?? readFirstRouteQueryString('table')
   serviceCallDraftTableNumber.value = routeTableNumber || tableNumber.value || ''
   showServiceCallsModal.value = true
