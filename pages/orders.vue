@@ -229,6 +229,34 @@
         </div>
       </section>
 
+      <section
+        v-if="reviewsFlagsLoaded && eligibleReviewOrders.length"
+        class="mb-4 rounded-xl border p-4"
+        :style="cardStyle"
+      >
+        <h2 class="mb-2 text-lg font-semibold" :style="{ color: mainTextColor }">Оцените заказ</h2>
+        <p class="text-sm" :style="{ color: mutedTextColor }">Короткая оценка помогает ресторану и другим гостям.</p>
+        <ul class="mt-3 space-y-2">
+          <li
+            v-for="order in eligibleReviewOrders"
+            :key="order.id"
+            class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2"
+          >
+            <div>
+              <p class="text-sm font-medium text-gray-900">{{ order.restaurantName }}</p>
+              <p class="text-xs text-gray-500">#{{ order.id.slice(0, 8) }} · {{ order.createdAtText }}</p>
+            </div>
+            <button
+              type="button"
+              class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary"
+              @click="openReviewModal(order)"
+            >
+              Оценить
+            </button>
+          </li>
+        </ul>
+      </section>
+
       <section v-if="activeOrders.length" class="mb-6">
         <h2 class="mb-3 text-lg font-semibold" :style="{ color: mainTextColor }">Активные заказы</h2>
         <ul class="space-y-3">
@@ -260,6 +288,41 @@
         </ul>
       </section>
     </template>
+
+    <Teleport to="body">
+      <div
+        v-if="reviewModalOpen"
+        class="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 p-4 sm:items-center"
+        role="dialog"
+        aria-modal="true"
+        @click.self="closeReviewModal"
+      >
+        <div class="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-xl" @click.stop>
+          <h3 class="text-lg font-semibold text-gray-900">Ваш отзыв</h3>
+          <p class="mt-1 text-sm text-gray-600">Оценка и комментарий привязаны к заказу.</p>
+          <label class="mt-3 block text-sm text-gray-700">Оценка
+            <select v-model.number="reviewRating" class="mt-1 w-full rounded border border-gray-300 px-2 py-2">
+              <option v-for="n in 5" :key="n" :value="n">{{ n }} из 5</option>
+            </select>
+          </label>
+          <label class="mt-3 block text-sm text-gray-700">Комментарий (необязательно)
+            <textarea v-model="reviewComment" rows="3" class="mt-1 w-full rounded border border-gray-300 px-2 py-2 text-sm" />
+          </label>
+          <p v-if="reviewError" class="mt-2 text-sm text-red-600">{{ reviewError }}</p>
+          <div class="mt-4 flex flex-wrap justify-end gap-2">
+            <button type="button" class="rounded-lg border border-gray-300 px-3 py-2 text-sm" @click="closeReviewModal">Отмена</button>
+            <button
+              type="button"
+              class="rounded-lg bg-primary px-3 py-2 text-sm text-on-primary disabled:opacity-50"
+              :disabled="reviewSubmitting"
+              @click="submitShopReview"
+            >
+              Отправить
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -271,6 +334,7 @@ import { useTelegram } from '~/composables/useTelegram'
 
 type ClientOrder = {
   id: string
+  shopId?: string
   restaurantName: string
   status: string
   isActive: boolean
@@ -292,6 +356,20 @@ const query = ref('')
 const statusFilter = ref<'all' | 'active' | 'history'>('all')
 const sortBy = ref<'newest' | 'oldest' | 'amount'>('newest')
 
+const REVIEW_ORDER_IDS_KEY = 'teleShop_review_order_ids'
+
+const reviewsFlagsLoaded = ref(false)
+/** Whether `reputation_reviews_pro` is on for a given shop (from GET /api/reviews). */
+const shopReviewModuleEnabled = ref<Record<string, boolean>>({})
+const reviewedOrderIds = ref<string[]>([])
+const reviewModalOpen = ref(false)
+const reviewShopId = ref('')
+const reviewOrderId = ref('')
+const reviewRating = ref(5)
+const reviewComment = ref('')
+const reviewSubmitting = ref(false)
+const reviewError = ref('')
+
 const pending = ref(true)
 const errorMessage = ref('')
 const data = ref<{ ok: boolean; items: ClientOrder[] }>({ ok: true, items: [] })
@@ -306,6 +384,121 @@ const cityOrdersPath = computed(() => {
   if (!city) return ''
   return `/${city}/orders`
 })
+
+const primaryShopId = computed(() => {
+  const t = typeof tenantKey.value === 'string' ? tenantKey.value.trim() : ''
+  if (t) return t
+  const withShop = data.value.items.find((x: ClientOrder) => x.shopId)
+  return typeof withShop?.shopId === 'string' ? withShop.shopId : ''
+})
+
+function loadReviewedOrderIdsFromStorage() {
+  if (!import.meta.client) return
+  try {
+    const raw = localStorage.getItem(REVIEW_ORDER_IDS_KEY)
+    const parsed = JSON.parse(raw || '[]')
+    reviewedOrderIds.value = Array.isArray(parsed) ? parsed.map(String) : []
+  } catch {
+    reviewedOrderIds.value = []
+  }
+}
+
+function markReviewSubmitted(orderId: string) {
+  if (reviewedOrderIds.value.includes(orderId)) return
+  reviewedOrderIds.value = [...reviewedOrderIds.value, orderId]
+  if (import.meta.client) {
+    localStorage.setItem(REVIEW_ORDER_IDS_KEY, JSON.stringify(reviewedOrderIds.value))
+  }
+}
+
+function orderCompletedForReview(status: string) {
+  return (status || '').toLowerCase() === 'handed_to_customer'
+}
+
+async function loadReviewModuleFlagsForOrders() {
+  reviewsFlagsLoaded.value = false
+  const ids = Array.from(
+    new Set(
+      (data.value?.items || [])
+        .map((o: ClientOrder) => o.shopId)
+        .filter((x): x is string => typeof x === 'string' && !!x.trim()),
+    ),
+  )
+  if (!ids.length) {
+    reviewsFlagsLoaded.value = true
+    return
+  }
+  const next: Record<string, boolean> = { ...shopReviewModuleEnabled.value }
+  await Promise.all(
+    ids.map(async (shopId: string) => {
+      if (next[shopId] !== undefined) return
+      try {
+        const res = await fetch(`/api/reviews?shop_id=${encodeURIComponent(shopId)}&limit=1`)
+        const payload = await res.json().catch(() => ({} as any))
+        next[shopId] = payload?.moduleEnabled === true
+      } catch {
+        next[shopId] = false
+      }
+    }),
+  )
+  shopReviewModuleEnabled.value = next
+  reviewsFlagsLoaded.value = true
+}
+
+function openReviewModal(order: ClientOrder) {
+  const sid = (typeof order.shopId === 'string' && order.shopId.trim()) || primaryShopId.value
+  if (!sid) {
+    reviewError.value = 'Не удалось определить заведение для отзыва'
+    return
+  }
+  reviewShopId.value = sid
+  reviewOrderId.value = order.id
+  reviewRating.value = 5
+  reviewComment.value = ''
+  reviewError.value = ''
+  reviewModalOpen.value = true
+}
+
+function closeReviewModal() {
+  reviewModalOpen.value = false
+}
+
+async function submitShopReview() {
+  reviewSubmitting.value = true
+  reviewError.value = ''
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...requestHeaders(),
+    }
+    if (reviewShopId.value) headers['x-shop-id'] = reviewShopId.value
+    const res = await fetch('/api/reviews', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        orderId: reviewOrderId.value,
+        rating: reviewRating.value,
+        comment: reviewComment.value.trim() || null,
+        videoUrl: null,
+      }),
+    })
+    const payload = await res.json().catch(() => ({} as any))
+    if (!res.ok) {
+      if (res.status === 409) {
+        markReviewSubmitted(reviewOrderId.value)
+        closeReviewModal()
+        return
+      }
+      throw new Error(payload?.statusMessage || payload?.message || 'Не удалось отправить отзыв')
+    }
+    markReviewSubmitted(reviewOrderId.value)
+    closeReviewModal()
+  } catch (e: unknown) {
+    reviewError.value = e instanceof Error ? e.message : 'Ошибка'
+  } finally {
+    reviewSubmitting.value = false
+  }
+}
 
 const theme = computed(() => tenant.value.theme || {})
 const pageBgColor = computed(() => theme.value.surface_background || 'var(--color-surface-bg)')
@@ -743,9 +936,11 @@ function pushServiceCallToast(kind: 'success' | 'error', message: string, durati
 onMounted(async () => {
   pending.value = true
   errorMessage.value = ''
+  loadReviewedOrderIdsFromStorage()
   try {
     await waitForMessengerInitData()
     data.value = await fetchOrders()
+    await loadReviewModuleFlagsForOrders()
     if (festivalSlug.value) {
       await loadFestivalEligibility()
     }
@@ -755,6 +950,7 @@ onMounted(async () => {
       try {
         await waitForMessengerInitData(4000)
         data.value = await fetchOrders()
+        await loadReviewModuleFlagsForOrders()
         errorMessage.value = ''
       } catch (retryError: any) {
         errorMessage.value = retryError?.statusMessage || retryError?.message || 'Не удалось загрузить заказы'
@@ -794,6 +990,14 @@ watch(festivalSlug, async (next: string) => {
   if (!next) return
   await loadFestivalEligibility()
 })
+
+watch(
+  () => data.value.items,
+  () => {
+    void loadReviewModuleFlagsForOrders()
+  },
+  { deep: true },
+)
 
 function statusLabel(status: string) {
   const map: Record<string, string> = {
@@ -849,6 +1053,17 @@ const normalizedOrders = computed<NormalizedOrder[]>(() => (data.value?.items ||
   createdAtText: formatDate(order.createdAt),
   totalText: formatPrice(order.total),
 })))
+
+const eligibleReviewOrders = computed(() =>
+  normalizedOrders.value.filter((o: NormalizedOrder) => {
+    if (o.isActive) return false
+    if (!orderCompletedForReview(o.status)) return false
+    if (reviewedOrderIds.value.includes(o.id)) return false
+    const sid = (typeof o.shopId === 'string' && o.shopId.trim()) || primaryShopId.value
+    if (!sid) return false
+    return shopReviewModuleEnabled.value[sid] === true
+  }),
+)
 
 const filteredOrders = computed(() => {
   const q = query.value.toLowerCase()

@@ -114,6 +114,12 @@
         </div>
       </section>
 
+      <PublicReviewsBlock
+        v-if="tenantKey"
+        :shop-id="String(tenantKey)"
+        :restaurant-id="getCurrentRestaurantIdFromQuery()"
+      />
+
       <section
         v-if="festivalPageBanner"
         class="mb-8 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm"
@@ -569,6 +575,7 @@ import {
 import StoriesTopBar from '../components/stories/StoriesTopBar.vue'
 import StoryGridBanner from '../components/stories/StoryGridBanner.vue'
 import StoryViewer from '../components/stories/StoryViewer.vue'
+import PublicReviewsBlock from '../components/PublicReviewsBlock.vue'
 import { useStories } from '../composables/useStories'
 import type { StoryCampaignDto, StorySlideDto } from '../types/stories'
 import { buildDefaultCartSelections, findProductById } from '../utils/storyCart'
