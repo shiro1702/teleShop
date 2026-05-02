@@ -141,6 +141,8 @@ export function useTenant() {
       '/partners',
       '/platform',
       '/link-telegram',
+      '/link-max',
+      '/link-vk',
     ]
     return nonTenantPrefixes.some((prefix) => routePath.startsWith(prefix))
   })
@@ -384,6 +386,36 @@ export function useTenant() {
     },
     { immediate: false },
   )
+
+  /** После `/link-telegram|max|vk` slug тенанта не меняется → watch(tenantKey) не трогает стейт,
+   * а `loadTenantSettings` уже отработал с `loaded: true` и не вызывается снова — тема и CSS vars пропадают. */
+  if (import.meta.client) {
+    watch(
+      () => route.fullPath,
+      async (_next, prev) => {
+        if (typeof prev !== 'string' || !prev.length) return
+        const prevPath = prev.split('?')[0] || ''
+        const wasAuthLink = /^\/link-(telegram|max|vk)(\/|$)/.test(prevPath)
+        if (!wasAuthLink) return
+        const city = route.params.city_slug
+        const tenant = route.params.tenant_slug
+        const hasCityTenant =
+          typeof city === 'string' &&
+          city.trim() !== '' &&
+          typeof tenant === 'string' &&
+          tenant.trim() !== ''
+        if (!hasCityTenant) return
+        const routePath = typeof route.path === 'string' ? route.path : ''
+        if (routePath.startsWith('/dashboard')) return
+        state.value.loaded = false
+        try {
+          await loadTenantSettings()
+        } finally {
+          state.value.loading = false
+        }
+      },
+    )
+  }
 
   return {
     tenant: state,

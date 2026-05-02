@@ -1043,14 +1043,32 @@
                     : 'Продолжение в выбранном боте.'
               }}
             </p>
+            <div class="mt-4">
+              <AuthPdConsentCheckbox v-model="authPdConsent" variant="light" :consent-href="consentPath" />
+            </div>
             <div class="mt-4 space-y-2">
-              <button v-if="telegramBotUrl" type="button" class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white" @click="runAuthAction('telegram')">
+              <button
+                v-if="telegramBotUrl"
+                type="button"
+                class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="!authPdConsent"
+                @click="runAuthAction('telegram')"
+              >
                 {{ authModalMode === 'continue' ? 'Продолжить в Telegram' : 'Войти через Telegram' }}
               </button>
-              <button v-if="maxBotUrl" type="button" class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary" @click="runAuthAction('max')">
+              <button
+                v-if="maxBotUrl"
+                type="button"
+                class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="!authPdConsent"
+                @click="runAuthAction('max')"
+              >
                 {{ authModalMode === 'continue' ? 'Продолжить в MAX' : 'Войти через MAX' }}
               </button>
             </div>
+            <p class="mt-3 text-center text-xs leading-snug text-gray-500 sm:text-left">
+              Дайте согласие на обработку ПД — тогда кнопки входа станут доступны.
+            </p>
           </div>
         </div>
       </Transition>
@@ -1347,6 +1365,8 @@ const { canUseMessengerStorage, setItem, getItem } = useMessengerStorage()
 const supabaseUser = useSupabaseUser()
 const config = useRuntimeConfig()
 const { tenant, tenantKey, tenantPath } = useTenant()
+const { consentPath } = useLegalPaths()
+const authPdConsent = ref(false)
 
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() =>
@@ -3521,11 +3541,13 @@ function authAndReturn() {
 
 function openAuthModal(mode: 'auth' | 'continue' | 'service') {
   authModalMode.value = mode
+  authPdConsent.value = false
   showAuthModal.value = true
 }
 
 function closeAuthModal() {
   showAuthModal.value = false
+  authPdConsent.value = false
 }
 
 function serviceCallBranchLabel(branch: Pick<RestaurantItem, 'name' | 'address'>) {
@@ -3686,7 +3708,7 @@ async function openTelegramAuth() {
 }
 
 async function runAuthAction(channel: 'telegram' | 'max') {
-  showAuthModal.value = false
+  closeAuthModal()
   if (authModalMode.value === 'continue') {
     if (channel === 'telegram') {
       await continueInTelegramFromCheckout()

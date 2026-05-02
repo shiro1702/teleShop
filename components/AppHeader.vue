@@ -224,11 +224,15 @@
           <div class="relative w-full max-w-sm rounded-2xl p-5 shadow-xl modal-panel" :style="menuStyle">
             <h3 class="text-base font-semibold" :style="{ color: mainTextColor }">Выберите способ входа</h3>
             <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">Доступна авторизация через Telegram, MAX или VK ID.</p>
+            <div class="mt-4">
+              <AuthPdConsentCheckbox v-model="pdAuthConsent" variant="dark" :consent-href="consentPath" />
+            </div>
             <div class="mt-4 space-y-2">
               <button
                 v-if="telegramBotUrl"
                 type="button"
-                class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-600"
+                class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="!pdAuthConsent"
                 @click="openTelegramAuth"
               >
                 Войти через Telegram
@@ -236,7 +240,8 @@
               <button
                 v-if="maxBotUrl"
                 type="button"
-                class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50"
+                class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="!pdAuthConsent"
                 @click="openMaxAuth"
               >
                 Войти через MAX
@@ -244,12 +249,19 @@
               <button
                 v-if="vkAuthEnabled"
                 type="button"
-                class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50"
+                class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="!pdAuthConsent"
                 @click="openVkAuth"
               >
                 Войти через VK
               </button>
             </div>
+            <p
+              class="mt-3 text-center text-[11px] leading-snug sm:text-left"
+              :style="{ color: mutedTextColor }"
+            >
+              Дайте согласие на обработку ПД — тогда кнопки входа станут доступны.
+            </p>
           </div>
         </div>
       </Transition>
@@ -276,6 +288,8 @@ const route = useRoute()
 const router = useRouter()
 const supabase = useSupabaseClient()
 const { tenant, tenantKey, tenantPath } = useTenant()
+const { consentPath } = useLegalPaths()
+const pdAuthConsent = ref(false)
 
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() =>
@@ -287,8 +301,9 @@ const maxBotUrl = computed(() => {
   return trimmed || null
 })
 const vkAuthEnabled = computed(() => {
-  const appId = (config.public.vkIdClientId as string | undefined) || ''
-  return Boolean(appId.trim())
+  const raw = config.public.vkIdClientId as string | number | undefined
+  const appId = raw != null && raw !== '' ? String(raw).trim() : ''
+  return Boolean(appId)
 })
 const homeLink = computed(() => tenantPath('/'))
 const festivalBackLink = computed(() => {
@@ -563,11 +578,13 @@ async function openVkAuth() {
 }
 
 function openAuthModal() {
+  pdAuthConsent.value = false
   showAuthModal.value = true
 }
 
 function closeAuthModal() {
   showAuthModal.value = false
+  pdAuthConsent.value = false
 }
 
 function toggleUserMenu() {

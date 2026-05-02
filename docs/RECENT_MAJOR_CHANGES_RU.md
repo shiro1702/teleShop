@@ -3,6 +3,24 @@
 Краткое описание существенных доработок. Хэши приведены для трассировки в `git`.
 
 ---
+---
+
+## Согласие на ПДн в модалках входа и cookie-баннер (витрина)
+
+**Дата:** 2026-05-02
+
+**Суть:** перед входом через Telegram / MAX / VK пользователь отмечает согласие на обработку персональных данных со ссылкой на страницу согласия; на первом визите показывается нижний баннер про cookie с сохранением выбора в `localStorage`.
+
+**Что появилось:**
+
+- `composables/useLegalPaths.ts` — пути к legal-страницам по `city_slug` или `public.defaultCitySlug`.
+- `components/auth/PdConsentCheckbox.vue` — чекбокс и ссылка на `legal/consent`.
+- `components/legal/CookieBanner.vue` — баннер (`z-[70]`, ключ `pocketmenu_cookie_consent_v1`).
+- Страница `pages/[city_slug]/legal/cookies.vue` и ссылка «Файлы cookie» в футере [`app.vue`](app.vue).
+- Интеграция в [`components/AppHeader.vue`](components/AppHeader.vue), [`pages/checkout.vue`](pages/checkout.vue), [`pages/profile.vue`](pages/profile.vue).
+
+Подробности в [`docs/LEGAL_UX_PD_COOKIES_RF_PLAN_RU.md`](LEGAL_UX_PD_COOKIES_RF_PLAN_RU.md).
+
 
 ## `8be33fd1c4c9ba110f84762950a02101d7577669` — привязка чата к Telegram
 

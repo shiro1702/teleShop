@@ -64,7 +64,7 @@
             v-if="telegramBotUrl"
             type="button"
             class="rounded-lg border border-primary bg-white px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5"
-            @click="openTelegramAuth"
+            @click="isMessengerMiniApp ? openTelegramAuth() : openAuthChooserModal()"
           >
             {{ isMessengerMiniApp ? 'Запросить данные через Telegram' : (telegramId !== null ? 'Перепривязать Telegram' : 'Войти через Telegram') }}
           </button>
@@ -72,7 +72,7 @@
             v-if="maxBotUrl"
             type="button"
             class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            @click="openMaxAuth"
+            @click="isMessengerMiniApp ? openMaxAuth() : openAuthChooserModal()"
           >
             {{ isMessengerMiniApp ? 'Запросить данные через MAX' : (maxUserId ? 'Перепривязать MAX' : 'Войти через MAX') }}
           </button>
@@ -80,7 +80,7 @@
             v-if="!isMessengerMiniApp && !user"
             type="button"
             class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            @click="showAuthModal = true"
+            @click="openAuthChooserModal"
           >
             Выбрать способ входа
           </button>
@@ -247,7 +247,7 @@
             v-if="telegramBotUrl || maxBotUrl"
             type="button"
             class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            @click="showAuthModal = true"
+            @click="openAuthChooserModal"
           >
             Заполнить через бота
           </button>
@@ -256,17 +256,21 @@
     </div>
 
     <div v-if="showAuthModal" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-black/40" @click="showAuthModal = false" />
+      <div class="absolute inset-0 bg-black/40" @click="closeAuthChooserModal" />
       <div class="relative z-[1] w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900">Выберите бота</h3>
         <p class="mt-1 text-xs text-gray-500">
           Откроется чат с ботом — продолжите там, затем вернитесь на сайт при необходимости.
         </p>
+        <div class="mt-4">
+          <AuthPdConsentCheckbox v-model="authPdConsent" variant="light" :consent-href="consentPath" />
+        </div>
         <div class="mt-4 space-y-2">
           <button
             v-if="telegramBotUrl"
             type="button"
-            class="w-full rounded-lg border border-primary bg-white px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5"
+            class="w-full rounded-lg border border-primary bg-white px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!authPdConsent"
             @click="openTelegramAuth"
           >
             Telegram
@@ -274,12 +278,16 @@
           <button
             v-if="maxBotUrl"
             type="button"
-            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!authPdConsent"
             @click="openMaxAuth"
           >
             MAX
           </button>
         </div>
+        <p class="mt-3 text-center text-xs leading-snug text-gray-500 sm:text-left">
+          Дайте согласие на обработку ПД — тогда кнопки входа станут доступны.
+        </p>
       </div>
     </div>
     </div>
@@ -309,6 +317,8 @@ const user = useSupabaseUser()
 const supabase = useSupabaseClient()
 const route = useRoute()
 const { tenantPath, tenantKey } = useTenant()
+const { consentPath } = useLegalPaths()
+const authPdConsent = ref(false)
 const config = useRuntimeConfig()
 const { isMessengerMiniApp, isTelegram, isMaxMiniApp, messengerWebApp } = useTelegram()
 const { canUseMessengerStorage, getItem, setItem } = useMessengerStorage()
@@ -320,6 +330,17 @@ const maxBotUrl = computed(() => {
   return trimmed || null
 })
 const showAuthModal = ref(false)
+
+function openAuthChooserModal() {
+  authPdConsent.value = false
+  showAuthModal.value = true
+}
+
+function closeAuthChooserModal() {
+  showAuthModal.value = false
+  authPdConsent.value = false
+}
+
 const showProfileModal = ref(false)
 const isSaving = ref(false)
 const saveStatus = ref('')
@@ -632,7 +653,7 @@ function openMessengerExternalUrl(url: string) {
 }
 
 async function openTelegramAuth() {
-  showAuthModal.value = false
+  closeAuthChooserModal()
   if (!telegramBotUrl.value || typeof window === 'undefined') return
   const shopRef =
     (typeof route.query.shop_id === 'string' && route.query.shop_id.trim()) || tenantKey.value?.trim() || ''
@@ -673,7 +694,7 @@ async function openTelegramAuth() {
 }
 
 async function openMaxAuth() {
-  showAuthModal.value = false
+  closeAuthChooserModal()
   if (!maxBotUrl.value || typeof window === 'undefined') return
   const shopRef =
     (typeof route.query.shop_id === 'string' && route.query.shop_id.trim()) || tenantKey.value?.trim() || ''
