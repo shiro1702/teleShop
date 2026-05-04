@@ -10,6 +10,8 @@
         :src="product.image"
         :alt="product.name"
         class="h-full w-full object-cover"
+        loading="lazy"
+        decoding="async"
         @error="onImageError"
       />
       <div class="absolute top-2 right-2 flex flex-col gap-1 items-end">

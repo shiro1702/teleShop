@@ -49,6 +49,9 @@
                 :src="currentSlide.mediaUrl"
                 :alt="activeCampaign.title"
                 class="pointer-events-none h-full w-full object-cover"
+                loading="eager"
+                decoding="async"
+                fetchpriority="high"
               >
               <video
                 v-else-if="isVideoUrl(currentSlide.mediaUrl)"
@@ -56,6 +59,7 @@
                 ref="videoRef"
                 class="pointer-events-none h-full w-full object-cover"
                 :src="currentSlide.mediaUrl"
+                preload="metadata"
                 autoplay
                 playsinline
                 @ended="onVideoEnded"

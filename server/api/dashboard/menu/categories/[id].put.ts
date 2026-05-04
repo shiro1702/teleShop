@@ -27,13 +27,17 @@ export default defineEventHandler(async (event) => {
   if (body.externalId !== undefined) updates.external_id = body.externalId || null
   if (body.deliveryRestricted !== undefined) updates.delivery_restricted = !!body.deliveryRestricted
   if (body.availabilityWindows !== undefined) updates.availability_windows = assertValidTimeWindows(body.availabilityWindows)
+  if (body.menuGroupId !== undefined) {
+    updates.menu_group_id =
+      typeof body.menuGroupId === 'string' && body.menuGroupId.trim() ? body.menuGroupId.trim() : null
+  }
 
   const { data, error } = await client
     .from('categories')
     .update(updates)
     .eq('id', id)
     .eq('shop_id', access.shopId)
-    .select('id, name, sort_order, is_active, external_id, delivery_restricted, availability_windows, created_at')
+    .select('id, name, sort_order, is_active, external_id, delivery_restricted, availability_windows, created_at, menu_group_id')
     .single()
 
   if (error) {
@@ -100,7 +104,8 @@ export default defineEventHandler(async (event) => {
       externalId: data.external_id,
       deliveryRestricted: !!data.delivery_restricted,
       availabilityWindows: Array.isArray(data.availability_windows) ? data.availability_windows : [],
-      createdAt: data.created_at
-    }
+      createdAt: data.created_at,
+      menuGroupId: data.menu_group_id || null,
+    },
   }
 })

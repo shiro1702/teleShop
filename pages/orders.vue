@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6" :style="pageStyle">
+  <div class="min-h-screen" :style="pageStyle">
     <div class="pointer-events-none fixed inset-x-0 top-20 z-[95] mx-auto flex w-full max-w-md flex-col gap-2 px-4">
       <TransitionGroup name="toast">
         <div
@@ -12,21 +12,50 @@
         </div>
       </TransitionGroup>
     </div>
-    <header class="mb-6">
-      <h1 class="text-2xl font-bold" :style="{ color: mainTextColor }">Мои заказы</h1>
-      <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">
-        {{ isTenantOrdersPage ? 'История заказов в этом ресторане.' : 'История заказов по разным ресторанам, с выделением активных.' }}
-      </p>
-      <p v-if="isTenantOrdersPage && cityOrdersPath" class="mt-2 text-sm">
-        <NuxtLink
-          :to="cityOrdersPath"
-          class="font-medium underline decoration-dotted underline-offset-2"
-          :style="{ color: mainTextColor }"
-        >
-          Перейти ко всем заказам по городу
-        </NuxtLink>
-      </p>
+
+    <header class="border-b" :style="headerStyle">
+      <div class="mx-auto grid max-w-6xl grid-cols-3 items-center gap-3 px-4 py-4 sm:px-6">
+        <div class="flex w-24 items-center sm:w-32">
+          <NuxtLink
+            :to="tenantPath('/')"
+            class="flex w-fit items-center gap-2 transition"
+            :style="{ color: mutedTextColor }"
+            aria-label="Назад к меню"
+          >
+            <span
+              class="flex h-10 w-10 items-center justify-center rounded-lg"
+              aria-hidden="true"
+            >
+              <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+              </svg>
+            </span>
+            <span class="hidden text-sm sm:inline">Меню</span>
+          </NuxtLink>
+        </div>
+
+        <h1 class="text-center text-xl font-bold" :style="{ color: mainTextColor }">
+          Мои заказы
+        </h1>
+        <div />
+      </div>
     </header>
+
+    <main class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      <div class="mb-6">
+        <p class="text-sm" :style="{ color: mutedTextColor }">
+          {{ isTenantOrdersPage ? 'История заказов в этом ресторане.' : 'История заказов по разным ресторанам, с выделением активных.' }}
+        </p>
+        <p v-if="isTenantOrdersPage && cityOrdersPath" class="mt-2 text-sm">
+          <NuxtLink
+            :to="cityOrdersPath"
+            class="font-medium underline decoration-dotted underline-offset-2"
+            :style="{ color: mainTextColor }"
+          >
+            Перейти ко всем заказам по городу
+          </NuxtLink>
+        </p>
+      </div>
 
     <section v-if="festivalSlug" class="mb-6 rounded-xl border border-primary-100 bg-white p-4">
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -323,6 +352,7 @@
         </div>
       </div>
     </Teleport>
+    </main>
   </div>
 </template>
 
@@ -375,7 +405,7 @@ const errorMessage = ref('')
 const data = ref<{ ok: boolean; items: ClientOrder[] }>({ ok: true, items: [] })
 
 const route = useRoute()
-const { tenant, tenantKey } = useTenant()
+const { tenant, tenantKey, tenantPath } = useTenant()
 const { buildMessengerAuthHeaders, isMessengerMiniApp, messengerInitData } = useTelegram()
 
 const isTenantOrdersPage = computed(() => !!(tenantKey.value && tenantKey.value.trim()))
@@ -514,6 +544,11 @@ const activeBorderColor = computed(() => theme.value.primary_200 || '#a7f3d0')
 const pageStyle = computed(() => ({
   backgroundColor: pageBgColor.value,
   color: mainTextColor.value,
+}))
+
+const headerStyle = computed(() => ({
+  borderColor: borderColor.value,
+  backgroundColor: cardBgColor.value,
 }))
 
 const cardStyle = computed(() => ({

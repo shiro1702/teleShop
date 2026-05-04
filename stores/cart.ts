@@ -70,6 +70,27 @@ export interface PendingRemovalMeta {
 
 const pendingRemovalTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
+export interface CatalogBlock {
+  blockId: string
+  /** Подзаголовок внутри группы; null — без отдельного заголовка (одиночная категория) */
+  heading: string | null
+  products: Product[]
+}
+
+export interface CatalogSection {
+  sectionId: string
+  navLabel: string
+  title: string
+  blocks: CatalogBlock[]
+}
+
+function soloSectionId(categoryId: string | null, catName: string): string {
+  if (categoryId) return `cat-${categoryId}`
+  let h = 0
+  for (let i = 0; i < catName.length; i++) h = (Math.imul(31, h) + catName.charCodeAt(i)) | 0
+  return `cat-${Math.abs(h).toString(36)}`
+}
+
 function getStoredCartItems(scopeKey: string | null): CartItem[] {
   if (typeof localStorage === 'undefined') return []
   try {
@@ -235,20 +256,107 @@ export const useCartStore = defineStore('cart', {
         zoneName: z.name,
       }
     },
-    productsByCategory(): { category: string; label: string; products: Product[] }[] {
-      // Group products dynamically based on their category string
-      const map = new Map<string, Product[]>()
-      this.products.forEach(p => {
-        const cat = p.category || 'Без категории'
-        if (!map.has(cat)) map.set(cat, [])
-        map.get(cat)!.push(p)
-      })
-      
-      return Array.from(map.entries()).map(([category, products]) => ({
-        category,
-        label: category, // Use the category name directly as the label
-        products
-      }))
+    /**
+     * Секции витрины: один «чип» навигации на группу или на отдельную категорию;
+     * внутри группы — блоки по исходным категориям (подзаголовки).
+     */
+    catalogSections(): CatalogSection[] {
+      const products = this.products
+      if (!products.length) return []
+
+      type Bucket = {
+        catName: string
+        catSort: number
+        categoryId: string | null
+        menuGroup: Product['menuGroup']
+        products: Product[]
+      }
+
+      const buckets = new Map<string, Bucket>()
+      for (const p of products) {
+        const catName = p.category || 'Без категории'
+        const key = p.categoryId ? `id:${p.categoryId}` : `n:${catName}`
+        let b = buckets.get(key)
+        if (!b) {
+          b = {
+            catName,
+            catSort: p.categorySortOrder ?? 0,
+            categoryId: p.categoryId ?? null,
+            menuGroup: p.menuGroup ?? null,
+            products: [],
+          }
+          buckets.set(key, b)
+        }
+        b.products.push(p)
+      }
+
+      type GroupAgg = {
+        id: string
+        name: string
+        sortOrder: number
+        cats: Bucket[]
+      }
+      const groupMap = new Map<string, GroupAgg>()
+      const solo: Bucket[] = []
+
+      for (const b of buckets.values()) {
+        const mg = b.menuGroup
+        if (mg?.id) {
+          let g = groupMap.get(mg.id)
+          if (!g) {
+            g = { id: mg.id, name: mg.name, sortOrder: mg.sortOrder ?? 0, cats: [] }
+            groupMap.set(mg.id, g)
+          }
+          g.cats.push(b)
+        } else {
+          solo.push(b)
+        }
+      }
+
+      type Root =
+        | { kind: 'group'; sort: number; tie: string; g: GroupAgg }
+        | { kind: 'solo'; sort: number; tie: string; b: Bucket }
+
+      const roots: Root[] = []
+      for (const g of groupMap.values()) {
+        roots.push({ kind: 'group', sort: g.sortOrder, tie: g.name, g })
+      }
+      for (const b of solo) {
+        roots.push({ kind: 'solo', sort: b.catSort, tie: b.catName, b })
+      }
+      roots.sort((a, b) => a.sort - b.sort || a.tie.localeCompare(b.tie, 'ru'))
+
+      const out: CatalogSection[] = []
+      for (const r of roots) {
+        if (r.kind === 'solo') {
+          const b = r.b
+          const sid = soloSectionId(b.categoryId, b.catName)
+          out.push({
+            sectionId: sid,
+            navLabel: b.catName,
+            title: b.catName,
+            blocks: [{ blockId: sid, heading: null, products: b.products }],
+          })
+        } else {
+          const g = r.g
+          g.cats.sort((a, b) => a.catSort - b.catSort || a.catName.localeCompare(b.catName, 'ru'))
+          const blocks: CatalogBlock[] = g.cats.map((c) => {
+            const bid = soloSectionId(c.categoryId, c.catName)
+            return {
+              blockId: bid,
+              heading: c.catName,
+              products: c.products,
+            }
+          })
+          out.push({
+            sectionId: `mg-${g.id}`,
+            navLabel: g.name,
+            title: g.name,
+            blocks,
+          })
+        }
+      }
+      return out
     },
     pendingRemovalById: (state) => (cartItemId: string) => state.pendingRemovals[cartItemId] ?? null,
   },

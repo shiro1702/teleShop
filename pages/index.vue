@@ -21,15 +21,26 @@
     />
     <div class="w-full sticky top-16 z-40 backdrop-blur" :style="topBarStyle">
       <div class="flex items-center gap-3 mx-auto max-w-6xl px-4 py-3 sm:px-6">
+        <button
+          type="button"
+          class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:border-primary hover:bg-primary-50"
+          :style="chipStyle"
+          aria-label="Поиск по меню"
+          @click="openMenuSearchModal"
+        >
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+          </svg>
+        </button>
         <nav class="-mx-4 flex flex-1 items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
           <a
-            v-for="section in cartStore.productsByCategory"
-            :key="section.category"
-            :href="`#${section.category}`"
-          class="shrink-0 rounded-full px-4 py-2 text-sm font-medium transition hover:border-primary hover:bg-primary-50"
-          :style="chipStyle"
+            v-for="section in cartStore.catalogSections"
+            :key="section.sectionId"
+            :href="`#${section.sectionId}`"
+            class="shrink-0 rounded-full px-4 py-2 text-sm font-medium transition hover:border-primary hover:bg-primary-50"
+            :style="chipStyle"
           >
-            {{ section.label }}
+            {{ section.navLabel }}
           </a>
         </nav>
 
@@ -155,33 +166,46 @@
       <template v-else>
         <section
           v-for="section in sectionsWithStoryCells"
-          :key="section.category"
-          :id="section.category"
+          :key="section.sectionId"
+          :id="section.sectionId"
           class="mb-10 scroll-mt-28"
         >
           <h2 class="mb-4 text-lg font-semibold" :style="{ color: mainTextColor }">
-            {{ section.label }}
+            {{ section.title }}
           </h2>
-          <ul
-            class="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4"
+          <div
+            v-for="block in section.blocks"
+            :key="block.blockId"
+            class="mb-8 last:mb-0"
           >
-            <li
-              v-for="(cell, cellIdx) in section.cells"
-              :key="cell.type === 'product' ? cell.product.id : `story-${cell.campaign.id}-${cellIdx}`"
-              class="flex"
+            <h3
+              v-if="block.heading"
+              class="mb-3 text-base font-semibold text-gray-800"
+              :style="{ color: mainTextColor }"
             >
-              <ProductCard
-                v-if="cell.type === 'product'"
-                :product="cell.product"
-                @open="openProduct(cell.product)"
-              />
-              <StoryGridBanner
-                v-else
-                :campaign="cell.campaign"
-                @open="openCatalogStoryCampaign"
-              />
-            </li>
-          </ul>
+              {{ block.heading }}
+            </h3>
+            <ul
+              class="grid grid-cols-2 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4"
+            >
+              <li
+                v-for="(cell, cellIdx) in block.cells"
+                :key="cell.type === 'product' ? cell.product.id : `story-${cell.campaign.id}-${cellIdx}`"
+                class="flex"
+              >
+                <ProductCard
+                  v-if="cell.type === 'product'"
+                  :product="cell.product"
+                  @open="openProduct(cell.product)"
+                />
+                <StoryGridBanner
+                  v-else
+                  :campaign="cell.campaign"
+                  @open="openCatalogStoryCampaign"
+                />
+              </li>
+            </ul>
+          </div>
         </section>
       </template>
     </main>
@@ -312,6 +336,111 @@
       </div>
     </div>
 
+    <!-- Поиск по меню -->
+    <Teleport to="body">
+      <Transition name="product">
+        <div
+          v-if="menuSearchModalOpen"
+          class="fixed inset-0 z-[52] flex flex-col justify-end bg-black/40 sm:items-center sm:justify-center sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="menu-search-heading"
+        >
+          <div class="absolute inset-0" aria-hidden="true" @click="closeMenuSearchModal" />
+          <div
+            class="relative flex max-h-[min(90dvh,32rem)] w-full flex-col overflow-hidden rounded-t-2xl shadow-xl sm:max-h-[85vh] sm:max-w-lg sm:rounded-2xl"
+            :style="modalCardStyle"
+          >
+            <div class="flex shrink-0 items-center gap-2 border-b px-4 py-3 sm:px-5" :style="{ borderColor: theme.primary_100 || '#e5e7eb' }">
+              <div class="relative min-w-0 flex-1">
+                <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400" aria-hidden="true">
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+                  </svg>
+                </span>
+                <input
+                  ref="menuSearchModalInputRef"
+                  v-model.trim="menuSearchModalQuery"
+                  type="search"
+                  enterkeyhint="search"
+                  autocomplete="off"
+                  class="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  placeholder="Найти в меню…"
+                  aria-label="Поиск по меню"
+                >
+              </div>
+              <button
+                type="button"
+                class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
+                aria-label="Закрыть поиск"
+                @click="closeMenuSearchModal"
+              >
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <h2 id="menu-search-heading" class="sr-only">
+              Поиск по меню
+            </h2>
+            <div class="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5 sm:py-4">
+              <p
+                v-if="!menuSearchModalTokens.length"
+                class="text-center text-sm"
+                :style="{ color: mutedTextColor }"
+              >
+                Введите название блюда или категории.
+              </p>
+              <template v-else-if="!menuSearchModalFilteredSections.length">
+                <p class="text-center text-sm font-medium" :style="{ color: mainTextColor }">
+                  Ничего не найдено
+                </p>
+                <p class="mt-2 text-center text-xs" :style="{ color: mutedTextColor }">
+                  Попробуйте другое слово.
+                </p>
+              </template>
+              <template v-else>
+                <section
+                  v-for="section in menuSearchModalSectionsWithCells"
+                  :key="section.sectionId"
+                  class="mb-8 last:mb-0"
+                >
+                  <h3 class="mb-3 text-sm font-semibold" :style="{ color: mainTextColor }">
+                    {{ section.title }}
+                  </h3>
+                  <div
+                    v-for="block in section.blocks"
+                    :key="block.blockId"
+                    class="mb-6 last:mb-0"
+                  >
+                    <h4
+                      v-if="block.heading"
+                      class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500"
+                      :style="{ color: mutedTextColor }"
+                    >
+                      {{ block.heading }}
+                    </h4>
+                    <ul class="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4">
+                      <li
+                        v-for="cell in block.cells"
+                        :key="cell.product.id"
+                        class="flex"
+                      >
+                        <ProductCard
+                          :product="cell.product"
+                          @open="openProductFromMenuSearch"
+                        />
+                      </li>
+                    </ul>
+                  </div>
+                </section>
+              </template>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Модалка с информацией о товаре и модификаторами -->
     <Teleport to="body">
       <Transition name="product">
@@ -344,6 +473,9 @@
                 :src="selectedProduct.image"
                 :alt="selectedProduct.name"
                 class="h-full w-full object-cover"
+                loading="eager"
+                decoding="async"
+                fetchpriority="high"
               />
             </div>
             
@@ -556,11 +688,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { $fetch } from 'ofetch'
 import type { Product, ModifierGroup, ModifierOption, ProductParameterGroup, ProductParameterOption } from '../data/products'
-import type { SelectedModifier, SelectedParameter } from '../stores/cart'
+import type { CatalogSection, SelectedModifier, SelectedParameter } from '../stores/cart'
 import { useTenant } from '../composables/useTenant'
 import { useMessengerStorage } from '../composables/useMessengerStorage'
 import { useCartStore } from '../stores/cart'
@@ -614,25 +746,98 @@ const storyViewerNavigableCampaigns = computed(() => {
   return out
 })
 
+const menuSearchModalOpen = ref(false)
+const menuSearchModalQuery = ref('')
+const menuSearchModalInputRef = ref<HTMLInputElement | null>(null)
+
+function normalizeMenuSearchText(raw: string): string {
+  return raw.trim().toLowerCase().replace(/ё/g, 'е')
+}
+
+function productMatchesMenuSearch(product: Product, tokens: string[]): boolean {
+  if (!tokens.length) return true
+  const hay = normalizeMenuSearchText(
+    [product.name, product.description ?? '', product.category, product.menuGroup?.name ?? ''].join(' '),
+  )
+  return tokens.every((t) => hay.includes(t))
+}
+
+const menuSearchModalTokens = computed(() => {
+  const norm = normalizeMenuSearchText(menuSearchModalQuery.value)
+  if (!norm) return [] as string[]
+  return norm.split(/\s+/).filter(Boolean)
+})
+
+/** Результаты только для модалки поиска (основной каталог не фильтруем). */
+const menuSearchModalFilteredSections = computed((): CatalogSection[] => {
+  const sections = cartStore.catalogSections
+  const tokens = menuSearchModalTokens.value
+  if (!tokens.length) return []
+  return sections
+    .map((section: CatalogSection) => ({
+      ...section,
+      blocks: section.blocks
+        .map((block) => ({
+          ...block,
+          products: block.products.filter((p: Product) => productMatchesMenuSearch(p, tokens)),
+        }))
+        .filter((block) => block.products.length > 0),
+    }))
+    .filter((section) => section.blocks.length > 0)
+})
+
+const menuSearchModalSectionsWithCells = computed(() => {
+  return menuSearchModalFilteredSections.value.map((section) => ({
+    sectionId: section.sectionId,
+    navLabel: section.navLabel,
+    title: section.title,
+    blocks: section.blocks.map((block) => ({
+      ...block,
+      cells: block.products.map((product) => ({ type: 'product' as const, product })),
+    })),
+  }))
+})
+
+function openMenuSearchModal() {
+  menuSearchModalOpen.value = true
+  void nextTick(() => {
+    menuSearchModalInputRef.value?.focus()
+  })
+}
+
+function closeMenuSearchModal() {
+  menuSearchModalOpen.value = false
+  menuSearchModalQuery.value = ''
+}
+
 const sectionsWithStoryCells = computed(() => {
   const storyCampaigns = storiesCatalogGrid.value
+  const base = cartStore.catalogSections
   let globalCount = 0
   let storyIdx = 0
-  return cartStore.productsByCategory.map((section) => {
-    const cells: Array<
-      | { type: 'product'; product: Product }
-      | { type: 'story'; campaign: StoryCampaignDto }
-    > = []
-    for (const product of section.products) {
-      cells.push({ type: 'product', product })
-      globalCount++
-      if (globalCount % 6 === 0 && storyCampaigns.length) {
-        const camp = storyCampaigns[storyIdx % storyCampaigns.length]
-        storyIdx++
-        cells.push({ type: 'story', campaign: camp })
+  return base.map((section) => {
+    const blocks = section.blocks.map((block) => {
+      const cells: Array<
+        | { type: 'product'; product: Product }
+        | { type: 'story'; campaign: StoryCampaignDto }
+      > = []
+      for (const product of block.products) {
+        cells.push({ type: 'product', product })
+        globalCount++
+        if (globalCount % 6 === 0 && storyCampaigns.length) {
+          const camp = storyCampaigns[storyIdx % storyCampaigns.length]
+          storyIdx++
+          cells.push({ type: 'story', campaign: camp })
+        }
       }
+      return { ...block, cells }
+    })
+    return {
+      sectionId: section.sectionId,
+      navLabel: section.navLabel,
+      title: section.title,
+      blocks,
     }
-    return { ...section, cells }
   })
 })
 
@@ -676,9 +881,15 @@ function onStoryAction(payload: { slide: StorySlideDto; actionType: string }) {
         : typeof raw.category_name === 'string'
           ? raw.category_name
           : ''
-    if (cat && typeof document !== 'undefined') {
-      const el = document.getElementById(cat)
-      el?.scrollIntoView({ behavior: 'smooth' })
+    const sectionId =
+      typeof raw.section_id === 'string'
+        ? raw.section_id.trim()
+        : typeof raw.sectionId === 'string'
+          ? raw.sectionId.trim()
+          : ''
+    if (typeof document !== 'undefined') {
+      const id = sectionId || cat.trim()
+      if (id) document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
     }
     viewerOpen.value = false
     return
@@ -785,7 +996,7 @@ type RestaurantOps = {
 
 const CHECKOUT_STORAGE_KEY = 'teleshop_checkout_state'
 const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000
-const CATALOG_CACHE_KEY_PREFIX = 'teleshop-catalog'
+const CATALOG_CACHE_KEY_PREFIX = 'teleshop-catalog-v2'
 
 type CatalogCacheEntry = {
   ts: number
@@ -1049,6 +1260,11 @@ function applyCartScope() {
   const scope = resolveCartScopeKey(route, tenantKey.value)
   cartStore.setScope(scope)
   cartStore.adoptLegacyShopIdScopeIfEmpty(readShopIdFromQuery(route))
+}
+
+function openProductFromMenuSearch(product: Product) {
+  closeMenuSearchModal()
+  openProduct(product)
 }
 
 function openProduct(product: Product) {

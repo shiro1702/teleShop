@@ -30,6 +30,7 @@
           :alt="item.name"
           class="h-20 w-full rounded-lg object-cover"
           loading="lazy"
+          decoding="async"
         >
         <p class="mt-2 line-clamp-2 min-h-10 text-xs font-medium" :style="{ color: mainTextColor }">
           {{ item.name }}

@@ -36,17 +36,9 @@ export function buildAuthSiteLinkUrl(options: {
   if (host) {
     const clean = host.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
     baseUrl = `https://${clean}`
-  } else {
-    const city =
-      (raw.city_slug && String(raw.city_slug).trim()) || options.defaultCitySlug
-    const shopSlug =
-      (raw.shop_slug && String(raw.shop_slug).trim()) ||
-      (options.tenantShop?.slug && String(options.tenantShop.slug).trim()) ||
-      ''
-    if (shopSlug) {
-      baseUrl = `${baseApp}/${encodeURIComponent(city)}/${encodeURIComponent(shopSlug)}`
-    }
   }
+  // link-telegram / link-max / link-vk — только корневые маршруты (`pages/link-*.vue`), не под /[city]/[tenant]/...
+  // Контекст города и магазина передаём query (`shop_id`, `redirect`), а не префиксом пути.
   const redirectPath =
     typeof raw.redirect_path === 'string' && raw.redirect_path.startsWith('/') && !raw.redirect_path.startsWith('//')
       ? raw.redirect_path

@@ -1,5 +1,12 @@
 export type ProductCategory = string
 
+/** Группа витрины: несколько категорий под одним заголовком в каталоге */
+export type ProductMenuGroup = {
+  id: string
+  name: string
+  sortOrder: number
+}
+
 export interface ProductParameterOption {
   id: string
   name: string
@@ -45,6 +52,11 @@ export interface Product {
   image: string
   description?: string
   category: ProductCategory
+  /** UUID категории в БД; для якорей и группировки на витрине */
+  categoryId?: string | null
+  /** Порядок категории внутри группы или среди «корневых» категорий */
+  categorySortOrder?: number
+  menuGroup?: ProductMenuGroup | null
   modifiers?: ModifierGroup[]
   parameters?: ProductParameterGroup[]
   availability?: {

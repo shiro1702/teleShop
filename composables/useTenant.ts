@@ -245,15 +245,69 @@ export function useTenant() {
           || normalizeRouteQueryParam(route.query.shop_id)),
   )
 
+  /** На `/link-telegram|max|vk` в пути нет `/:city/:shop` — берём город из `redirect`, иначе лого ведёт на `/{shop}`. */
+  const authLinkRestaurantHint = computed(() => {
+    const routePath = typeof route.path === 'string' ? route.path : ''
+    if (!/^\/link-(telegram|max|vk)(\/|$)/.test(routePath)) return null
+    const raw = normalizeRouteQueryParam(route.query.redirect)
+    if (!raw || !raw.startsWith('/')) return null
+    const pathOnly = raw.split('?')[0].replace(/\/+$/, '') || '/'
+    const segments = pathOnly.split('/').filter(Boolean)
+    const shopFromQuery = normalizeRouteQueryParam(route.query.shop_id)
+
+    const RESERVED_SECOND = new Set([
+      'orders',
+      'checkout',
+      'cart',
+      'profile',
+      'partners',
+      'platform',
+      'login',
+      'register',
+      'festival',
+      'bonuses',
+      'achievements',
+    ])
+
+    if (segments.length >= 2 && segments[1] === 'festival') {
+      if (segments.length < 4) return null
+      const tenantSeg = segments[3]
+      if (shopFromQuery && tenantSeg !== shopFromQuery) return null
+      return {
+        citySlug: segments[0],
+        festivalSlug: segments[2],
+        tenantSlug: tenantSeg,
+      }
+    }
+
+    if (segments.length >= 2) {
+      const tenantSeg = segments[1]
+      if (RESERVED_SECOND.has(tenantSeg)) return null
+      if (shopFromQuery && tenantSeg !== shopFromQuery) return null
+      if (!shopFromQuery && state.value.tenantSlug && tenantSeg !== state.value.tenantSlug) return null
+      return {
+        citySlug: segments[0],
+        festivalSlug: null as string | null,
+        tenantSlug: tenantSeg,
+      }
+    }
+
+    return null
+  })
+
   const routePrefix = computed(() => {
     const slug = routeTenantSlug.value || state.value.tenantSlug
     if (!slug || state.value.isCustomDomain) return ''
 
+    const hint = authLinkRestaurantHint.value
+    const citySlug = routeCitySlug.value || hint?.citySlug || null
+    const festivalSlug = routeFestivalSlug.value || hint?.festivalSlug || null
+
     // Публичная restaurant-схема агрегатора: /{city_slug}/{tenant_slug}
-    if (routeCitySlug.value && routeFestivalSlug.value) {
-      return `/${routeCitySlug.value}/festival/${routeFestivalSlug.value}/${slug}`
+    if (citySlug && festivalSlug) {
+      return `/${citySlug}/festival/${festivalSlug}/${slug}`
     }
-    if (routeCitySlug.value) return `/${routeCitySlug.value}/${slug}`
+    if (citySlug) return `/${citySlug}/${slug}`
     return `/${slug}`
   })
 
