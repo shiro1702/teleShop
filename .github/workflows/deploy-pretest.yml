@@ -34,16 +34,26 @@ jobs:
         shell: bash
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
           set -euo pipefail
           if [ -z "${SSH_PRIVATE_KEY:-}" ]; then
-            echo "SSH_PRIVATE_KEY secret is required"
+            echo "::error::SSH_PRIVATE_KEY secret is required"
+            exit 1
+          fi
+          if [ -z "${VPS_HOST:-}" ]; then
+            echo "::error::VPS_HOST secret is required"
             exit 1
           fi
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+          echo "Adding $VPS_HOST to known_hosts (ssh-keyscan)..."
+          if ! ssh-keyscan -T 25 -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/tmp/ssh-keyscan.err; then
+            echo "::error::ssh-keyscan failed for host \"$VPS_HOST\". stderr:"
+            cat /tmp/ssh-keyscan.err || true
+            exit 1
+          fi
 
       - name: Deploy on VPS (pretest)
         shell: bash
@@ -54,7 +64,7 @@ jobs:
           PRETEST_ENV_FILE: ${{ secrets.PRETEST_ENV_FILE }}
         run: |
           set -euo pipefail
-          SSH_OPTS="-i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes"
+          SSH_OPTS="-i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=24"
           if [ -z "${SSH_USER:-}" ]; then
             echo "SSH_USER secret is required"
             exit 1
