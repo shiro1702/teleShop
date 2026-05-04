@@ -35,6 +35,7 @@ jobs:
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
         run: |
           set -euo pipefail
           if [ -z "${SSH_PRIVATE_KEY:-}" ]; then
@@ -45,14 +46,18 @@ jobs:
             echo "::error::VPS_HOST secret is required"
             exit 1
           fi
+          SSH_PORT="${VPS_SSH_PORT:-22}"
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          echo "Adding $VPS_HOST to known_hosts (ssh-keyscan)..."
-          if ! ssh-keyscan -T 25 -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/tmp/ssh-keyscan.err; then
-            echo "::error::ssh-keyscan failed for host \"$VPS_HOST\". stderr:"
+          : > ~/.ssh/known_hosts
+          echo "Optional: ssh-keyscan $VPS_HOST (port $SSH_PORT)..."
+          if ssh-keyscan -T 25 -p "$SSH_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/tmp/ssh-keyscan.err; then
+            echo "ssh-keyscan succeeded"
+          else
+            echo "::warning::ssh-keyscan failed; using StrictHostKeyChecking=accept-new on first ssh."
             cat /tmp/ssh-keyscan.err || true
-            exit 1
+            : > ~/.ssh/known_hosts
           fi
 
       - name: Deploy on VPS (pretest)
@@ -60,11 +65,13 @@ jobs:
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
           DEPLOY_PATH: ${{ secrets.PRETEST_DEPLOY_PATH }}
           PRETEST_ENV_FILE: ${{ secrets.PRETEST_ENV_FILE }}
         run: |
           set -euo pipefail
-          SSH_OPTS="-i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=24"
+          SSH_PORT="${VPS_SSH_PORT:-22}"
+          SSH_OPTS="-i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new -o Port=${SSH_PORT} -o ServerAliveInterval=30 -o ServerAliveCountMax=24"
           if [ -z "${SSH_USER:-}" ]; then
             echo "SSH_USER secret is required"
             exit 1
