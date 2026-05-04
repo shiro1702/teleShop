@@ -23,7 +23,7 @@
         class="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-gray-100"
       >
         <img
-          :src="item.image"
+          :src="cardImageSrc"
           :alt="item.name"
           class="h-full w-full object-cover"
           loading="lazy"
@@ -137,11 +137,15 @@ import { computed, onBeforeUnmount, onMounted, ref, toRefs } from 'vue'
 import type { CartItem } from '~/stores/cart'
 import { useCartStore } from '~/stores/cart'
 import { useTenant } from '~/composables/useTenant'
+import { productImageCard } from '~/utils/productImage'
 
 const props = defineProps<{
   item: CartItem
 }>()
 const { item } = toRefs(props)
+
+const cardImageSrc = computed(() => productImageCard(props.item.image))
+
 const emit = defineEmits<{
   (e: 'edit', item: CartItem): void
 }>()

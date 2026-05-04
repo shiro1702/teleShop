@@ -7,7 +7,7 @@
   >
     <div class="aspect-square w-full shrink-0 overflow-hidden bg-gray-100 relative">
       <img
-        :src="product.image"
+        :src="cardImageSrc"
         :alt="product.name"
         class="h-full w-full object-cover"
         loading="lazy"
@@ -108,10 +108,13 @@ import { computed } from 'vue'
 import type { Product } from '~/data/products'
 import { useCartStore } from '~/stores/cart'
 import { useTenant } from '~/composables/useTenant'
+import { productImageCard } from '~/utils/productImage'
 
 const props = defineProps<{
   product: Product
 }>()
+
+const cardImageSrc = computed(() => productImageCard(props.product.image))
 
 const emit = defineEmits<{
   (e: 'open', product: Product): void

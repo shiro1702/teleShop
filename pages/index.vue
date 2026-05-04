@@ -470,7 +470,7 @@
             </button>
             <div class="h-48 w-full shrink-0 overflow-hidden sm:h-56" :style="{ backgroundColor: cardBgColor }">
               <img
-                :src="selectedProduct.image"
+                :src="productImageHero(selectedProduct.image)"
                 :alt="selectedProduct.name"
                 class="h-full w-full object-cover"
                 loading="eager"
@@ -697,6 +697,7 @@ import { useTenant } from '../composables/useTenant'
 import { useMessengerStorage } from '../composables/useMessengerStorage'
 import { useCartStore } from '../stores/cart'
 import { readShopIdFromQuery, resolveCartScopeKey } from '../utils/cartScope'
+import { productImageHero } from '../utils/productImage'
 import { useTenantRestaurantsCache } from '../composables/useTenantRestaurantsCache'
 import {
   mapFulfillmentToCityMode,
