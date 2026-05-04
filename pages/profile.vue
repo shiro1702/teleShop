@@ -244,7 +244,7 @@
             {{ isSaving ? 'Сохраняем...' : 'Сохранить данные' }}
           </button>
           <button
-            v-if="telegramBotUrl || maxBotUrl"
+            v-if="telegramBotUrl || maxBotUrl || vkAuthEnabled"
             type="button"
             class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             @click="openAuthChooserModal"
@@ -255,41 +255,16 @@
       </div>
     </div>
 
-    <div v-if="showAuthModal" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-black/40" @click="closeAuthChooserModal" />
-      <div class="relative z-[1] w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
-        <h3 class="text-base font-semibold text-gray-900">Выберите бота</h3>
-        <p class="mt-1 text-xs text-gray-500">
-          Откроется чат с ботом — продолжите там, затем вернитесь на сайт при необходимости.
-        </p>
-        <div class="mt-4">
-          <AuthPdConsentCheckbox v-model="authPdConsent" variant="light" :consent-href="consentPath" />
-        </div>
-        <div class="mt-4 space-y-2">
-          <button
-            v-if="telegramBotUrl"
-            type="button"
-            class="w-full rounded-lg border border-primary bg-white px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="!authPdConsent"
-            @click="openTelegramAuth"
-          >
-            Telegram
-          </button>
-          <button
-            v-if="maxBotUrl"
-            type="button"
-            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="!authPdConsent"
-            @click="openMaxAuth"
-          >
-            MAX
-          </button>
-        </div>
-        <p class="mt-3 text-center text-xs leading-snug text-gray-500 sm:text-left">
-          Дайте согласие на обработку ПД — тогда кнопки входа станут доступны.
-        </p>
-      </div>
-    </div>
+    <AuthChannelModal
+      v-model="showAuthModal"
+      title="Выберите бота"
+      description="Откроется чат с ботом — продолжите там, затем вернитесь на сайт при необходимости."
+      :channels="profileAuthChannels"
+      intent="profile"
+      variant="light"
+      :consent-href="consentPath"
+      @submit="onProfileAuthChannelSubmit"
+    />
     </div>
   </Teleport>
 </template>
@@ -301,6 +276,7 @@ import { useRoute } from 'vue-router'
 import { useTenant } from '../composables/useTenant'
 import { useTelegram } from '../composables/useTelegram'
 import { useMessengerStorage } from '../composables/useMessengerStorage'
+import type { AuthChannel } from '~/types/authChannel'
 
 declare const useRuntimeConfig: any
 declare const navigateTo: (to: any) => Promise<void> | void
@@ -318,7 +294,6 @@ const supabase = useSupabaseClient()
 const route = useRoute()
 const { tenantPath, tenantKey } = useTenant()
 const { consentPath } = useLegalPaths()
-const authPdConsent = ref(false)
 const config = useRuntimeConfig()
 const { isMessengerMiniApp, isTelegram, isMaxMiniApp, messengerWebApp } = useTelegram()
 const { canUseMessengerStorage, getItem, setItem } = useMessengerStorage()
@@ -329,16 +304,40 @@ const maxBotUrl = computed(() => {
   const trimmed = raw.trim()
   return trimmed || null
 })
+const vkAuthEnabled = computed(() => {
+  const raw = config.public.vkIdClientId as string | number | undefined
+  const appId = raw != null && raw !== '' ? String(raw).trim() : ''
+  return Boolean(appId)
+})
+
+const profileAuthChannels = computed((): AuthChannel[] => {
+  const opts: AuthChannel[] = []
+  if (telegramBotUrl.value) opts.push('telegram')
+  if (maxBotUrl.value) opts.push('max')
+  if (vkAuthEnabled.value) opts.push('vk')
+  return opts
+})
+
 const showAuthModal = ref(false)
 
 function openAuthChooserModal() {
-  authPdConsent.value = false
   showAuthModal.value = true
 }
 
 function closeAuthChooserModal() {
   showAuthModal.value = false
-  authPdConsent.value = false
+}
+
+function onProfileAuthChannelSubmit(channel: AuthChannel) {
+  if (channel === 'telegram') {
+    void openTelegramAuth()
+    return
+  }
+  if (channel === 'max') {
+    void openMaxAuth()
+    return
+  }
+  void openVkAuth()
 }
 
 const showProfileModal = ref(false)
@@ -690,6 +689,44 @@ async function openTelegramAuth() {
     })
   } catch {
     window.alert('Не удалось начать вход через Telegram. Попробуйте ещё раз.')
+  }
+}
+
+async function openVkAuth() {
+  closeAuthChooserModal()
+  if (!vkAuthEnabled.value || typeof window === 'undefined') return
+  const shopRef =
+    (typeof route.query.shop_id === 'string' && route.query.shop_id.trim()) || tenantKey.value?.trim() || ''
+  if (!shopRef) {
+    window.alert('Не удалось определить ресторан. Откройте профиль со страницы ресторана или добавьте shop_id в адрес.')
+    return
+  }
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  const redirectPath = tenantPath('/profile')
+  try {
+    const res = await $fetch<{ ok: boolean; token: string; authorizeUrl: string }>('/api/auth/request-vk-link', {
+      method: 'POST',
+      headers: { 'x-shop-id': shopRef },
+      body: {
+        shopId: shopRef,
+        citySlug: citySlug || undefined,
+        redirectPath,
+      },
+    })
+    if (!res?.ok || !res.token || !res.authorizeUrl) {
+      throw new Error('bad_response')
+    }
+    await navigateTo({
+      path: '/link-vk',
+      query: {
+        token: res.token,
+        redirect: redirectPath,
+        shop_id: shopRef,
+      },
+    })
+    window.location.href = res.authorizeUrl
+  } catch {
+    window.alert('Не удалось начать вход через ВКонтакте. Попробуйте ещё раз.')
   }
 }
 

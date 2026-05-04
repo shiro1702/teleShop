@@ -14,7 +14,7 @@
         :class="checkboxClass"
       >
       <label :for="inputId" class="min-w-0 cursor-pointer text-sm leading-snug">
-        <span class="block font-medium text-[color:var(--color-text-primary)]">Согласие на обработку ПДн</span>
+        <span class="block font-medium text-[color:var(--color-text-primary)]">Согласие на обработку персональных данных</span>
         <span class="mt-1 block text-xs leading-relaxed text-[color:var(--color-text-muted)]">
           Я согласен(на) на
           <NuxtLink

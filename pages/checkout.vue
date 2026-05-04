@@ -1028,51 +1028,16 @@
       </div>
     </Transition>
 
-    <Teleport to="body">
-      <Transition name="modal-fade">
-        <div v-if="showAuthModal" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
-          <div class="absolute inset-0 bg-black/40" @click="closeAuthModal" />
-          <div class="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl modal-panel">
-            <h3 class="text-base font-semibold text-gray-900">Выберите способ входа</h3>
-            <p class="mt-1 text-sm text-gray-600">
-              {{
-                authModalMode === 'auth'
-                  ? 'Авторизация для оформления заказа.'
-                  : authModalMode === 'service'
-                    ? 'Статусы сервисного вызова (принят, в пути, выполнен) приходят после авторизации.'
-                    : 'Продолжение в выбранном боте.'
-              }}
-            </p>
-            <div class="mt-4">
-              <AuthPdConsentCheckbox v-model="authPdConsent" variant="light" :consent-href="consentPath" />
-            </div>
-            <div class="mt-4 space-y-2">
-              <button
-                v-if="telegramBotUrl"
-                type="button"
-                class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-                :disabled="!authPdConsent"
-                @click="runAuthAction('telegram')"
-              >
-                {{ authModalMode === 'continue' ? 'Продолжить в Telegram' : 'Войти через Telegram' }}
-              </button>
-              <button
-                v-if="maxBotUrl"
-                type="button"
-                class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                :disabled="!authPdConsent"
-                @click="runAuthAction('max')"
-              >
-                {{ authModalMode === 'continue' ? 'Продолжить в MAX' : 'Войти через MAX' }}
-              </button>
-            </div>
-            <p class="mt-3 text-center text-xs leading-snug text-gray-500 sm:text-left">
-              Дайте согласие на обработку ПД — тогда кнопки входа станут доступны.
-            </p>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+    <AuthChannelModal
+      v-model="showAuthModal"
+      title="Выберите способ входа"
+      :description="authModalDescription"
+      :channels="authModalChannelOptions"
+      :intent="authModalIntent"
+      variant="light"
+      :consent-href="consentPath"
+      @submit="runAuthAction"
+    />
     <Teleport to="body">
       <Transition name="modal-fade">
         <div v-if="showServiceCallsModal" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
@@ -1350,6 +1315,7 @@ import { useWorkingHoursStatus } from '~/composables/useWorkingHoursStatus'
 import type { Product, ModifierGroup, ModifierOption } from '~/data/products'
 import type { CartItem, SelectedModifier, SelectedParameter } from '~/stores/cart'
 import CartUpsellStrip from '~/components/checkout/CartUpsellStrip.vue'
+import type { AuthChannel } from '~/types/authChannel'
 
 const cartStore = useCartStore()
 const route = useRoute()
@@ -1366,7 +1332,6 @@ const supabaseUser = useSupabaseUser()
 const config = useRuntimeConfig()
 const { tenant, tenantKey, tenantPath } = useTenant()
 const { consentPath } = useLegalPaths()
-const authPdConsent = ref(false)
 
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() =>
@@ -1376,6 +1341,11 @@ const maxBotUrl = computed(() => {
   const raw = (config.public.maxBotUrl as string | undefined) || ''
   const trimmed = raw.trim()
   return trimmed || null
+})
+const vkAuthEnabled = computed(() => {
+  const raw = config.public.vkIdClientId as string | number | undefined
+  const appId = raw != null && raw !== '' ? String(raw).trim() : ''
+  return Boolean(appId)
 })
 const theme = computed(() => tenant.value.theme || {})
 const pageBgColor = computed(() => theme.value.surface_background || 'var(--color-surface-bg)')
@@ -1497,6 +1467,24 @@ const isStep2ActionsVisible = ref(false)
 const stepDirection = ref<'forward' | 'backward'>('forward')
 const showAuthModal = ref(false)
 const authModalMode = ref<'auth' | 'continue' | 'service'>('auth')
+
+const authModalChannelOptions = computed((): AuthChannel[] => {
+  const opts: AuthChannel[] = []
+  if (telegramBotUrl.value) opts.push('telegram')
+  if (maxBotUrl.value) opts.push('max')
+  if (vkAuthEnabled.value && authModalMode.value !== 'continue') opts.push('vk')
+  return opts
+})
+
+const authModalDescription = computed(() => {
+  if (authModalMode.value === 'auth') return 'Авторизация для оформления заказа.'
+  if (authModalMode.value === 'service') {
+    return 'Статусы сервисного вызова (принят, в пути, выполнен) приходят после авторизации.'
+  }
+  return 'Продолжение в выбранном боте.'
+})
+
+const authModalIntent = computed(() => (authModalMode.value === 'continue' ? 'continue' : 'login'))
 const showServiceCallsModal = ref(false)
 const showBranchesMapModal = ref(false)
 /** Доставка: по умолчанию только карта зон; список филиалов — по запросу. */
@@ -3541,13 +3529,11 @@ function authAndReturn() {
 
 function openAuthModal(mode: 'auth' | 'continue' | 'service') {
   authModalMode.value = mode
-  authPdConsent.value = false
   showAuthModal.value = true
 }
 
 function closeAuthModal() {
   showAuthModal.value = false
-  authPdConsent.value = false
 }
 
 function serviceCallBranchLabel(branch: Pick<RestaurantItem, 'name' | 'address'>) {
@@ -3646,6 +3632,43 @@ function openMaxAuth() {
   void openMaxAuthFlow()
 }
 
+async function openVkAuthFlow() {
+  if (!vkAuthEnabled.value || !isClient()) return
+  await saveCurrentAddress()
+  await persistCheckoutStateCloud(serializeState())
+  const shopRef = checkoutXShopId.value || ''
+  if (!shopRef) {
+    window.alert('Не удалось определить ресторан. Обновите страницу.')
+    return
+  }
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  try {
+    const res = await $fetch<{ ok: boolean; token: string; authorizeUrl: string }>('/api/auth/request-vk-link', {
+      method: 'POST',
+      headers: { 'x-shop-id': shopRef },
+      body: {
+        shopId: shopRef,
+        citySlug: citySlug || undefined,
+        redirectPath: tenantPath('/checkout'),
+      },
+    })
+    if (!res?.ok || !res.token || !res.authorizeUrl) {
+      throw new Error('bad_response')
+    }
+    await navigateTo({
+      path: '/link-vk',
+      query: {
+        token: res.token,
+        redirect: tenantPath('/checkout'),
+        shop_id: shopRef,
+      },
+    })
+    window.location.href = res.authorizeUrl
+  } catch {
+    window.alert('Не удалось начать вход через ВКонтакте. Попробуйте ещё раз.')
+  }
+}
+
 async function openTelegramAuth() {
   if (!telegramBotUrl.value || !isClient()) return
   await saveCurrentAddress()
@@ -3707,21 +3730,28 @@ async function openTelegramAuth() {
   }
 }
 
-async function runAuthAction(channel: 'telegram' | 'max') {
+async function runAuthAction(channel: AuthChannel) {
   closeAuthModal()
   if (authModalMode.value === 'continue') {
     if (channel === 'telegram') {
       await continueInTelegramFromCheckout()
       return
     }
-    await continueInMaxFromCheckout()
+    if (channel === 'max') {
+      await continueInMaxFromCheckout()
+      return
+    }
     return
   }
   if (channel === 'telegram') {
     await openTelegramAuth()
     return
   }
-  await openMaxAuthFlow()
+  if (channel === 'max') {
+    await openMaxAuthFlow()
+    return
+  }
+  await openVkAuthFlow()
 }
 
 async function continueInTelegramFromCheckout() {
