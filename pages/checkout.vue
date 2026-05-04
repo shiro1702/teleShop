@@ -1208,7 +1208,14 @@
               </svg>
             </button>
             <div class="h-48 w-full shrink-0 overflow-hidden sm:h-56" :style="{ backgroundColor: cardBgColor }">
-              <img :src="editingItemProduct.image" :alt="editingItemProduct.name" class="h-full w-full object-cover">
+              <img
+                :src="editingItemProduct.image"
+                :alt="editingItemProduct.name"
+                class="h-full w-full object-cover"
+                loading="eager"
+                decoding="async"
+                fetchpriority="high"
+              >
             </div>
             <div class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
               <div>

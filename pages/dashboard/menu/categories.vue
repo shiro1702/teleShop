@@ -3,7 +3,9 @@
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-semibold">Категории меню</h1>
-        <p class="mt-2 text-sm text-gray-600">Управление категориями и их порядком.</p>
+        <p class="mt-2 text-sm text-gray-600">
+          Категории и их порядок. Группы объединяют несколько категорий в один блок на витрине (как «Алкогольные напитки»).
+        </p>
       </div>
       <button
         class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
@@ -11,6 +13,42 @@
       >
         Создать категорию
       </button>
+    </div>
+
+    <div class="rounded-xl border border-gray-200 bg-white p-4">
+      <h2 class="text-sm font-semibold text-gray-900">Группы на витрине</h2>
+      <p class="mt-1 text-xs text-gray-500">Задайте порядок группы — он сравнивается с полем «Порядок» у категорий без группы.</p>
+      <div class="mt-3 flex flex-wrap items-end gap-2">
+        <div class="min-w-[12rem] flex-1">
+          <label class="block text-xs font-medium text-gray-600">Название группы</label>
+          <input
+            v-model.trim="newGroupName"
+            type="text"
+            placeholder="Например, Алкогольные напитки"
+            class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+        </div>
+        <div class="w-24">
+          <label class="block text-xs font-medium text-gray-600">Порядок</label>
+          <input v-model.number="newGroupSortOrder" type="number" class="mt-1 block w-full rounded-lg border border-gray-300 px-2 py-2 text-sm">
+        </div>
+        <button
+          type="button"
+          class="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+          :disabled="creatingGroup || !newGroupName"
+          @click="createMenuGroup"
+        >
+          {{ creatingGroup ? '…' : 'Добавить группу' }}
+        </button>
+      </div>
+      <ul v-if="menuGroups.length" class="mt-3 divide-y divide-gray-100 border-t border-gray-100 pt-2">
+        <li v-for="g in menuGroups" :key="g.id" class="flex items-center justify-between gap-2 py-2 text-sm">
+          <span class="font-medium text-gray-800">{{ g.name }}</span>
+          <span class="text-xs text-gray-500">порядок {{ g.sortOrder }}</span>
+          <button type="button" class="text-xs text-red-600 hover:underline" @click="deleteMenuGroup(g)">Удалить</button>
+        </li>
+      </ul>
+      <p v-else class="mt-2 text-xs text-gray-500">Пока нет групп — категории показываются по одной.</p>
     </div>
 
     <div class="rounded-xl border border-gray-200 bg-white">
@@ -21,9 +59,13 @@
       <ul v-else class="divide-y divide-gray-100">
         <li v-for="cat in categories" :key="cat.id" class="flex items-center justify-between p-4 hover:bg-gray-50">
           <div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <span class="font-medium text-gray-900">{{ cat.name }}</span>
               <span v-if="!cat.isActive" class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">Скрыта</span>
+              <span
+                v-if="cat.menuGroup"
+                class="rounded bg-primary/10 px-2 py-0.5 text-xs text-primary"
+              >{{ cat.menuGroup.name }}</span>
             </div>
             <p class="mt-1 text-xs text-gray-500">Товаров: {{ cat.productsCount }}</p>
           </div>
@@ -87,6 +129,18 @@
           <div>
             <label class="block text-sm font-medium text-gray-700">Порядок сортировки</label>
             <input v-model.number="form.sortOrder" type="number" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" />
+            <p class="mt-1 text-xs text-gray-500">Внутри группы — порядок подкатегорий; без группы — порядок среди отдельных блоков меню.</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Группа на витрине</label>
+            <select
+              v-model="form.menuGroupId"
+              class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">Без группы (отдельный блок)</option>
+              <option v-for="g in menuGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
+            </select>
           </div>
 
           <div class="border-t border-gray-200 pt-4">
@@ -161,6 +215,12 @@ import { ref, onMounted } from 'vue'
 
 definePageMeta({ layout: 'dashboard' })
 
+type MenuCategoryGroup = {
+  id: string
+  name: string
+  sortOrder: number
+}
+
 type Category = {
   id: string
   name: string
@@ -170,6 +230,8 @@ type Category = {
   deliveryRestricted: boolean
   availabilityWindows: Array<{ days: number[]; start: string; end: string }>
   productsCount: number
+  menuGroupId: string | null
+  menuGroup: MenuCategoryGroup | null
   modifierGroupIds?: string[]
   parameterKindIds?: string[]
 }
@@ -185,10 +247,14 @@ type ParameterKind = {
 }
 
 const categories = ref<Category[]>([])
+const menuGroups = ref<MenuCategoryGroup[]>([])
 const modifierGroups = ref<ModifierGroup[]>([])
 const parameterKinds = ref<ParameterKind[]>([])
 const pending = ref(true)
 const error = ref('')
+const newGroupName = ref('')
+const newGroupSortOrder = ref(0)
+const creatingGroup = ref(false)
 
 const isModalOpen = ref(false)
 const editingCategory = ref<Category | null>(null)
@@ -199,9 +265,10 @@ const form = ref({
   sortOrder: 0,
   externalId: '',
   deliveryRestricted: false,
+  menuGroupId: '' as string,
   availabilityWindows: [] as Array<{ days: number[]; start: string; end: string }>,
   modifierGroupIds: [] as string[],
-  parameterKindIds: [] as string[]
+  parameterKindIds: [] as string[],
 })
 const dayOptions = [
   { value: 1, label: 'Пн' },
@@ -249,16 +316,26 @@ function toggleParameterKind(id: string) {
 async function fetchCategories() {
   pending.value = true
   try {
-    const [catsRes, modsRes, paramsRes] = await Promise.all([
+    const [catsRes, groupsRes, modsRes, paramsRes] = await Promise.all([
       fetch('/api/dashboard/menu/categories'),
+      fetch('/api/dashboard/menu/category-groups'),
       fetch('/api/dashboard/menu/modifiers'),
-      fetch('/api/dashboard/menu/parameters')
+      fetch('/api/dashboard/menu/parameters'),
     ])
-    
+
     const catsData = await catsRes.json()
+    const groupsData = await groupsRes.json()
     const modsData = await modsRes.json()
     const paramsData = await paramsRes.json()
-    
+
+    if (groupsData.ok) {
+      menuGroups.value = (groupsData.items || []).map((g: any) => ({
+        id: g.id,
+        name: g.name,
+        sortOrder: g.sortOrder,
+      }))
+    }
+
     if (catsData.ok) {
       categories.value = catsData.items
     } else {
@@ -287,6 +364,43 @@ async function fetchCategories() {
 
 onMounted(fetchCategories)
 
+async function createMenuGroup() {
+  const name = newGroupName.value.trim()
+  if (!name) return
+  creatingGroup.value = true
+  try {
+    const res = await fetch('/api/dashboard/menu/category-groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, sortOrder: newGroupSortOrder.value ?? 0 }),
+    })
+    const data = await res.json()
+    if (data.ok) {
+      newGroupName.value = ''
+      newGroupSortOrder.value = 0
+      await fetchCategories()
+    } else {
+      alert(data.statusMessage || 'Не удалось создать группу')
+    }
+  } catch (e: any) {
+    alert(e.message)
+  } finally {
+    creatingGroup.value = false
+  }
+}
+
+async function deleteMenuGroup(g: MenuCategoryGroup) {
+  if (!confirm(`Удалить группу «${g.name}»? Категории останутся без группы.`)) return
+  try {
+    const res = await fetch(`/api/dashboard/menu/category-groups/${g.id}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (data.ok) await fetchCategories()
+    else alert(data.statusMessage || 'Ошибка удаления')
+  } catch (e: any) {
+    alert(e.message)
+  }
+}
+
 function openCreateModal() {
   editingCategory.value = null
   form.value = {
@@ -295,24 +409,26 @@ function openCreateModal() {
     sortOrder: 0,
     externalId: '',
     deliveryRestricted: false,
+    menuGroupId: '',
     availabilityWindows: [],
     modifierGroupIds: [],
-    parameterKindIds: []
+    parameterKindIds: [],
   }
   isModalOpen.value = true
 }
 
 function openEditModal(cat: Category) {
   editingCategory.value = cat
-  form.value = { 
-    name: cat.name, 
-    isActive: cat.isActive, 
-    sortOrder: cat.sortOrder, 
+  form.value = {
+    name: cat.name,
+    isActive: cat.isActive,
+    sortOrder: cat.sortOrder,
     externalId: cat.externalId || '',
     deliveryRestricted: !!cat.deliveryRestricted,
+    menuGroupId: cat.menuGroupId || '',
     availabilityWindows: JSON.parse(JSON.stringify(cat.availabilityWindows || [])),
     modifierGroupIds: cat.modifierGroupIds || [],
-    parameterKindIds: cat.parameterKindIds || []
+    parameterKindIds: cat.parameterKindIds || [],
   }
   isModalOpen.value = true
 }
@@ -329,10 +445,15 @@ async function saveCategory() {
       ? `/api/dashboard/menu/categories/${editingCategory.value!.id}`
       : '/api/dashboard/menu/categories'
     
+    const payload = {
+      ...form.value,
+      menuGroupId: form.value.menuGroupId.trim() || null,
+    }
+
     const res = await fetch(url, {
       method: isEdit ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form.value)
+      body: JSON.stringify(payload),
     })
     
     const data = await res.json()

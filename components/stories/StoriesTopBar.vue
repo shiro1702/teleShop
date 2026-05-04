@@ -40,6 +40,8 @@
               :src="campaignPreviewUrl(c)"
               :alt="titleWithoutDemo(c.title)"
               class="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
             >
             <div
               v-else

@@ -16,7 +16,9 @@ export default defineEventHandler(async (event) => {
   const client = await serverSupabaseServiceRole(event)
   const { data, error } = await client
     .from('products')
-    .select('id,name,price,image,description,category,category_id,sort_order,is_active,delivery_restricted_override,availability_windows,categories(name,delivery_restricted,availability_windows)')
+    .select(
+      'id,name,price,image,description,category,category_id,sort_order,is_active,delivery_restricted_override,availability_windows,categories(name,delivery_restricted,availability_windows,sort_order,id,menu_group_id,menu_category_groups(id,name,sort_order))'
+    )
     .eq('shop_id', shopId)
     .eq('is_active', true)
     .order('sort_order', { ascending: true })
@@ -176,10 +178,22 @@ export default defineEventHandler(async (event) => {
       displayPrice = Math.min(...params[0].options.map((o: any) => o.price))
     }
 
+    const mg = item.categories?.menu_category_groups
+    const menuGroupRow = Array.isArray(mg) ? mg[0] : mg
+
     return {
       ...item,
       price: displayPrice,
       category: item.categories?.name || item.category || 'Без категории',
+      categoryId: item.category_id ?? null,
+      categorySortOrder: typeof item.categories?.sort_order === 'number' ? item.categories.sort_order : 0,
+      menuGroup: menuGroupRow
+        ? {
+            id: menuGroupRow.id,
+            name: menuGroupRow.name,
+            sortOrder: menuGroupRow.sort_order ?? 0,
+          }
+        : null,
       modifiers: modifiersMap[item.id] || [],
       parameters: params,
       availability: evaluateMenuAvailability({

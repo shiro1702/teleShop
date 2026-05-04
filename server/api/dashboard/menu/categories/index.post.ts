@@ -14,6 +14,9 @@ export default defineEventHandler(async (event) => {
   }
   const availabilityWindows = assertValidTimeWindows(body.availabilityWindows)
 
+  const menuGroupId =
+    typeof body.menuGroupId === 'string' && body.menuGroupId.trim() ? body.menuGroupId.trim() : null
+
   const { data, error } = await client
     .from('categories')
     .insert({
@@ -23,9 +26,10 @@ export default defineEventHandler(async (event) => {
       is_active: body.isActive ?? true,
       external_id: body.externalId || null,
       delivery_restricted: !!body.deliveryRestricted,
-      availability_windows: availabilityWindows
+      availability_windows: availabilityWindows,
+      menu_group_id: menuGroupId,
     })
-    .select('id, name, sort_order, is_active, external_id, delivery_restricted, availability_windows, created_at')
+    .select('id, name, sort_order, is_active, external_id, delivery_restricted, availability_windows, created_at, menu_group_id')
     .single()
 
   if (error) {
@@ -75,7 +79,8 @@ export default defineEventHandler(async (event) => {
       deliveryRestricted: !!data.delivery_restricted,
       availabilityWindows: Array.isArray(data.availability_windows) ? data.availability_windows : [],
       createdAt: data.created_at,
-      productsCount: 0
-    }
+      menuGroupId: data.menu_group_id || null,
+      productsCount: 0,
+    },
   }
 })

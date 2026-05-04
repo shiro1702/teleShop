@@ -26,6 +26,8 @@
           :src="item.image"
           :alt="item.name"
           class="h-full w-full object-cover"
+          loading="lazy"
+          decoding="async"
           @error="onImageError"
         />
       </div>

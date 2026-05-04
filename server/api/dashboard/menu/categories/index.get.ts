@@ -9,7 +9,8 @@ export default defineEventHandler(async (event) => {
   const { data, error } = await client
     .from('categories')
     .select(`
-      id, name, sort_order, is_active, external_id, delivery_restricted, availability_windows, created_at,
+      id, name, sort_order, is_active, external_id, delivery_restricted, availability_windows, created_at, menu_group_id,
+      menu_category_groups(id, name, sort_order),
       category_modifier_groups(group_id),
       category_parameter_kinds(parameter_kind_id)
     `)
@@ -49,9 +50,17 @@ export default defineEventHandler(async (event) => {
       deliveryRestricted: !!row.delivery_restricted,
       availabilityWindows: Array.isArray(row.availability_windows) ? row.availability_windows : [],
       createdAt: row.created_at,
+      menuGroupId: row.menu_group_id || null,
+      menuGroup: row.menu_category_groups
+        ? {
+            id: row.menu_category_groups.id,
+            name: row.menu_category_groups.name,
+            sortOrder: row.menu_category_groups.sort_order,
+          }
+        : null,
       productsCount: productCounts[row.id] || 0,
       modifierGroupIds: row.category_modifier_groups?.map((g: any) => g.group_id) || [],
-      parameterKindIds: row.category_parameter_kinds?.map((pk: any) => pk.parameter_kind_id) || []
+      parameterKindIds: row.category_parameter_kinds?.map((pk: any) => pk.parameter_kind_id) || [],
     }))
   }
 })

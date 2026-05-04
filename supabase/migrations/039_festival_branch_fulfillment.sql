@@ -8,7 +8,9 @@ create index if not exists idx_restaurants_festival_fulfillment
 
 -- Demo convenience: keep city branches in city mode, and maintain exactly one
 -- temporary pickup-only festival branch per shop for Amtatai 2026.
-create temporary table tmp_kept_festival_branches on commit drop as
+-- Default ON COMMIT PRESERVE ROWS: required so the temp table survives autocommit
+-- between statements when this file is executed via psql (each statement is its own txn).
+create temporary table tmp_kept_festival_branches as
 with ranked as (
   select
     r.id,
@@ -140,3 +142,5 @@ select
   true
 from source_branches sb
 cross join target_festival tf;
+
+drop table if exists tmp_kept_festival_branches;
