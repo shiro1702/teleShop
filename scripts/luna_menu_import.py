@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-One-off import: Luna Lounge test shop — replace categories/products from printed menu,
-resize photos (stride-based mapping), upload to Supabase Storage, PATCH restaurant name.
+Luna Lounge test shop: меню + фото, либо только перезаливка картинок.
 
-Usage (from repo root, with .env containing SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY):
+По умолчанию фото **001.jpg, 002.jpg, …** сопоставляются с блюдами **в порядке MENU** (1:1).
+Раньше был шаг 3 — он давал неверные пары.
+
+Usage:
   python3 scripts/luna_menu_import.py --photos "/abs/path/to/Photos"
+  python3 scripts/luna_menu_import.py --photos "..." --images-only   # только image, id товаров не трогаем
 
-Override photo numbers per dish index (0-based): --mapping-file path/to.json
-  JSON format: {"0": 1, "5": 18}  (dish index -> 1-based photo file number, e.g. 018.jpg)
+Override номеров jpg (индекс блюда 0..50 → номер файла 1-based):
+  --mapping-file map.json  как объект {"0": 3, "10": 45} или массив [3, 4, 5, ...] длины 51.
 """
 
 from __future__ import annotations
@@ -28,7 +31,8 @@ RESTAURANT_ID = "0d08d0a6-9eaa-4943-8b1f-bcc7416fbe7c"
 BUCKET = "organization-media"
 HERO_W, HERO_H = 488, 224
 CARD_SIDE = 256
-PHOTO_STRIDE = 3
+# Дефолт: блюдо с индексом i → файл (i + 1). Переопределение через --mapping-file.
+PHOTO_STRIDE = 1
 
 MENU: list[dict] = [
     # Завтраки
@@ -198,6 +202,11 @@ def main() -> None:
     ap.add_argument("--env", type=Path, default=Path(".env"))
     ap.add_argument("--photos", type=Path, required=True)
     ap.add_argument("--mapping-file", type=Path, default=None)
+    ap.add_argument(
+        "--images-only",
+        action="store_true",
+        help="Не удалять категории/товары: обновить только image у существующих позиций (по sort_order).",
+    )
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -209,7 +218,12 @@ def main() -> None:
     mapping: dict[int, int] = {}
     if args.mapping_file and args.mapping_file.exists():
         raw = json.loads(args.mapping_file.read_text(encoding="utf-8"))
-        mapping = {int(k): int(v) for k, v in raw.items()}
+        if isinstance(raw, list):
+            mapping = {i: int(v) for i, v in enumerate(raw)}
+        elif isinstance(raw, dict):
+            mapping = {int(k): int(v) for k, v in raw.items()}
+        else:
+            sys.exit("--mapping-file: ожидается JSON-массив чисел или объект {индекс: номер_фото}")
 
     photos_dir: Path = args.photos
     if not photos_dir.is_dir():
@@ -218,7 +232,7 @@ def main() -> None:
     def photo_num_for_dish(idx: int) -> int:
         if idx in mapping:
             return mapping[idx]
-        return idx * PHOTO_STRIDE + 1
+        return idx * PHOTO_STRIDE + 1  # при PHOTO_STRIDE=1: 1,2,3,...
 
     def photo_path_for_dish(idx: int) -> Path:
         n = photo_num_for_dish(idx)
@@ -231,9 +245,48 @@ def main() -> None:
     hdr = rest_headers(service_key)
 
     if args.dry_run:
-        print("Dry run: first 5 photo paths:")
-        for i in range(5):
-            print(i, photo_path_for_dish(i))
+        print("Dry run: first 8 photo paths:")
+        for i in range(8):
+            print(i, MENU[i]["name"], "->", photo_path_for_dish(i))
+        return
+
+    # --- Только картинки: PATCH по sort_order, меню и UUID не пересоздаём ---
+    if args.images_only:
+        r = requests.get(
+            f"{supabase_url}/rest/v1/products?shop_id=eq.{SHOP_ID}&select=id,name,sort_order&order=sort_order.asc",
+            headers=hdr,
+            timeout=60,
+        )
+        if r.status_code != 200:
+            sys.exit(f"list products: {r.status_code} {r.text}")
+        rows = r.json()
+        if len(rows) != len(MENU):
+            sys.exit(
+                f"images-only: в БД {len(rows)} товаров, в MENU {len(MENU)} — сначала полный импорт без --images-only"
+            )
+        for idx, (item, row) in enumerate(zip(MENU, rows)):
+            if row.get("name") != item["name"]:
+                print(f"WARN idx {idx}: БД name={row.get('name')!r} != MENU {item['name']!r}", file=sys.stderr)
+            ppath = photo_path_for_dish(idx)
+            if not ppath.exists():
+                sys.exit(f"Missing photo for dish {idx} {item['name']}: expected {ppath}")
+            card_bytes = card_webp_from_file(ppath)
+            hero_bytes = hero_webp_from_file(ppath)
+            uid = uuid.uuid4().hex[:10]
+            card_path = f"{SHOP_ID}/products/luna-dish-{idx:03d}-{uid}-card.webp"
+            hero_path = f"{SHOP_ID}/products/luna-dish-{idx:03d}-{uid}-hero.webp"
+            card_url = upload_object(supabase_url, service_key, card_path, card_bytes, "image/webp")
+            hero_url = upload_object(supabase_url, service_key, hero_path, hero_bytes, "image/webp")
+            combined = f"{card_url}|{hero_url}"
+            pr = requests.patch(
+                f"{supabase_url}/rest/v1/products?id=eq.{row['id']}",
+                headers={**hdr, "Prefer": "return=minimal"},
+                json={"image": combined},
+                timeout=60,
+            )
+            if pr.status_code not in (200, 204):
+                sys.exit(f"patch product {row['id']}: {pr.status_code} {pr.text}")
+        print(f"Updated images for {len(rows)} products (images-only).")
         return
 
     # 1) Remove cross-sell links for shop
