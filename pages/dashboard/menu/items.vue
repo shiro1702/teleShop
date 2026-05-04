@@ -200,7 +200,7 @@
             <label class="block text-sm font-medium text-gray-700">Изображение</label>
             <div class="mt-1 flex items-center gap-4">
               <div v-if="form.image" class="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-                <img :src="form.image" class="h-full w-full object-cover" />
+                <img :src="productImageCard(form.image)" class="h-full w-full object-cover" />
               </div>
               <div class="flex-1">
                 <input 

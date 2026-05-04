@@ -1209,7 +1209,7 @@
             </button>
             <div class="h-48 w-full shrink-0 overflow-hidden sm:h-56" :style="{ backgroundColor: cardBgColor }">
               <img
-                :src="editingItemProduct.image"
+                :src="productImageHero(editingItemProduct.image)"
                 :alt="editingItemProduct.name"
                 class="h-full w-full object-cover"
                 loading="eager"
@@ -1310,6 +1310,7 @@ import {
   readOrderContinuationHint,
 } from '~/composables/useTelegram'
 import { readShopIdFromQuery, resolveCartScopeKey } from '~/utils/cartScope'
+import { productImageHero } from '~/utils/productImage'
 import {
   mapFulfillmentToCityMode,
   readCityFulfillmentMode,
