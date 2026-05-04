@@ -36,17 +36,38 @@ jobs:
         shell: bash
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
         run: |
+          set -euo pipefail
+          if [ -z "${SSH_PRIVATE_KEY:-}" ]; then
+            echo "::error::SSH_PRIVATE_KEY is empty. Add it for this repo or for the GitHub Environment named \"production\" (Settings → Environments → production → Environment secrets)."
+            exit 1
+          fi
+          if [ -z "${VPS_HOST:-}" ]; then
+            echo "::error::VPS_HOST is empty. Add VPS_HOST the same way (repo or \"production\" environment secrets)."
+            exit 1
+          fi
+          SSH_PORT="${VPS_SSH_PORT:-22}"
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+          : > ~/.ssh/known_hosts
+          echo "Optional: ssh-keyscan $VPS_HOST (port $SSH_PORT) — many hosts close this from cloud IPs..."
+          if ssh-keyscan -T 25 -p "$SSH_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/tmp/ssh-keyscan.err; then
+            echo "ssh-keyscan succeeded"
+          else
+            echo "::warning::ssh-keyscan failed (e.g. Connection closed by remote host). Deploy will use StrictHostKeyChecking=accept-new on first real ssh."
+            cat /tmp/ssh-keyscan.err || true
+            : > ~/.ssh/known_hosts
+          fi
 
       - name: Deploy on VPS (production)
         shell: bash
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
           DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
           PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
         run: |
@@ -54,8 +75,13 @@ jobs:
             echo "PROD_ENV_FILE secret is required"
             exit 1
           fi
-          ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; mkdir -p \"$DEPLOY_PATH\""
+          SSH_PORT="${VPS_SSH_PORT:-22}"
+          # accept-new: trust host key on first connect (keyscan often blocked from GitHub IPs).
+          # Keep long docker builds from killing the session (NAT / middleboxes → Broken pipe).
+          SSH_OPTS="-i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new -o Port=${SSH_PORT} -o ServerAliveInterval=30 -o ServerAliveCountMax=24"
+          ssh $SSH_OPTS "$SSH_USER@$VPS_HOST" "set -euo pipefail; mkdir -p \"$DEPLOY_PATH\""
           rsync -az --delete \
+            -e "ssh $SSH_OPTS" \
             --exclude '.git' \
             --exclude 'node_modules' \
             --exclude '.nuxt' \
@@ -63,8 +89,8 @@ jobs:
             --exclude '.env' \
             --exclude '.env.*' \
             ./ "$SSH_USER@$VPS_HOST:$DEPLOY_PATH/"
-          printf '%s\n' "$PROD_ENV_FILE" | ssh "$SSH_USER@$VPS_HOST" "cat > \"$DEPLOY_PATH/../.env.prod\" && chmod 600 \"$DEPLOY_PATH/../.env.prod\" && cp \"$DEPLOY_PATH/../.env.prod\" \"$DEPLOY_PATH/.env\" && chmod 600 \"$DEPLOY_PATH/.env\""
-          ssh "$SSH_USER@$VPS_HOST" "set -euo pipefail; \
+          printf '%s\n' "$PROD_ENV_FILE" | ssh $SSH_OPTS "$SSH_USER@$VPS_HOST" "cat > \"$DEPLOY_PATH/../.env.prod\" && chmod 600 \"$DEPLOY_PATH/../.env.prod\" && cp \"$DEPLOY_PATH/../.env.prod\" \"$DEPLOY_PATH/.env\" && chmod 600 \"$DEPLOY_PATH/.env\""
+          ssh $SSH_OPTS "$SSH_USER@$VPS_HOST" "set -euo pipefail; \
             cd \"$DEPLOY_PATH\"; \
             docker compose -f docker-compose.prod.yml pull || true; \
             docker compose -f docker-compose.prod.yml build --pull; \
