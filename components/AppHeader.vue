@@ -217,48 +217,22 @@
       </div>
     </div>
 
-    <Teleport to="body">
-      <Transition name="modal-fade">
-        <div v-if="showAuthModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4">
-          <div class="absolute inset-0 bg-black/40" @click="closeAuthModal" />
-          <div class="relative w-full max-w-sm rounded-2xl p-5 shadow-xl modal-panel" :style="menuStyle">
-            <h3 class="text-base font-semibold" :style="{ color: mainTextColor }">Выберите способ входа</h3>
-            <p class="mt-1 text-sm" :style="{ color: mutedTextColor }">Доступна авторизация через Telegram, MAX или VK ID.</p>
-            <div class="mt-4 space-y-2">
-              <button
-                v-if="telegramBotUrl"
-                type="button"
-                class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-600"
-                @click="openTelegramAuth"
-              >
-                Войти через Telegram
-              </button>
-              <button
-                v-if="maxBotUrl"
-                type="button"
-                class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50"
-                @click="openMaxAuth"
-              >
-                Войти через MAX
-              </button>
-              <button
-                v-if="vkAuthEnabled"
-                type="button"
-                class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary-50"
-                @click="openVkAuth"
-              >
-                Войти через VK
-              </button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+    <AuthChannelModal
+      v-model="showAuthModal"
+      title="Выберите способ входа"
+      description="Доступна авторизация через Telegram, MAX или VK ID."
+      :channels="headerAuthChannels"
+      intent="login"
+      variant="dark"
+      :consent-href="consentPath"
+      @submit="onAuthChannelSubmit"
+    />
   </header>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import type { AuthChannel } from '~/types/authChannel'
 import { useRoute, useRouter } from 'vue-router'
 import { useTenant } from '../composables/useTenant'
 import { useTelegram } from '../composables/useTelegram'
@@ -276,6 +250,7 @@ const route = useRoute()
 const router = useRouter()
 const supabase = useSupabaseClient()
 const { tenant, tenantKey, tenantPath } = useTenant()
+const { consentPath } = useLegalPaths()
 
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() =>
@@ -287,9 +262,30 @@ const maxBotUrl = computed(() => {
   return trimmed || null
 })
 const vkAuthEnabled = computed(() => {
-  const appId = (config.public.vkIdClientId as string | undefined) || ''
-  return Boolean(appId.trim())
+  const raw = config.public.vkIdClientId as string | number | undefined
+  const appId = raw != null && raw !== '' ? String(raw).trim() : ''
+  return Boolean(appId)
 })
+
+const headerAuthChannels = computed((): AuthChannel[] => {
+  const opts: AuthChannel[] = []
+  if (telegramBotUrl.value) opts.push('telegram')
+  if (maxBotUrl.value) opts.push('max')
+  if (vkAuthEnabled.value) opts.push('vk')
+  return opts
+})
+
+function onAuthChannelSubmit(channel: AuthChannel) {
+  if (channel === 'telegram') {
+    void openTelegramAuth()
+    return
+  }
+  if (channel === 'max') {
+    void openMaxAuth()
+    return
+  }
+  void openVkAuth()
+}
 const homeLink = computed(() => tenantPath('/'))
 const festivalBackLink = computed(() => {
   const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
@@ -385,7 +381,6 @@ const showCitySelector = computed(() =>
 
 const theme = computed(() => tenant.value.theme || {})
 const mainTextColor = computed(() => theme.value.text_primary || 'var(--color-text-primary)')
-const mutedTextColor = computed(() => theme.value.text_muted || 'var(--color-text-muted)')
 const surfaceCardColor = computed(() => theme.value.surface_card || 'var(--color-surface-card)')
 const borderColor = computed(() => theme.value.primary_100 || '#e5e7eb')
 
@@ -566,10 +561,6 @@ function openAuthModal() {
   showAuthModal.value = true
 }
 
-function closeAuthModal() {
-  showAuthModal.value = false
-}
-
 function toggleUserMenu() {
   showUserMenu.value = !showUserMenu.value
 }
@@ -647,24 +638,6 @@ function onCityChange() {
 .dropdown-leave-to {
   opacity: 0;
   transform: translateY(-6px) scale(0.98);
-}
-
-.modal-fade-enter-active,
-.modal-fade-leave-active {
-  transition: opacity 0.22s ease;
-}
-.modal-fade-enter-from,
-.modal-fade-leave-to {
-  opacity: 0;
-}
-.modal-fade-enter-active .modal-panel,
-.modal-fade-leave-active .modal-panel {
-  transition: opacity 0.22s ease, transform 0.22s ease;
-}
-.modal-fade-enter-from .modal-panel,
-.modal-fade-leave-to .modal-panel {
-  opacity: 0;
-  transform: translateY(10px) scale(0.98);
 }
 </style>
 

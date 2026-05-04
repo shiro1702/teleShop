@@ -371,6 +371,7 @@ type CityResponse = {
 
 type FestivalDto = NonNullable<CityResponse['festival']>
 type ShopsResponse = { ok: boolean, items: ShopItem[] }
+type CityListMode = 'delivery' | 'pickup' | 'dine-in'
 type CachedEntry<T> = { expiresAt: number, data: T }
 type FestivalStoryCard = {
   id: 'vibe' | 'food' | 'party' | 'quest' | 'leaderboard' | 'achievements' | 'pulse' | 'schedule'
@@ -438,7 +439,12 @@ function buildShopsApiUrl(slug: string, festivalSlug: string) {
   return `/api/shops?${query.toString()}`
 }
 
-const listMode = ref<'delivery' | 'pickup' | 'dine-in'>('dine-in')
+/** Режим из данных города + localStorage (без ручного переключателя). */
+const loadedListMode = ref<CityListMode>('delivery')
+/** Явный выбор пользователя; если null — берём loadedListMode. */
+const selectedListMode = ref<CityListMode | null>(null)
+
+const listMode = computed<CityListMode>(() => selectedListMode.value ?? loadedListMode.value)
 const {
   data: cityRes,
   pending: cityPending,
@@ -948,24 +954,18 @@ function yandexMapsLink(address: string) {
   return `https://yandex.ru/maps/?text=${encodeURIComponent(address)}`
 }
 
-function persistCityMode(mode: 'delivery' | 'pickup' | 'dine-in') {
+function persistCityMode(mode: CityListMode) {
   if (isFestivalMode.value) return
   writeCityFulfillmentMode(citySlug.value, mode)
 }
 
-function selectListMode(mode: 'delivery' | 'pickup' | 'dine-in') {
+function selectListMode(mode: CityListMode) {
   userModeTouched.value = true
-  listMode.value = mode
-  // Пишем сразу, чтобы переход в ресторан после клика не терял выбор из-за отложенного watch.
+  selectedListMode.value = mode
   persistCityMode(mode)
 }
 
-watch(listMode, (mode: 'delivery' | 'pickup' | 'dine-in') => {
-  if (isFestivalMode.value) return
-  persistCityMode(mode)
-})
-
-function pickInitialListMode(list: ShopItem[]): 'delivery' | 'pickup' | 'dine-in' {
+function pickInitialListMode(list: ShopItem[]): CityListMode {
   if (isFestivalMode.value) {
     const canDineIn = list.some((s) => s.fulfillment?.dineIn)
     if (canDineIn) return 'dine-in'
@@ -979,53 +979,65 @@ function pickInitialListMode(list: ShopItem[]): 'delivery' | 'pickup' | 'dine-in
   return 'delivery'
 }
 
-function modeAllowed(mode: 'delivery' | 'pickup' | 'dine-in', list: ShopItem[]) {
+function modeAllowed(mode: CityListMode, list: ShopItem[]) {
   if (mode === 'delivery') return list.some((s) => s.fulfillment?.delivery)
   if (mode === 'pickup') return list.some((s) => s.fulfillment?.pickup)
   return list.some((s) => s.fulfillment?.dineIn)
 }
 
-function restoreListMode(list: ShopItem[]) {
-  if (isFestivalMode.value) {
-    listMode.value = pickInitialListMode(list)
-    return
-  }
-  if (!list.length) {
-    // Пока список не загружен, не перетираем ручной выбор пользователя.
-    return
-  }
-  if (userModeTouched.value && modeAllowed(listMode.value, list)) {
-    return
-  }
+function resolveLoadedListMode(list: ShopItem[]): CityListMode {
   if (typeof window === 'undefined') {
-    listMode.value = pickInitialListMode(list)
-    return
+    return pickInitialListMode(list)
   }
   const slug = citySlug.value
-  if (!slug) {
-    listMode.value = pickInitialListMode(list)
-    return
-  }
+  if (!slug) return pickInitialListMode(list)
   const raw = readCityFulfillmentMode(slug)
-  if (raw && modeAllowed(raw, list)) {
-    listMode.value = raw
+  if (raw && modeAllowed(raw, list)) return raw
+  return pickInitialListMode(list)
+}
+
+/**
+ * Согласует «загруженный» режим (список ресторанов + localStorage) и явный выбор пользователя.
+ * Два ref исключают гонки: клик только меняет selectedListMode, приход данных — loadedListMode.
+ */
+function reconcileListMode(list: ShopItem[]) {
+  if (isFestivalMode.value) {
+    if (!list.length) return
+    loadedListMode.value = pickInitialListMode(list)
+    selectedListMode.value = null
+    userModeTouched.value = false
     return
   }
-  listMode.value = pickInitialListMode(list)
+  if (!list.length) return
+
+  const effective = selectedListMode.value ?? loadedListMode.value
+  if (!modeAllowed(effective, list)) {
+    selectedListMode.value = null
+    userModeTouched.value = false
+    loadedListMode.value = pickInitialListMode(list)
+    return
+  }
+
+  loadedListMode.value = resolveLoadedListMode(list)
+
+  if (userModeTouched.value) {
+    const sel = selectedListMode.value
+    if (sel && modeAllowed(sel, list)) return
+    selectedListMode.value = null
+    userModeTouched.value = false
+    return
+  }
+
+  selectedListMode.value = null
 }
 
 watch(shops, (list: ShopItem[]) => {
-  if (!list.length) return
-  if (!modeAllowed(listMode.value, list)) {
-    listMode.value = pickInitialListMode(list)
-  }
-}, { deep: true })
-
-watch(shops, (list: ShopItem[]) => {
-  restoreListMode(list)
-}, { immediate: true })
+  reconcileListMode(list)
+}, { deep: true, immediate: true })
 
 watch(citySlug, () => {
   userModeTouched.value = false
+  selectedListMode.value = null
+  reconcileListMode(shops.value)
 })
 </script>

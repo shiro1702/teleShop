@@ -6,7 +6,8 @@
     "build": "nuxt build",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
-    "preview": "nuxt preview"
+    "preview": "nuxt preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "@nuxtjs/supabase": "^2.0.4",
@@ -25,6 +26,7 @@
     "@types/leaflet": "^1.9.21",
     "@types/leaflet-draw": "^1.0.13",
     "@types/qrcode": "^1.5.6",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
   }
 }

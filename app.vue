@@ -6,6 +6,11 @@
         <NuxtPage />
       </NuxtLayout>
     </div>
+    <LegalCookieBanner
+      v-if="isStorefrontRoute && cityBasePath"
+      :privacy-path="`${cityBasePath}/legal/privacy`"
+      :cookies-path="`${cityBasePath}/legal/cookies`"
+    />
     <footer
       v-if="isStorefrontRoute"
       class="mt-12 border-t border-gray-200 bg-white/95"
@@ -55,6 +60,9 @@
               </NuxtLink>
               <NuxtLink :to="`${cityBasePath}/legal/contacts`" class="underline decoration-dotted hover:text-gray-900">
                 Реквизиты и контакты
+              </NuxtLink>
+              <NuxtLink :to="`${cityBasePath}/legal/cookies`" class="underline decoration-dotted hover:text-gray-900">
+                Файлы cookie
               </NuxtLink>
             </div>
             <p class="mt-2 text-gray-500">

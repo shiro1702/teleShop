@@ -114,6 +114,12 @@
         </div>
       </section>
 
+      <PublicReviewsBlock
+        v-if="tenantKey"
+        :shop-id="String(tenantKey)"
+        :restaurant-id="getCurrentRestaurantIdFromQuery()"
+      />
+
       <section
         v-if="festivalPageBanner"
         class="mb-8 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm"
@@ -492,7 +498,7 @@
             Выберите действие для вызова персонала.
           </p>
             <div class="mt-3 space-y-2">
-              <label class="block text-sm">
+              <label v-if="restaurantOps.length > 1" class="block text-sm">
                 <span class="mb-1 block text-gray-600">Филиал</span>
                 <select
                   v-model="catalogServiceCallDraftRestaurantId"
@@ -500,7 +506,7 @@
                 >
                   <option value="">Выберите филиал</option>
                   <option v-for="branch in restaurantOps" :key="branch.id" :value="branch.id">
-                    Филиал {{ branch.id.slice(0, 8) }}
+                    {{ catalogServiceBranchLabel(branch) }}
                   </option>
                 </select>
               </label>
@@ -569,6 +575,7 @@ import {
 import StoriesTopBar from '../components/stories/StoriesTopBar.vue'
 import StoryGridBanner from '../components/stories/StoryGridBanner.vue'
 import StoryViewer from '../components/stories/StoryViewer.vue'
+import PublicReviewsBlock from '../components/PublicReviewsBlock.vue'
 import { useStories } from '../composables/useStories'
 import type { StoryCampaignDto, StorySlideDto } from '../types/stories'
 import { buildDefaultCartSelections, findProductById } from '../utils/storyCart'
@@ -765,6 +772,8 @@ const mobileBarStyle = computed(() => ({
 type FulfillmentType = 'delivery' | 'pickup' | 'qr-menu'
 type RestaurantOps = {
   id: string
+  name?: string | null
+  address?: string | null
   supports_delivery: boolean
   supports_pickup: boolean
   supports_qr_menu?: boolean
@@ -1302,13 +1311,25 @@ function catalogServiceCallTypeEnabled(type: 'call_waiter' | 'call_hookah' | 're
   return catalogServiceCallTypes.value.includes(type)
 }
 
+function catalogServiceBranchLabel(branch: RestaurantOps) {
+  const addr = typeof branch.address === 'string' ? branch.address.trim() : ''
+  if (addr) return addr
+  const name = typeof branch.name === 'string' ? branch.name.trim() : ''
+  if (name) return name
+  return 'Адрес не указан'
+}
+
 function openCatalogServiceCallsModal() {
   if (!showCatalogServiceCallButton.value) return
   showCatalogServiceCallOnboarding.value = false
   if (typeof window !== 'undefined') {
     localStorage.setItem(catalogServiceCallOnboardingKey, '1')
   }
-  catalogServiceCallDraftRestaurantId.value = selectedRestaurantForCatalogService.value?.id || restaurantOps.value[0]?.id || ''
+  const singleId = restaurantOps.value.length === 1 ? restaurantOps.value[0]?.id : null
+  catalogServiceCallDraftRestaurantId.value = singleId
+    || selectedRestaurantForCatalogService.value?.id
+    || restaurantOps.value[0]?.id
+    || ''
   const tableNumber = readFirstQueryString('table_number') ?? readFirstQueryString('table')
   catalogServiceCallDraftTableNumber.value = tableNumber || ''
   showCatalogServiceCallsModal.value = true

@@ -56,30 +56,34 @@
 8. `own_delivery_smart`
    - Своя доставка: зоны, гео-резолвинг, фильтрация меню по режимам.
    - Цена: ориентир 2000-3500 ₽/мес.
+9. `reputation_reviews_pro`
+   - Отзывы по заказам и рейтинг ресторана по последним отзывам с модерацией негатива.
+   - Цена: ориентир 2490 ₽/мес.
+   - Зависимости: `crm_orders_db`, `core_telegram_orders`.
 
 ### 2.3. Продвижение в агрегаторе
 
-9. `traffic_boost_search`
+10. `traffic_boost_search`
    - Поднятие в поиске/категориях.
    - Цена: недельный или месячный пакет (например, от 1990 ₽/неделя).
-10. `traffic_promo_showcase`
+11. `traffic_promo_showcase`
     - Размещение в витрине акций на главной.
     - Цена: ориентир от 1490 ₽/мес.
     - Зависимости: `marketing_loyalty`, `crm_orders_db`.
-11. `traffic_smart_targeting`
+12. `traffic_smart_targeting`
     - Кампании по событиям (день рождения/локация/сегменты).
     - Цена: пакетами или ежемесячно.
     - Зависимости: `crm_orders_db`.
 
 ### 2.4. Дополнительные гипотезы (после MVP)
 
-12. `tips_staff`
+13. `tips_staff`
     - Электронные чаевые, комиссия с чаевых.
-13. `reputation_shield`
+14. `reputation_shield`
     - Перехват негативной обратной связи до внешних площадок.
-14. `white_label`
+15. `white_label`
     - Скрытие бренда платформы, кастомизация брендового присутствия.
-15. `multilang_auto`
+16. `multilang_auto`
     - Мультиязычное меню/перевод.
 
 ---
@@ -90,6 +94,7 @@
 
 - `marketing_loyalty` требует `crm_orders_db`.
 - `kds_kitchen_screen` требует `crm_orders_db`.
+- `reputation_reviews_pro` требует `crm_orders_db` и `core_telegram_orders`.
 - `traffic_promo_showcase` требует `marketing_loyalty` и `crm_orders_db`.
 - `traffic_smart_targeting` требует `crm_orders_db`.
 

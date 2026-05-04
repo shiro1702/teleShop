@@ -9,6 +9,7 @@
           </NuxtLink>
           <nav class="flex items-center gap-4 whitespace-nowrap text-sm text-gray-600">
             <NuxtLink v-if="can('orders.view')" to="/dashboard/orders" class="hover:text-gray-900">Заказы</NuxtLink>
+            <NuxtLink v-if="can('orders.view')" to="/dashboard/reviews" class="hover:text-gray-900">Отзывы</NuxtLink>
             <NuxtLink v-if="can('menu.manage')" to="/dashboard/menu" class="hover:text-gray-900">Меню</NuxtLink>
             <NuxtLink v-if="can('menu.manage')" to="/dashboard/stories" class="hover:text-gray-900">Сториз</NuxtLink>
             <NuxtLink v-if="can('marketing.manage')" to="/dashboard/marketing" class="hover:text-gray-900">Маркетинг</NuxtLink>

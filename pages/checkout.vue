@@ -468,54 +468,62 @@
 
               <div
                 v-if="hasDeliveryOption && state.fulfillmentType === 'delivery'"
-                class="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4"
+                class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4"
               >
-                <div class="flex items-center justify-between gap-2">
+                <h2 class="text-sm font-semibold text-gray-900">
+                  Адрес доставки
+                </h2>
+                <button
+                  v-if="selectedAddress"
+                  type="button"
+                  class="block w-full truncate text-left text-sm font-medium text-gray-900 hover:text-primary sm:w-auto"
+                  @click="openSavedAddressesModal"
+                >
+                  Текущий адрес: {{ selectedAddress.address }}
+                </button>
+                <div class="space-y-2">
+                  <p class="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Ранее использованные адреса
+                  </p>
+                  <div v-if="savedAddresses.length" class="flex flex-wrap gap-2">
+                    <button
+                      v-for="addr in savedAddresses"
+                      :key="addr.id"
+                      type="button"
+                      class="group flex items-center gap-1 rounded-full border px-4 py-2 text-sm transition"
+                      :class="addr.id === selectedCustomerAddressId
+                        ? 'border-primary bg-primary-50 text-gray-900'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-primary hover:bg-primary-50'"
+                      @click="applySavedAddressAndResolve(addr)"
+                    >
+                      <span class="max-w-[160px] truncate sm:max-w-[220px]">
+                        {{ addr.address }}
+                      </span>
+                      <div
+                        class="ml-1 text-gray-400 hover:text-red-500"
+                        @click.stop="deleteSavedAddress(addr.id)"
+                        aria-label="Удалить адрес"
+                      >
+                        ×
+                      </div>
+                    </button>
+                  </div>
+                  <p v-else class="text-xs text-gray-500">
+                    Сохраненных адресов пока нет.
+                  </p>
+                </div>
+                <div class="space-y-2 border-t border-gray-200 pt-3">
+                  <p class="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Новый адрес
+                  </p>
                   <button
-                    v-if="selectedAddress"
                     type="button"
-                    class="truncate text-left text-sm font-medium text-gray-900 hover:text-primary"
-                    @click="openSavedAddressesModal"
-                  >
-                    Текущий адрес: {{ selectedAddress.address }}
-                  </button>
-                  <button
-                    type="button"
-                    class="inline-flex items-center rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-on-primary transition hover:bg-primary-600"
+                    class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-on-primary transition hover:bg-primary-600 sm:w-auto"
                     @click="openNewAddressModal"
                   >
-                    Ввести новый
+                    Ввести адрес
                   </button>
                 </div>
-                <p class="text-xs font-medium text-gray-500">
-                  Ранее использованные адреса
-                </p>
-                <div v-if="savedAddresses.length" class="flex flex-wrap gap-2">
-                  <button
-                    v-for="addr in savedAddresses"
-                    :key="addr.id"
-                    type="button"
-                    class="group flex items-center gap-1 rounded-full border px-4 py-2 text-sm transition"
-                    :class="addr.id === selectedCustomerAddressId
-                      ? 'border-primary bg-primary-50 text-gray-900'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-primary hover:bg-primary-50'"
-                    @click="applySavedAddressAndResolve(addr)"
-                  >
-                    <span class="max-w-[160px] truncate sm:max-w-[220px]">
-                      {{ addr.address }}
-                    </span>
-                    <div
-                      class="ml-1 text-gray-400 hover:text-red-500"
-                      @click.stop="deleteSavedAddress(addr.id)"
-                      aria-label="Удалить адрес"
-                    >
-                      ×
-                    </div>
-                  </button>
-                </div>
-                <p v-else class="text-xs text-gray-500">
-                  Сохраненных адресов пока нет.
-                </p>
               </div>
 
               <p
@@ -593,7 +601,10 @@
                 </p>
               </section>
 
-              <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4">
+              <section
+                v-if="showRestaurantSectionStep2"
+                class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3 sm:p-4"
+              >
                 <div class="space-y-2">
                   <h2 class="text-sm font-semibold text-gray-900">
                     Ресторан
@@ -613,8 +624,37 @@
                   >
                     Нет активных филиалов с адресом и картой для оформления заказа.
                   </p>
-                  <div v-if="restaurants.length > 0" class="grid gap-3 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] lg:items-start">
-                    <div class="order-2 space-y-2 lg:order-1">
+                  <div v-if="restaurants.length > 0">
+                    <div v-if="showInlineBranchMap" class="space-y-2">
+                      <div class="rounded-lg border border-gray-200 bg-white p-2 lg:sticky lg:top-4">
+                        <CheckoutDeliveryBranchesMap
+                          :branches="restaurants"
+                          :all-zones="allRestaurantZones"
+                          :selected-branch-id="selectedRestaurantId"
+                          :allow-manual-select="false"
+                          :client-lat="mapClientLat"
+                          :client-lon="mapClientLon"
+                          :client-address="mapClientAddress"
+                        />
+                      </div>
+                      <button
+                        v-if="restaurants.length > 1"
+                        type="button"
+                        class="block max-w-full py-1 text-left text-xs font-normal text-gray-500 transition hover:text-gray-700"
+                        @click="showDeliveryManualBranchList = !showDeliveryManualBranchList"
+                      >
+                        {{
+                          showDeliveryManualBranchList
+                            ? 'Скрыть список филиалов'
+                            : 'Выбрать филиал самому'
+                        }}
+                      </button>
+                    </div>
+                    <div
+                      v-if="showRestaurantBranchCards"
+                      class="space-y-2"
+                      :class="{ 'mt-3': showInlineBranchMap }"
+                    >
                       <div
                         v-for="branch in restaurants"
                         :key="branch.id"
@@ -632,20 +672,12 @@
                             </p>
                           </div>
                           <button
+                            v-if="showBranchMapButtonOnCards"
                             type="button"
-                            class="shrink-0 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium transition"
-                            :class="branchSelectButtonClass(branch)"
-                            :disabled="!branchSupportsCurrentFulfillment(branch)"
-                            @click.stop="handleBranchCardClick(branch.id)"
-                            tabindex="-1"
+                            class="shrink-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+                            @click.stop="openBranchesMapModal"
                           >
-                            {{
-                              branch.id === selectedRestaurantId
-                                ? 'Выбран'
-                                : branchSupportsCurrentFulfillment(branch)
-                                  ? 'Выбрать'
-                                  : 'Недоступен'
-                            }}
+                            Карта
                           </button>
                         </div>
                         <div class="mt-2 flex flex-wrap gap-2">
@@ -681,18 +713,6 @@
                           </span>
                         </div>
                       </div>
-                    </div>
-
-                    <div class="order-1 rounded-lg border border-gray-200 bg-white p-2 lg:order-2 lg:sticky lg:top-4">
-                      <CheckoutDeliveryBranchesMap
-                        :branches="restaurants"
-                        :all-zones="allRestaurantZones"
-                        :selected-branch-id="selectedRestaurantId"
-                        :allow-manual-select="false"
-                        :client-lat="mapClientLat"
-                        :client-lon="mapClientLon"
-                        :client-address="mapClientAddress"
-                      />
                     </div>
                   </div>
                 </div>
@@ -1008,33 +1028,16 @@
       </div>
     </Transition>
 
-    <Teleport to="body">
-      <Transition name="modal-fade">
-        <div v-if="showAuthModal" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
-          <div class="absolute inset-0 bg-black/40" @click="closeAuthModal" />
-          <div class="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-xl modal-panel">
-            <h3 class="text-base font-semibold text-gray-900">Выберите способ входа</h3>
-            <p class="mt-1 text-sm text-gray-600">
-              {{
-                authModalMode === 'auth'
-                  ? 'Авторизация для оформления заказа.'
-                  : authModalMode === 'service'
-                    ? 'Статусы сервисного вызова (принят, в пути, выполнен) приходят после авторизации.'
-                    : 'Продолжение в выбранном боте.'
-              }}
-            </p>
-            <div class="mt-4 space-y-2">
-              <button v-if="telegramBotUrl" type="button" class="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white" @click="runAuthAction('telegram')">
-                {{ authModalMode === 'continue' ? 'Продолжить в Telegram' : 'Войти через Telegram' }}
-              </button>
-              <button v-if="maxBotUrl" type="button" class="w-full rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary" @click="runAuthAction('max')">
-                {{ authModalMode === 'continue' ? 'Продолжить в MAX' : 'Войти через MAX' }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+    <AuthChannelModal
+      v-model="showAuthModal"
+      title="Выберите способ входа"
+      :description="authModalDescription"
+      :channels="authModalChannelOptions"
+      :intent="authModalIntent"
+      variant="light"
+      :consent-href="consentPath"
+      @submit="runAuthAction"
+    />
     <Teleport to="body">
       <Transition name="modal-fade">
         <div v-if="showServiceCallsModal" class="fixed inset-0 z-[90] flex items-center justify-center p-4">
@@ -1055,7 +1058,7 @@
               Выберите действие для вызова персонала.
             </p>
             <div class="mt-3 space-y-2">
-              <label class="block text-sm">
+              <label v-if="restaurants.length > 1" class="block text-sm">
                 <span class="mb-1 block text-gray-600">Филиал</span>
                 <select
                   v-model="serviceCallDraftRestaurantId"
@@ -1063,7 +1066,7 @@
                 >
                   <option value="">Выберите филиал</option>
                   <option v-for="branch in restaurants" :key="branch.id" :value="branch.id">
-                    {{ branch.name }}
+                    {{ serviceCallBranchLabel(branch) }}
                   </option>
                 </select>
               </label>
@@ -1105,6 +1108,51 @@
               >
                 Счет
               </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+    <Teleport to="body">
+      <Transition name="modal-fade">
+        <div
+          v-if="showBranchesMapModal"
+          class="fixed inset-0 z-[92] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="branches-map-modal-title"
+        >
+          <div class="absolute inset-0 bg-black/40" @click="closeBranchesMapModal" />
+          <div
+            class="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 shadow-xl sm:p-5"
+            @click.stop
+          >
+            <button
+              type="button"
+              class="absolute right-3 top-3 z-10 rounded-full bg-black/40 p-1 text-white hover:bg-black/60"
+              aria-label="Закрыть"
+              @click="closeBranchesMapModal"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <h3 id="branches-map-modal-title" class="pr-10 text-base font-semibold text-gray-900">
+              Карта филиалов
+            </h3>
+            <p class="mt-1 text-sm text-gray-600">
+              Зоны доставки и расположение точек на карте.
+            </p>
+            <div class="mt-3">
+              <CheckoutDeliveryBranchesMap
+                :branches="restaurants"
+                :all-zones="allRestaurantZones"
+                :selected-branch-id="selectedRestaurantId"
+                :allow-manual-select="false"
+                :client-lat="mapClientLat"
+                :client-lon="mapClientLon"
+                :client-address="mapClientAddress"
+              />
             </div>
           </div>
         </div>
@@ -1248,7 +1296,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRef, w
 import { useRoute, useRouter } from 'vue-router'
 import { useCheckoutAddress } from '~/composables/useCheckoutAddress'
 import { useCheckoutTenantRestaurants } from '~/composables/useCheckoutTenantRestaurants'
-import type { DineInHallMode, FulfillmentType } from '~/composables/useCheckoutTenantRestaurants'
+import type { DineInHallMode, FulfillmentType, RestaurantItem } from '~/composables/useCheckoutTenantRestaurants'
 import { useMessengerStorage } from '~/composables/useMessengerStorage'
 import {
   clearOrderContinuationHint,
@@ -1267,6 +1315,7 @@ import { useWorkingHoursStatus } from '~/composables/useWorkingHoursStatus'
 import type { Product, ModifierGroup, ModifierOption } from '~/data/products'
 import type { CartItem, SelectedModifier, SelectedParameter } from '~/stores/cart'
 import CartUpsellStrip from '~/components/checkout/CartUpsellStrip.vue'
+import type { AuthChannel } from '~/types/authChannel'
 
 const cartStore = useCartStore()
 const route = useRoute()
@@ -1282,6 +1331,7 @@ const { canUseMessengerStorage, setItem, getItem } = useMessengerStorage()
 const supabaseUser = useSupabaseUser()
 const config = useRuntimeConfig()
 const { tenant, tenantKey, tenantPath } = useTenant()
+const { consentPath } = useLegalPaths()
 
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramBotUrl = computed(() =>
@@ -1291,6 +1341,11 @@ const maxBotUrl = computed(() => {
   const raw = (config.public.maxBotUrl as string | undefined) || ''
   const trimmed = raw.trim()
   return trimmed || null
+})
+const vkAuthEnabled = computed(() => {
+  const raw = config.public.vkIdClientId as string | number | undefined
+  const appId = raw != null && raw !== '' ? String(raw).trim() : ''
+  return Boolean(appId)
 })
 const theme = computed(() => tenant.value.theme || {})
 const pageBgColor = computed(() => theme.value.surface_background || 'var(--color-surface-bg)')
@@ -1412,7 +1467,28 @@ const isStep2ActionsVisible = ref(false)
 const stepDirection = ref<'forward' | 'backward'>('forward')
 const showAuthModal = ref(false)
 const authModalMode = ref<'auth' | 'continue' | 'service'>('auth')
+
+const authModalChannelOptions = computed((): AuthChannel[] => {
+  const opts: AuthChannel[] = []
+  if (telegramBotUrl.value) opts.push('telegram')
+  if (maxBotUrl.value) opts.push('max')
+  if (vkAuthEnabled.value && authModalMode.value !== 'continue') opts.push('vk')
+  return opts
+})
+
+const authModalDescription = computed(() => {
+  if (authModalMode.value === 'auth') return 'Авторизация для оформления заказа.'
+  if (authModalMode.value === 'service') {
+    return 'Статусы сервисного вызова (принят, в пути, выполнен) приходят после авторизации.'
+  }
+  return 'Продолжение в выбранном боте.'
+})
+
+const authModalIntent = computed(() => (authModalMode.value === 'continue' ? 'continue' : 'login'))
 const showServiceCallsModal = ref(false)
+const showBranchesMapModal = ref(false)
+/** Доставка: по умолчанию только карта зон; список филиалов — по запросу. */
+const showDeliveryManualBranchList = ref(false)
 const serviceCallOnboardingStorageKey = 'checkout:service-call-onboarding:v1'
 const showServiceCallOnboarding = ref(false)
 const branchResolveInfo = ref<string | null>(null)
@@ -1595,6 +1671,29 @@ const showInRestaurantServiceButtons = computed(() =>
   && (selectedRestaurant.value as any)?.service_calls_enabled === true,
 )
 
+/** Доставка: блок как раньше (карта рядом). Самовывоз / в зале: карта только в модалке по кнопке «Карта». В зале при одном филиале блок скрываем — выбор очевиден. */
+const showRestaurantSectionStep2 = computed(
+  () =>
+    !(
+      state.fulfillmentType === 'qr-menu'
+      && restaurantsLoaded.value
+      && restaurants.value.length === 1
+    ),
+)
+
+const showInlineBranchMap = computed(() => state.fulfillmentType === 'delivery')
+
+const showBranchMapButtonOnCards = computed(
+  () =>
+    (state.fulfillmentType === 'pickup' || state.fulfillmentType === 'qr-menu')
+    && restaurants.value.length > 0,
+)
+
+const showRestaurantBranchCards = computed(() => {
+  if (state.fulfillmentType !== 'delivery') return true
+  return showDeliveryManualBranchList.value
+})
+
 function serviceCallTypeEnabled(type: 'call_waiter' | 'call_hookah' | 'request_bill') {
   return selectedRestaurantServiceCallTypes.value.includes(type)
 }
@@ -1614,6 +1713,14 @@ watch(showInRestaurantServiceButtons, (enabled: boolean) => {
   if (!isClient()) return
   showServiceCallOnboarding.value = localStorage.getItem(serviceCallOnboardingStorageKey) !== '1'
 }, { immediate: true })
+
+watch(
+  () => state.fulfillmentType,
+  (t) => {
+    if (t !== 'pickup' && t !== 'qr-menu') showBranchesMapModal.value = false
+    if (t !== 'delivery') showDeliveryManualBranchList.value = false
+  },
+)
 
 type DeliveryResolveApi = {
   ok: boolean
@@ -1924,18 +2031,6 @@ function branchCardClass(branch: (typeof restaurants.value)[number]) {
     return 'border-primary bg-primary-50 cursor-pointer'
   }
   return 'border-gray-200 bg-white cursor-pointer hover:border-primary hover:bg-primary-50'
-}
-
-function branchSelectButtonClass(branch: (typeof restaurants.value)[number]) {
-  const isSelected = branch.id === selectedRestaurantId.value
-  const isEnabled = branchSupportsCurrentFulfillment(branch)
-  if (!isEnabled) {
-    return 'border-gray-200 text-gray-400 cursor-not-allowed'
-  }
-  if (isSelected) {
-    return 'border-primary bg-white text-primary'
-  }
-  return 'text-gray-700 hover:border-primary hover:text-primary'
 }
 
 function onModalAddressLineInput(value: string) {
@@ -3441,10 +3536,19 @@ function closeAuthModal() {
   showAuthModal.value = false
 }
 
+function serviceCallBranchLabel(branch: Pick<RestaurantItem, 'name' | 'address'>) {
+  const addr = typeof branch.address === 'string' ? branch.address.trim() : ''
+  if (addr) return addr
+  const name = typeof branch.name === 'string' ? branch.name.trim() : ''
+  if (name) return name
+  return 'Адрес не указан'
+}
+
 function openServiceCallsModal() {
   if (!showInRestaurantServiceButtons.value) return
   dismissServiceCallOnboarding()
-  serviceCallDraftRestaurantId.value = selectedRestaurantId.value || restaurants.value[0]?.id || ''
+  const singleId = restaurants.value.length === 1 ? restaurants.value[0]?.id : null
+  serviceCallDraftRestaurantId.value = singleId || selectedRestaurantId.value || restaurants.value[0]?.id || ''
   const routeTableNumber = readFirstRouteQueryString('table_number') ?? readFirstRouteQueryString('table')
   serviceCallDraftTableNumber.value = routeTableNumber || tableNumber.value || ''
   showServiceCallsModal.value = true
@@ -3452,6 +3556,14 @@ function openServiceCallsModal() {
 
 function closeServiceCallsModal() {
   showServiceCallsModal.value = false
+}
+
+function openBranchesMapModal() {
+  showBranchesMapModal.value = true
+}
+
+function closeBranchesMapModal() {
+  showBranchesMapModal.value = false
 }
 
 async function openMaxAuthFlow() {
@@ -3520,6 +3632,43 @@ function openMaxAuth() {
   void openMaxAuthFlow()
 }
 
+async function openVkAuthFlow() {
+  if (!vkAuthEnabled.value || !isClient()) return
+  await saveCurrentAddress()
+  await persistCheckoutStateCloud(serializeState())
+  const shopRef = checkoutXShopId.value || ''
+  if (!shopRef) {
+    window.alert('Не удалось определить ресторан. Обновите страницу.')
+    return
+  }
+  const citySlug = typeof route.params.city_slug === 'string' ? route.params.city_slug.trim() : ''
+  try {
+    const res = await $fetch<{ ok: boolean; token: string; authorizeUrl: string }>('/api/auth/request-vk-link', {
+      method: 'POST',
+      headers: { 'x-shop-id': shopRef },
+      body: {
+        shopId: shopRef,
+        citySlug: citySlug || undefined,
+        redirectPath: tenantPath('/checkout'),
+      },
+    })
+    if (!res?.ok || !res.token || !res.authorizeUrl) {
+      throw new Error('bad_response')
+    }
+    await navigateTo({
+      path: '/link-vk',
+      query: {
+        token: res.token,
+        redirect: tenantPath('/checkout'),
+        shop_id: shopRef,
+      },
+    })
+    window.location.href = res.authorizeUrl
+  } catch {
+    window.alert('Не удалось начать вход через ВКонтакте. Попробуйте ещё раз.')
+  }
+}
+
 async function openTelegramAuth() {
   if (!telegramBotUrl.value || !isClient()) return
   await saveCurrentAddress()
@@ -3581,21 +3730,28 @@ async function openTelegramAuth() {
   }
 }
 
-async function runAuthAction(channel: 'telegram' | 'max') {
-  showAuthModal.value = false
+async function runAuthAction(channel: AuthChannel) {
+  closeAuthModal()
   if (authModalMode.value === 'continue') {
     if (channel === 'telegram') {
       await continueInTelegramFromCheckout()
       return
     }
-    await continueInMaxFromCheckout()
+    if (channel === 'max') {
+      await continueInMaxFromCheckout()
+      return
+    }
     return
   }
   if (channel === 'telegram') {
     await openTelegramAuth()
     return
   }
-  await openMaxAuthFlow()
+  if (channel === 'max') {
+    await openMaxAuthFlow()
+    return
+  }
+  await openVkAuthFlow()
 }
 
 async function continueInTelegramFromCheckout() {
