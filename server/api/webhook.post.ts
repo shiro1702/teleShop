@@ -2,6 +2,7 @@ import { serverSupabaseServiceRole } from '#supabase/server'
 import { buildAuthSiteLinkUrl } from '~/server/utils/authSiteLink'
 import { applyFestivalModerationAction } from '~/server/utils/festivalUgcModeration'
 import { createServiceCallEvent, getStaffResponseText, mapActionToStatus } from '~/server/utils/serviceCalls'
+import { appendOrderTimelineEntry, applyOrderStatusFromChat, getUnifiedFlowConfig } from '~/server/utils/orderFlowActions'
 
 const TELEGRAM_API = (token: string) => `https://api.telegram.org/bot${token}`
 
@@ -783,6 +784,48 @@ export default defineEventHandler(async (event) => {
   }
 
   const parsed = parseCallbackData(query.data)
+  const isEtaCallback = query.data.startsWith('etaWork_') || query.data.startsWith('etaCourier_')
+  if (isEtaCallback) {
+    const [, minsRaw = '', orderIdRaw = ''] = query.data.split('_')
+    const orderId = orderIdRaw.trim()
+    const mins = Number(minsRaw)
+    if (!orderId || !Number.isFinite(mins) || mins <= 0) {
+      await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id, text: 'Некорректный ETA', show_alert: false })
+      return { ok: true }
+    }
+    const supabase = await serverSupabaseServiceRole(event)
+    const { data: order } = await supabase
+      .from('orders')
+      .select('id,shop_id,restaurant_id,customer_telegram_id')
+      .eq('id', orderId)
+      .maybeSingle()
+    if (!order) {
+      await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id, text: 'Заказ не найден', show_alert: false })
+      return { ok: true }
+    }
+    await getUnifiedFlowConfig(event, String((order as any).restaurant_id || ''))
+    await appendOrderTimelineEntry(event, {
+      orderId,
+      shopId: String((order as any).shop_id),
+      label: `ETA обновлен из Telegram: ~${Math.floor(mins)} мин`,
+      source: 'telegram',
+      userId: String(query.from?.id || ''),
+      comment: null,
+    })
+    const customerTelegramId = Number((order as any).customer_telegram_id)
+    if (Number.isFinite(customerTelegramId) && customerTelegramId > 0) {
+      await telegram(botToken, 'sendMessage', {
+        chat_id: customerTelegramId,
+        text: `⏱ Обновление по заказу ${formatOrderRef((order as any).order_number, orderId)}: ориентировочно ${Math.floor(mins)} мин.`,
+      }).catch(() => {})
+    }
+    await telegram(botToken, 'answerCallbackQuery', {
+      callback_query_id: query.id,
+      text: `ETA: ${Math.floor(mins)} мин`,
+      show_alert: false,
+    })
+    return { ok: true }
+  }
   if (query.data.startsWith('clientDelay_')) {
     const orderId = query.data.slice('clientDelay_'.length).trim()
     if (!orderId) {
@@ -889,6 +932,8 @@ export default defineEventHandler(async (event) => {
     return { ok: true }
   }
   const orderRef = formatOrderRef((orderDetails as any)?.order_number, orderId)
+  const flowConfig = await getUnifiedFlowConfig(event, String((orderDetails as any)?.restaurant_id || ''))
+  const unifiedFlowEnabled = flowConfig.unifiedOrderFlowEnabled
 
   const customerProfileId = (orderDetails as any)?.customer_profile_id ? String((orderDetails as any).customer_profile_id) : ''
   let maxUserId: string | null = null
@@ -925,6 +970,16 @@ export default defineEventHandler(async (event) => {
 
   if (kind === 'delay') {
     const baseStatus: 'work' | 'courier' = status === 'courier' ? 'courier' : 'work'
+    if (unifiedFlowEnabled) {
+      await appendOrderTimelineEntry(event, {
+        orderId,
+        shopId: String((orderDetails as any).shop_id),
+        label: `Сообщение о задержке отправлено клиенту (${baseStatus === 'courier' ? 'доставка' : 'кухня'})`,
+        source: 'telegram',
+        userId: String(query.from?.id || ''),
+        comment: null,
+      })
+    }
     const clientDelayText = CLIENT_DELAY_MESSAGES[baseStatus]?.(orderRef)
     if (clientDelayText) {
       if (customerTelegramId) {
@@ -951,8 +1006,17 @@ export default defineEventHandler(async (event) => {
   }
 
   // kind === 'status'
+  if (unifiedFlowEnabled) {
+    const nextStatus = status === 'work' ? 'in_progress' : status === 'courier' ? 'out_for_delivery' : 'handed_to_customer'
+    await applyOrderStatusFromChat(event, {
+      orderId,
+      status: nextStatus,
+      source: 'telegram',
+      actorUserId: String(query.from?.id || ''),
+    })
+  }
   const clientText = CLIENT_MESSAGES[status]?.(orderRef)
-  if (clientText) {
+  if (clientText && !unifiedFlowEnabled) {
     if (customerTelegramId) {
       await telegram(botToken, 'sendMessage', {
         chat_id: customerTelegramId,

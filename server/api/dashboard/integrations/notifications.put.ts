@@ -17,6 +17,9 @@ type Body = {
     managerRecipients?: Array<{ channel: 'telegram' | 'max'; targetId: string }>
     serviceCallsEnabled?: boolean
     serviceCallTypes?: Array<'call_waiter' | 'call_hookah' | 'request_bill'>
+    etaButtonsEnabled?: boolean
+    etaPresets?: number[]
+    etaRateLimitSec?: number
   }
   staffBindingUpsert?: {
     restaurantId: string
@@ -71,6 +74,41 @@ export default defineEventHandler(async (event) => {
           .filter((x) => orgAllowedTypes.includes(x)),
       ),
     )
+    const { data: restaurantExisting } = await client
+      .from('restaurants')
+      .select('integration_keys')
+      .eq('id', body.restaurantSettings.id)
+      .eq('shop_id', access.shopId)
+      .maybeSingle()
+    const currentIntegrationKeys =
+      (restaurantExisting as any)?.integration_keys && typeof (restaurantExisting as any).integration_keys === 'object'
+        ? ((restaurantExisting as any).integration_keys as Record<string, unknown>)
+        : {}
+    const rawEtaPresets = Array.isArray(body.restaurantSettings.etaPresets)
+      ? body.restaurantSettings.etaPresets
+      : (Array.isArray((currentIntegrationKeys as any).eta_presets) ? (currentIntegrationKeys as any).eta_presets : [10, 15, 20, 30, 45])
+    const etaPresets = rawEtaPresets
+      .map((value: unknown) => Number(value))
+      .filter((value: number) => Number.isFinite(value) && value > 0)
+      .map((value: number) => Math.floor(value))
+      .slice(0, 8)
+    const etaRateLimitRaw = Number(
+      body.restaurantSettings.etaRateLimitSec
+      ?? (currentIntegrationKeys as any).eta_rate_limit_sec
+      ?? 180,
+    )
+    const etaRateLimitSec = Number.isFinite(etaRateLimitRaw)
+      ? Math.min(3600, Math.max(30, Math.floor(etaRateLimitRaw)))
+      : 180
+    const integrationKeysNext: Record<string, unknown> = {
+      ...currentIntegrationKeys,
+      // Unified flow is always on; dashboard no longer exposes a toggle.
+      unified_order_flow_enabled: true,
+      eta_buttons_enabled: body.restaurantSettings.etaButtonsEnabled === true,
+      eta_presets: etaPresets.length ? etaPresets : [10, 15, 20, 30, 45],
+      eta_rate_limit_sec: etaRateLimitSec,
+    }
+
     await client
       .from('restaurants')
       .update({
@@ -80,6 +118,7 @@ export default defineEventHandler(async (event) => {
         manager_recipients: recipients,
         service_calls_enabled: body.restaurantSettings.serviceCallsEnabled === true,
         service_call_types: serviceCallTypes.length ? serviceCallTypes : ['call_waiter', 'call_hookah', 'request_bill'],
+        integration_keys: integrationKeysNext,
       })
       .eq('id', body.restaurantSettings.id)
       .eq('shop_id', access.shopId)
