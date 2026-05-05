@@ -100,6 +100,8 @@ type DashboardRestaurant = {
   id: string
   name: string
   address: string
+  cityId: string | null
+  cityName: string | null
   supportsDelivery: boolean
   supportsPickup: boolean
   isActive: boolean
@@ -114,20 +116,20 @@ const cityFilter = ref('all')
 const statusFilter = ref<'all' | 'active' | 'inactive'>('all')
 const brandFilter = ref<'all' | 'main'>('all')
 
-const cityByAddress = (address: string) => address.split(',')[0]?.trim() || 'Без города'
-const cities = computed(() => Array.from(new Set(restaurants.value.map((item) => cityByAddress(item.address)))))
-const filteredRestaurants = computed(() => restaurants.value.filter((item) => {
+const cityLabel = (item: DashboardRestaurant) => item.cityName?.trim() || 'Без города'
+const cities = computed(() => Array.from(new Set(restaurants.value.map((item: DashboardRestaurant) => cityLabel(item)))))
+const filteredRestaurants = computed(() => restaurants.value.filter((item: DashboardRestaurant) => {
   if (statusFilter.value === 'active' && !item.isActive) return false
   if (statusFilter.value === 'inactive' && item.isActive) return false
-  if (cityFilter.value !== 'all' && cityByAddress(item.address) !== cityFilter.value) return false
+  if (cityFilter.value !== 'all' && cityLabel(item) !== cityFilter.value) return false
   if (brandFilter.value !== 'all' && brandFilter.value !== 'main') return false
   return true
 }))
 
 const groupedRestaurants = computed(() => {
   const map = new Map<string, DashboardRestaurant[]>()
-  filteredRestaurants.value.forEach((item) => {
-    const city = cityByAddress(item.address)
+  filteredRestaurants.value.forEach((item: DashboardRestaurant) => {
+    const city = cityLabel(item)
     const bucket = map.get(city) || []
     bucket.push(item)
     map.set(city, bucket)
@@ -156,7 +158,7 @@ onMounted(async () => {
 })
 
 function archiveBranch(id: string) {
-  const item = restaurants.value.find((entry) => entry.id === id)
+  const item = restaurants.value.find((entry: DashboardRestaurant) => entry.id === id)
   if (!item) return
   const confirmed = window.confirm(`Архивировать филиал "${item.name}"?`)
   if (!confirmed) return
