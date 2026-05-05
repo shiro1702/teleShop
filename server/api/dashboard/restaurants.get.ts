@@ -46,6 +46,7 @@ export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
   const query = getQuery(event)
   const compact = query.compact === '1' || query.compact === 'true'
+  const branchList = query.branchList === '1' || query.branchList === 'true'
   const clientPromise = serverSupabaseServiceRole(event)
 
   if (compact) {
@@ -78,6 +79,30 @@ export default defineEventHandler(async (event) => {
         hasNext: rows.length > pageSize,
         hasPrev: page > 1,
       },
+    }
+  }
+
+  if (branchList) {
+    const client = await clientPromise
+    const { data, error } = await client
+      .from('restaurants')
+      .select('id,name,address,is_active,created_at')
+      .eq('shop_id', access.shopId)
+      .order('created_at', { ascending: false })
+    if (error) {
+      console.error('Failed to load branch-list dashboard restaurants:', error)
+      throw createError({ statusCode: 500, statusMessage: 'Failed to load restaurants' })
+    }
+    return {
+      ok: true,
+      shopId: access.shopId,
+      items: (data ?? []).map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        address: row.address,
+        isActive: row.is_active === true,
+        createdAt: row.created_at,
+      })),
     }
   }
 

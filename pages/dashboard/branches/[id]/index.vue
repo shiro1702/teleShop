@@ -490,15 +490,20 @@ async function copyTableQrUrl(table: RestaurantTable) {
 async function loadTables() {
   if (!branch.value) return
   tablesError.value = ''
-  const res = await fetch(`/api/dashboard/branches/${branch.value.id}/tables`)
-  const payload = await res.json().catch(() => ({} as any))
-  if (!res.ok) {
+  try {
+    const res = await fetch(`/api/dashboard/branches/${branch.value.id}/tables`)
+    const payload = await res.json().catch(() => ({} as any))
+    if (!res.ok) {
+      tables.value = []
+      tablesError.value = payload?.statusMessage || 'Не удалось загрузить столики'
+      return
+    }
+    tables.value = Array.isArray(payload?.items) ? payload.items : []
+    void rebuildTableQrData()
+  } catch {
     tables.value = []
-    tablesError.value = payload?.statusMessage || 'Не удалось загрузить столики'
-    return
+    tablesError.value = 'Ошибка сети при загрузке столиков. Проверьте соединение и обновите страницу.'
   }
-  tables.value = Array.isArray(payload?.items) ? payload.items : []
-  void rebuildTableQrData()
 }
 
 async function createTable() {

@@ -57,7 +57,21 @@ function extractTenantSlugFromPath(path: string, defaultCitySlug: string | null)
   const [firstSegment, secondSegment] = segments
 
   if (!firstSegment) return null
-  if (['api', '_nuxt', '__nuxt_error', 'profile', 'link-telegram'].includes(firstSegment)) return null
+  if ([
+    'api',
+    '_nuxt',
+    '__nuxt_error',
+    'profile',
+    'dashboard',
+    'onboarding',
+    'login',
+    'register',
+    'partners',
+    'platform',
+    'link-telegram',
+    'link-max',
+    'link-vk',
+  ].includes(firstSegment)) return null
   if (/\.[a-z0-9]+$/i.test(firstSegment)) return null
 
   // Поддержка URL-схемы агрегатора: /{city_slug}/{tenant_slug}/...
@@ -80,7 +94,21 @@ function extractCityAndTenantFromPath(path: string): { citySlug: string; tenantS
   if (segments.length < 2) return null
   const [citySlug, tenantSlug] = segments
   if (!citySlug || !tenantSlug) return null
-  if (['api', '_nuxt', '__nuxt_error', 'profile', 'link-telegram'].includes(citySlug)) return null
+  if ([
+    'api',
+    '_nuxt',
+    '__nuxt_error',
+    'profile',
+    'dashboard',
+    'onboarding',
+    'login',
+    'register',
+    'partners',
+    'platform',
+    'link-telegram',
+    'link-max',
+    'link-vk',
+  ].includes(citySlug)) return null
   if (tenantSlug === 'festival') return null
   if (/\.[a-z0-9]+$/i.test(citySlug) || /\.[a-z0-9]+$/i.test(tenantSlug)) return null
   return { citySlug, tenantSlug }

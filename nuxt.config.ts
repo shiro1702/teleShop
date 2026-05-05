@@ -2,6 +2,11 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-03-05',
   devtools: { enabled: true },
+  // Workaround for intermittent source-map wasm crashes in Nuxt dev error parser.
+  sourcemap: {
+    client: false,
+    server: false,
+  },
   modules: ['@pinia/nuxt', '@nuxtjs/tailwindcss', '@nuxtjs/supabase'],
   css: ['~/assets/css/main.css'],
   typescript: {
