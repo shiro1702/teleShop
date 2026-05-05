@@ -12,53 +12,6 @@
         </div>
       </TransitionGroup>
     </div>
-    <!-- Модалка подтверждения очистки корзины -->
-    <Teleport to="body">
-      <Transition name="cart">
-        <div
-          v-if="showClearCartModal"
-          class="fixed inset-0 z-[60] flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="clear-cart-title"
-        >
-          <div
-            class="absolute inset-0 bg-black/50"
-            @click="closeClearCartModal"
-          />
-          <div
-            class="relative w-full max-w-sm rounded-2xl p-6 shadow-xl"
-            :style="cardStyle"
-            @click.stop
-          >
-            <h2 id="clear-cart-title" class="text-lg font-semibold" :style="{ color: mainTextColor }">
-              Очистить корзину?
-            </h2>
-            <p class="mt-2 text-sm" :style="{ color: mutedTextColor }">
-              Все товары будут удалены из корзины.
-            </p>
-            <div class="mt-5 flex gap-3">
-              <button
-                type="button"
-                class="flex-1 rounded-lg px-4 py-2 text-sm font-medium transition"
-                :style="secondaryButtonStyle"
-                @click="closeClearCartModal"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                class="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 active:bg-red-800"
-                @click="confirmClearCart"
-              >
-                Очистить
-              </button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-
     <header class="border-b" :style="headerStyle">
       <div class="mx-auto grid max-w-6xl grid-cols-3 items-center gap-3 px-4 py-4 sm:px-6">
         <div class="flex w-24 items-center sm:w-32">
@@ -162,15 +115,53 @@
                   @edit="openEditItemModal"
                 />
                 </TransitionGroup>
+                <div
+                  v-if="pendingCartClear"
+                  class="w-full rounded-lg border border-red-200 bg-white px-4 py-3"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="h-2.5 flex-1 overflow-hidden rounded-full" :style="{ backgroundColor: borderColor }">
+                      <div class="h-full bg-primary transition-all duration-100" :style="{ width: `${pendingCartClearProgress}%` }" />
+                    </div>
+                    <button
+                      type="button"
+                      class="shrink-0 text-xs font-semibold text-primary"
+                      @click="cancelClearCart"
+                    >
+                      Отменить
+                    </button>
+                  </div>
+                  <span class="mt-2 block text-xs" :style="{ color: mainTextColor }">
+                    Очистка через {{ pendingCartClearSecondsLeft }} c
+                  </span>
+                </div>
                 <button
+                  v-else
                   type="button"
                   class="w-full rounded-lg border border-red-200 bg-white px-4 py-3 text-base font-medium text-red-600 transition hover:bg-red-50 active:bg-red-100"
-                  @click="openClearCartModal"
+                  @click="scheduleClearCart"
                 >
                   Очистить корзину
                 </button>
               </ul>
-
+              <div class="mt-4 space-y-2">
+                <p v-if="upsellError" class="text-xs text-amber-700">
+                  {{ upsellError }}
+                </p>
+                <p v-else-if="isUpsellLoading && !upsellItems.length" class="text-xs" :style="{ color: mutedTextColor }">
+                  Подбираем рекомендации...
+                </p>
+                <CartUpsellStrip
+                  v-if="upsellItems.length > 0"
+                  :items="upsellItems"
+                  :loading-item-ids="upsellAddingItemIds"
+                  :remaining-rub="upsellRemainingRub"
+                  :border-color="borderColor"
+                  :main-text-color="mainTextColor"
+                  :muted-text-color="mutedTextColor"
+                  @add="onUpsellAdd"
+                />
+              </div>
               <div v-if="cartStore.items.length > 0" class="mt-4 space-y-3 border-t pt-4" :style="{ borderColor }">
                 <label class="block text-sm">
                   <span :style="{ color: mutedTextColor }">Промокод</span>
@@ -342,22 +333,6 @@
                   />
                 </div>
               </div>
-              <p v-if="upsellError" class="text-xs text-amber-700">
-                {{ upsellError }}
-              </p>
-              <p v-else-if="isUpsellLoading && !upsellItems.length" class="text-xs" :style="{ color: mutedTextColor }">
-                Подбираем рекомендации...
-              </p>
-              <CartUpsellStrip
-                v-if="upsellItems.length > 0"
-                :items="upsellItems"
-                :loading-item-ids="upsellAddingItemIds"
-                :remaining-rub="upsellRemainingRub"
-                :border-color="borderColor"
-                :main-text-color="mainTextColor"
-                :muted-text-color="mutedTextColor"
-                @add="onUpsellAdd"
-              />
               <div class="relative flex items-center gap-2">
                 <button
                   type="button"
@@ -1464,7 +1439,8 @@ let upsellInFlightSignature: string | null = null
 let upsellLastLoadedSignature: string | null = null
 
 const changeFrom = ref<string>('')
-const showClearCartModal = ref(false)
+const nowTick = ref(Date.now())
+let clearCartTicker: ReturnType<typeof setInterval> | null = null
 const showAddressModal = ref(false)
 const addressModalInitialTab = ref<'saved' | 'new'>('new')
 const hasShownAddressModalOnCurrentEntry = ref(false)
@@ -1524,6 +1500,18 @@ const showBottomBar = computed(() => {
   if (!cartStore.items.length) return false
   if (state.currentStep === 1) return !isStep1InlineNavVisible.value
   return !isStep2ActionsVisible.value
+})
+const pendingCartClear = computed(() => cartStore.pendingCartClearMeta)
+const pendingCartClearProgress = computed(() => {
+  const pending = pendingCartClear.value
+  if (!pending) return 0
+  const elapsed = Math.max(0, nowTick.value - pending.startedAt)
+  return Math.max(0, Math.min(100, Math.round((elapsed / pending.durationMs) * 100)))
+})
+const pendingCartClearSecondsLeft = computed(() => {
+  const pending = pendingCartClear.value
+  if (!pending) return 0
+  return Math.max(0, Math.ceil((pending.expiresAt - nowTick.value) / 1000))
 })
 
 /** Сначала slug/query из маршрута — стабильно при гидратации tenant; иначе смена tenantKey дублирует loadRestaurants/zones. */
@@ -2921,23 +2909,13 @@ function goBackToMenu() {
   void router.push({ path: tenantPath('/') })
 }
 
-function openClearCartModal() {
+function scheduleClearCart() {
   if (!cartStore.items.length) return
-  showClearCartModal.value = true
+  cartStore.scheduleCartClear(5000)
 }
 
-function closeClearCartModal() {
-  showClearCartModal.value = false
-}
-
-function confirmClearCart() {
-  if (!cartStore.items.length) {
-    showClearCartModal.value = false
-    return
-  }
-  cartStore.clear()
-  state.currentStep = 1
-  showClearCartModal.value = false
+function cancelClearCart() {
+  cartStore.cancelPendingCartClear()
 }
 
 function formatPrice(price: number) {
@@ -3112,6 +3090,9 @@ async function onStepTransitionAfterEnter() {
 }
 
 onMounted(async () => {
+  clearCartTicker = setInterval(() => {
+    nowTick.value = Date.now()
+  }, 100)
   await refreshInlineNavObservers()
 })
 
@@ -3126,6 +3107,10 @@ onBeforeUnmount(() => {
   }
   cleanupInlineNavObservers?.()
   cleanupInlineNavObservers = null
+  if (clearCartTicker) {
+    clearInterval(clearCartTicker)
+    clearCartTicker = null
+  }
 })
 
 watch(
