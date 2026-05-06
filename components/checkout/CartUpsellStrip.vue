@@ -26,7 +26,7 @@
         :style="{ borderColor }"
       >
         <img
-          :src="item.image || '/icons/favicon.svg'"
+          :src="productImageCard(item.image) || '/icons/favicon.svg'"
           :alt="item.name"
           class="h-20 w-full rounded-lg object-cover"
           loading="lazy"
@@ -69,6 +69,8 @@
 </template>
 
 <script setup lang="ts">
+import { productImageCard } from '~/utils/productImage'
+
 export type UpsellItemView = {
   id: string
   name: string

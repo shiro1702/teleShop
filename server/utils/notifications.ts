@@ -1,6 +1,7 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import type { H3Event } from 'h3'
 import { randomBytes } from 'node:crypto'
+import { getUnifiedFlowConfig } from '~/server/utils/orderFlowActions'
 
 export type NotificationEventType = 'ORDER_CREATED' | 'ORDER_STATUS_CHANGED'
 export type NotificationChannel = 'telegram' | 'max'
@@ -450,7 +451,7 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
     .maybeSingle()
   const { data: branchRow } = await client
     .from('restaurants')
-    .select('name,address,manager_group_chat_id')
+    .select('name,address,manager_group_chat_id,integration_keys')
     .eq('id', input.tenantContext.restaurantId)
     .maybeSingle()
   const { data: cityRow } = input.tenantContext.cityId
@@ -520,21 +521,44 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
           ? `https://t.me/${telegramBotName}?startapp=${encodeURIComponent(customerBridgeToken)}`
           : ''
         const managerKeyboard = input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
+          ? (() => {
+              const etaRows: Array<Array<Record<string, string>>> = []
+              return {
+                inline_keyboard: [
+                  [
+                    { text: '👨‍🍳 Принять в работу', callback_data: `work__${input.orderContext.orderId}` },
+                    { text: '⏱ Задержка (кухня)', callback_data: `delayWork__${input.orderContext.orderId}` },
+                  ],
+                  ...etaRows,
+                  [
+                    ...(input.actorContext?.customerTelegramId
+                      ? [{ text: '✉️ Написать клиенту', url: `tg://user?id=${input.actorContext.customerTelegramId}` }]
+                      : []),
+                  ],
+                  ...(dashboardOrderUrl ? [[{ text: '📋 Открыть заказ (менеджер)', url: dashboardOrderUrl }]] : []),
+                ].filter((row) => Array.isArray(row) && row.length > 0),
+              }
+            })()
+          : null
+        const managerKeyboardWithEta = input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
           ? {
+              ...(managerKeyboard || {}),
               inline_keyboard: [
-                [
-                  { text: '👨‍🍳 Принять в работу', callback_data: `work__${input.orderContext.orderId}` },
-                  { text: '⏱ Задержка (кухня)', callback_data: `delayWork__${input.orderContext.orderId}` },
-                ],
-                [
-                  ...(input.actorContext?.customerTelegramId
-                    ? [{ text: '✉️ Написать клиенту', url: `tg://user?id=${input.actorContext.customerTelegramId}` }]
-                    : []),
-                ],
-                ...(dashboardOrderUrl ? [[{ text: '📋 Открыть заказ (менеджер)', url: dashboardOrderUrl }]] : []),
-              ].filter((row) => Array.isArray(row) && row.length > 0),
+                ...(managerKeyboard?.inline_keyboard || []),
+              ],
             }
           : null
+        const flowConfig = await getUnifiedFlowConfig(event, input.tenantContext.restaurantId)
+        if (managerKeyboardWithEta && flowConfig.etaButtonsEnabled) {
+          const firstRow = flowConfig.etaPresets.slice(0, 4).map((mins) => ({
+            text: `⌛ ${mins} мин`,
+            callback_data: `etaWork_${mins}_${input.orderContext.orderId}`,
+          }))
+          if (firstRow.length) {
+            managerKeyboardWithEta.inline_keyboard.splice(1, 0, firstRow)
+          }
+        }
+        const finalManagerKeyboard = managerKeyboardWithEta
         const customerKeyboardRows: Array<Array<Record<string, string>>> = []
         if (recipient.targetType === 'customer') {
           if (input.eventType === 'ORDER_CREATED') {
@@ -549,7 +573,7 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
           botToken,
           recipient.targetId,
           text,
-          { replyMarkup: managerKeyboard || customerKeyboard || undefined },
+          { replyMarkup: finalManagerKeyboard || customerKeyboard || undefined },
         )
       } else {
         if (!maxEnabledByRuntime) {

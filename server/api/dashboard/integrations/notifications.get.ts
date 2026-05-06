@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
 
   let restaurantsQuery = client
     .from('restaurants')
-    .select('id,name,manager_notification_mode,manager_group_chat_id,manager_max_chat_id,manager_recipients,service_calls_enabled,service_call_types')
+    .select('id,name,manager_notification_mode,manager_group_chat_id,manager_max_chat_id,manager_recipients,service_calls_enabled,service_call_types,integration_keys')
     .eq('shop_id', access.shopId)
     .order('created_at', { ascending: false })
   if (restaurantId) restaurantsQuery = restaurantsQuery.eq('id', restaurantId)
@@ -58,7 +58,14 @@ export default defineEventHandler(async (event) => {
   return {
     ok: true,
     channelPolicy: (shop as any)?.channel_policy ?? { primary: 'telegram', secondary: 'max', maxEnabled: false },
-    restaurants: pagedRows.map((row: any) => ({
+    restaurants: pagedRows.map((row: any) => {
+      const integrationKeys = row?.integration_keys && typeof row.integration_keys === 'object' ? row.integration_keys : {}
+      const rawEtaPresets = Array.isArray((integrationKeys as any).eta_presets) ? (integrationKeys as any).eta_presets : []
+      const etaPresets = rawEtaPresets
+        .map((value: unknown) => Number(value))
+        .filter((value: number) => Number.isFinite(value) && value > 0)
+        .slice(0, 8)
+      return {
       id: row.id,
       name: row.name,
       managerNotificationMode: row.manager_notification_mode || 'group',
@@ -68,7 +75,16 @@ export default defineEventHandler(async (event) => {
       serviceCallsEnabled: row.service_calls_enabled === true,
       serviceCallTypes: Array.isArray(row.service_call_types) ? row.service_call_types : ['call_waiter', 'call_hookah', 'request_bill'],
       staffBotBindings: bindingsByRestaurant.get(String(row.id)) || [],
-    })),
+      unifiedOrderFlowEnabled: true,
+      etaButtonsEnabled: Boolean((integrationKeys as any).eta_buttons_enabled),
+      etaPresets: etaPresets.length ? etaPresets : [10, 15, 20, 30, 45],
+      etaRateLimitSec: (() => {
+        const raw = Number((integrationKeys as any).eta_rate_limit_sec)
+        if (!Number.isFinite(raw) || raw < 30) return 180
+        return Math.min(3600, Math.floor(raw))
+      })(),
+    }
+    }),
     pagination: {
       page,
       pageSize,

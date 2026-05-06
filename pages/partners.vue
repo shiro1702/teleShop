@@ -177,6 +177,125 @@
         </div>
       </section>
 
+      <!-- Калькулятор -->
+      <section aria-labelledby="partners-calculator">
+        <h2 id="partners-calculator" class="text-2xl font-semibold text-gray-900">
+          Калькулятор стоимости для партнёров
+        </h2>
+        <p class="mt-3 text-gray-600">
+          Оцените ежемесячный бюджет под ваш формат: доставка, самовывоз, количество филиалов и нужные модули.
+        </p>
+        <div class="mt-6 grid gap-4 lg:grid-cols-3">
+          <article class="rounded-xl border border-gray-200 bg-white p-5">
+            <p class="text-sm font-semibold uppercase tracking-wide text-gray-700">Тип работы</p>
+            <div class="mt-3 space-y-2">
+              <label v-for="mode in workModes" :key="mode.id" class="flex items-start gap-3 text-sm text-gray-700">
+                <input
+                  v-model="selectedWorkModes"
+                  :value="mode.id"
+                  type="checkbox"
+                  class="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                >
+                <span>
+                  <span class="font-medium text-gray-900">{{ mode.label }}</span>
+                  <span class="block text-xs text-gray-500">{{ mode.note }}</span>
+                </span>
+              </label>
+            </div>
+          </article>
+          <article class="rounded-xl border border-gray-200 bg-white p-5">
+            <label for="partners-branches" class="text-sm font-semibold uppercase tracking-wide text-gray-700">
+              Количество филиалов
+            </label>
+            <input
+              id="partners-branches"
+              v-model.number="branchCount"
+              type="number"
+              min="1"
+              class="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+            >
+            <p class="mt-2 text-xs text-gray-500">
+              Включён 1 филиал. Каждый дополнительный добавляет {{ formatRub(extraBranchPrice) }}/мес.
+            </p>
+          </article>
+          <article class="rounded-xl border border-primary-100 bg-primary-50 p-5">
+            <p class="text-sm font-semibold uppercase tracking-wide text-gray-700">Итоговая оценка</p>
+            <p class="mt-3 text-3xl font-bold text-gray-900">
+              {{ formatRub(calculationTotal) }} / мес
+            </p>
+            <ul class="mt-4 space-y-2 text-sm text-gray-700">
+              <li class="flex justify-between gap-3">
+                <span>База</span>
+                <span class="font-medium">{{ formatRub(basePrice) }}</span>
+              </li>
+              <li class="flex justify-between gap-3">
+                <span>Формат работы</span>
+                <span class="font-medium">{{ formatRub(workModeTotal) }}</span>
+              </li>
+              <li class="flex justify-between gap-3">
+                <span>Филиалы</span>
+                <span class="font-medium">{{ formatRub(branchesTotal) }}</span>
+              </li>
+              <li class="flex justify-between gap-3">
+                <span>Модули</span>
+                <span class="font-medium">{{ formatRub(selectedModulesTotal) }}</span>
+              </li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-5">
+          <p class="text-sm font-semibold uppercase tracking-wide text-gray-700">Подключаемые модули</p>
+          <div class="mt-3 grid gap-3 md:grid-cols-2">
+            <label
+              v-for="module in calculatorModules"
+              :key="module.id"
+              class="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700"
+            >
+              <input
+                v-model="selectedCalculatorModules"
+                :value="module.id"
+                type="checkbox"
+                class="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              >
+              <span>
+                <span class="font-medium text-gray-900">{{ module.label }}</span>
+                <span class="block text-xs text-gray-500">{{ formatRub(module.price) }}/мес</span>
+              </span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Примеры -->
+      <section aria-labelledby="partners-cases">
+        <h2 id="partners-cases" class="text-2xl font-semibold text-gray-900">
+          Примеры подключения с расчётом
+        </h2>
+        <p class="mt-3 text-gray-600">
+          Готовые сценарии, чтобы быстро понять бюджет под формат бизнеса.
+        </p>
+        <div class="mt-6 grid gap-4 md:grid-cols-3">
+          <article
+            v-for="scenario in pricingScenarios"
+            :key="scenario.title"
+            class="rounded-xl border border-gray-200 bg-white p-5"
+          >
+            <p class="text-sm font-semibold uppercase tracking-wide text-primary">{{ scenario.badge }}</p>
+            <h3 class="mt-2 text-lg font-semibold text-gray-900">{{ scenario.title }}</h3>
+            <ul class="mt-3 space-y-2 text-sm text-gray-600">
+              <li v-for="point in scenario.points" :key="point" class="flex gap-2">
+                <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                {{ point }}
+              </li>
+            </ul>
+            <p class="mt-4 rounded-lg bg-primary-50 px-3 py-2 text-sm font-semibold text-gray-900">
+              Ориентир: {{ scenario.total }}
+            </p>
+          </article>
+        </div>
+      </section>
+
       <!-- Маркетинг -->
       <section aria-labelledby="partners-marketing">
         <h2 id="partners-marketing" class="text-2xl font-semibold text-gray-900">
@@ -287,11 +406,48 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 
 const config = useRuntimeConfig()
 const telegramBotName = (config.public.telegramBotName as string | undefined) || ''
 const telegramDemoUrl = computed(() => (telegramBotName ? `https://t.me/${telegramBotName}` : null))
+
+const basePrice = 1200
+const extraBranchPrice = 500
+
+const workModes = [
+  { id: 'delivery', label: 'Доставка', note: 'Зоны, приём заказов, маршруты', price: 2200 },
+  { id: 'pickup', label: 'Самовывоз', note: 'Слотирование и выдача заказов', price: 800 },
+  { id: 'hall', label: 'Заказы в зале', note: 'QR-меню и быстрый заказ', price: 0 },
+] as const
+
+const calculatorModules = [
+  { id: 'crm', label: 'CRM и база гостей', price: 1200 },
+  { id: 'loyalty', label: 'Лояльность и промокоды', price: 900 },
+  { id: 'payments', label: 'Онлайн-оплата', price: 480 },
+  { id: 'reviews', label: 'Модуль отзывов', price: 700 },
+] as const
+
+const selectedWorkModes = ref<Array<(typeof workModes)[number]['id']>>(['hall'])
+const selectedCalculatorModules = ref<Array<(typeof calculatorModules)[number]['id']>>(['crm'])
+const branchCount = ref(1)
+
+const workModeTotal = computed(() =>
+  workModes
+    .filter((mode) => selectedWorkModes.value.includes(mode.id))
+    .reduce((sum, mode) => sum + mode.price, 0),
+)
+
+const selectedModulesTotal = computed(() =>
+  calculatorModules
+    .filter((module) => selectedCalculatorModules.value.includes(module.id))
+    .reduce((sum, module) => sum + module.price, 0),
+)
+
+const safeBranchCount = computed(() => Math.max(1, Math.floor(Number(branchCount.value) || 1)))
+const branchesTotal = computed(() => Math.max(0, safeBranchCount.value - 1) * extraBranchPrice)
+const calculationTotal = computed(() => basePrice + workModeTotal.value + branchesTotal.value + selectedModulesTotal.value)
+
+const formatRub = (value: number) => `${new Intl.NumberFormat('ru-RU').format(value)} ₽`
 
 const moduleRows = [
   { module: 'core_qr_menu', desc: 'QR-меню в зале', price: '0 ₽' },
@@ -299,6 +455,7 @@ const moduleRows = [
   { module: 'crm_orders_db', desc: 'История заказов, база клиентов, повтор заказа', price: '1000–1500 ₽/мес' },
   { module: 'marketing_loyalty', desc: 'Бонусы, промокоды, штампики', price: '500–990 ₽/мес' },
   { module: 'payments_online', desc: 'Онлайн-оплата', price: 'от 480 ₽/мес' },
+  { module: 'ugc_reviews', desc: 'Сбор, модерация и публикация отзывов гостей', price: 'от 700 ₽/мес' },
   { module: 'own_delivery_smart', desc: 'Своя доставка: зоны, гео, отдельное delivery-меню', price: '2000–3500 ₽/мес' },
   {
     module: 'traffic_boost_search',
@@ -309,6 +466,27 @@ const moduleRows = [
     module: 'traffic_promo_showcase',
     desc: 'Витрина акций на главной агрегатора',
     price: 'В планах — после запуска страницы агрегатора',
+  },
+] as const
+
+const pricingScenarios = [
+  {
+    badge: 'Сценарий 1',
+    title: 'Доставка + самовывоз',
+    points: ['2 филиала', 'CRM + лояльность', 'Онлайн-оплата'],
+    total: '7 480 ₽/мес',
+  },
+  {
+    badge: 'Сценарий 2',
+    title: 'Бар с кнопками заказа',
+    points: ['1 филиал', 'Заказы в зале (QR)', 'Модуль отзывов'],
+    total: '1 900 ₽/мес',
+  },
+  {
+    badge: 'Сценарий 3',
+    title: 'Киоск с едой',
+    points: ['1 филиал', 'Самовывоз', 'CRM + онлайн-оплата'],
+    total: '3 680 ₽/мес',
   },
 ] as const
 

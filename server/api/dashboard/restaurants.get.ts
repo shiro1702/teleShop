@@ -9,6 +9,8 @@ type RestaurantRow = {
   id: string
   name: string
   address: string
+  city_id: string | null
+  cities?: { name?: string | null } | Array<{ name?: string | null }> | null
   lat: number | null
   lon: number | null
   supports_delivery: boolean
@@ -46,6 +48,7 @@ export default defineEventHandler(async (event) => {
   const access = await requireDashboardAccess(event)
   const query = getQuery(event)
   const compact = query.compact === '1' || query.compact === 'true'
+  const branchList = query.branchList === '1' || query.branchList === 'true'
   const clientPromise = serverSupabaseServiceRole(event)
 
   if (compact) {
@@ -81,6 +84,30 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  if (branchList) {
+    const client = await clientPromise
+    const { data, error } = await client
+      .from('restaurants')
+      .select('id,name,address,is_active,created_at')
+      .eq('shop_id', access.shopId)
+      .order('created_at', { ascending: false })
+    if (error) {
+      console.error('Failed to load branch-list dashboard restaurants:', error)
+      throw createError({ statusCode: 500, statusMessage: 'Failed to load restaurants' })
+    }
+    return {
+      ok: true,
+      shopId: access.shopId,
+      items: (data ?? []).map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        address: row.address,
+        isActive: row.is_active === true,
+        createdAt: row.created_at,
+      })),
+    }
+  }
+
   const [org, client] = await Promise.all([
     getOrganizationSettings(event, access.shopId),
     clientPromise,
@@ -93,9 +120,9 @@ export default defineEventHandler(async (event) => {
   let error: any = null
   const runRestaurantsQuery = async (mode: RestaurantSelectMode) => {
     const selectByMode: Record<RestaurantSelectMode, string> = {
-      primary: 'id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,festival_id,is_festival,festival_fulfillment_type,use_organization_working_hours,working_hours,is_active,created_at',
-      fallback: 'id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active,created_at',
-      legacy: 'id,name,address,lat,lon,supports_delivery,supports_pickup,supports_dine_in,is_active,created_at',
+      primary: 'id,name,address,city_id,cities(name),lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,festival_id,is_festival,festival_fulfillment_type,use_organization_working_hours,working_hours,is_active,created_at',
+      fallback: 'id,name,address,city_id,cities(name),lat,lon,supports_delivery,supports_pickup,supports_dine_in,supports_qr_menu,supports_showcase_order,is_active,created_at',
+      legacy: 'id,name,address,city_id,cities(name),lat,lon,supports_delivery,supports_pickup,supports_dine_in,is_active,created_at',
     }
     return client
       .from('restaurants')
@@ -133,10 +160,17 @@ export default defineEventHandler(async (event) => {
   return {
     ok: true,
     shopId: access.shopId,
-    items: rows.map((row) => ({
+    items: rows.map((row) => {
+      const cityRow = Array.isArray(row.cities) ? row.cities[0] : row.cities
+      const cityName = typeof cityRow?.name === 'string' && cityRow.name.trim().length
+        ? cityRow.name.trim()
+        : null
+      return {
       id: row.id,
       name: row.name,
       address: row.address,
+      cityId: typeof row.city_id === 'string' ? row.city_id : null,
+      cityName,
       lat: typeof row.lat === 'number' && Number.isFinite(row.lat) ? row.lat : null,
       lon: typeof row.lon === 'number' && Number.isFinite(row.lon) ? row.lon : null,
       supportsDelivery: row.supports_delivery === true && allowedSet.has('delivery'),
@@ -159,6 +193,7 @@ export default defineEventHandler(async (event) => {
       workingHours: normalizeWeeklyWorkingHours(row.working_hours, fallbackWorkingHours),
       isActive: row.is_active,
       createdAt: row.created_at,
-    })),
+      }
+    }),
   }
 })

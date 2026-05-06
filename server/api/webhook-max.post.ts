@@ -3,6 +3,7 @@ import { serverSupabaseServiceRole } from '#supabase/server'
 import { buildAuthSiteLinkUrl, parseAuthLinkTokenUuidFromText } from '~/server/utils/authSiteLink'
 import { applyFestivalModerationAction } from '~/server/utils/festivalUgcModeration'
 import { createServiceCallEvent, getStaffResponseText, mapActionToStatus, sendMax } from '~/server/utils/serviceCalls'
+import { appendOrderTimelineEntry, getUnifiedFlowConfig } from '~/server/utils/orderFlowActions'
 
 type MaxMessage = {
   sender?: { user_id?: number | string; is_bot?: boolean }
@@ -480,6 +481,16 @@ export default defineEventHandler(async (event) => {
       .select('id,order_number,shop_id,restaurant_id')
       .eq('id', orderId)
       .maybeSingle()
+    await getUnifiedFlowConfig(event, String((order as any).restaurant_id || ''))
+    await appendOrderTimelineEntry(event, {
+      orderId,
+      shopId: String((order as any).shop_id),
+      label: 'Клиент отправил сигнал о задержке из MAX',
+      source: 'max',
+      userId: String(actorUserId),
+      comment: null,
+    })
+
     if (!order) {
       await sendMaxDmPlain({
         baseUrl: maxBaseUrl,

@@ -11,7 +11,7 @@
     <div class="aspect-square w-full bg-gray-100">
       <img
         v-if="imageUrl"
-        :src="imageUrl"
+        :src="cardPreviewSrc"
         alt="Product"
         class="h-full w-full object-cover"
       >
@@ -39,6 +39,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { OrganizationStyleConfig } from '../../types/organization-style'
+import { productImageCard } from '~/utils/productImage'
 
 const props = defineProps<{
   title: string
@@ -50,6 +51,7 @@ const props = defineProps<{
 
 const tokens = computed(() => props.styleConfig.tokens)
 const radii = computed(() => props.styleConfig.radii)
+const cardPreviewSrc = computed(() => productImageCard(props.imageUrl))
 const priceLabel = computed(() => new Intl.NumberFormat('ru-RU', {
   style: 'currency',
   currency: 'RUB',

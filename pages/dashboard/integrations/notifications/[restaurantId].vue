@@ -101,6 +101,34 @@
     </article>
 
     <article class="rounded-xl border border-gray-200 bg-white p-4">
+      <h2 class="text-sm font-semibold">Единый flow Telegram + MAX</h2>
+      <p class="mt-1 text-xs text-gray-500">
+        Единый flow включен всегда. Ниже настраиваются только ETA-кнопки и лимиты.
+      </p>
+      <div class="mt-3 grid gap-3 sm:grid-cols-2">
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input v-model="etaButtonsEnabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner'">
+          <span>Кнопки ETA для клиента</span>
+        </label>
+      </div>
+      <div v-if="etaButtonsEnabled" class="mt-3">
+        <p class="mb-2 text-sm text-gray-600">Пресеты ETA (готовые варианты)</p>
+        <div class="grid gap-2 sm:grid-cols-3">
+          <label v-for="preset in etaPresetOptions" :key="preset" class="inline-flex items-center gap-2 text-sm">
+            <input v-model="etaPresetsSelected" :value="preset" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" :disabled="role !== 'owner'">
+            <span>{{ preset }} мин</span>
+          </label>
+        </div>
+      </div>
+      <div class="mt-3 grid gap-3 sm:grid-cols-2">
+        <label class="block text-sm">
+          <span class="mb-1 block text-gray-600">Ограничение обновлений ETA (сек)</span>
+          <input v-model.number="etaRateLimitSec" type="number" min="30" max="3600" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" :disabled="role !== 'owner'">
+        </label>
+      </div>
+    </article>
+
+    <article class="rounded-xl border border-gray-200 bg-white p-4">
       <h2 class="text-sm font-semibold">Сервисные вызовы (по филиалу)</h2>
       <p class="mt-1 text-xs text-gray-500">
         Управление кнопками «Позвать официанта / кальянщика / выставить счет» отдельно для каждого филиала.
@@ -222,6 +250,10 @@ const serviceCallTypeBill = ref(true)
 const orgAllowedWaiter = ref(true)
 const orgAllowedHookah = ref(false)
 const orgAllowedBill = ref(true)
+const etaButtonsEnabled = ref(false)
+const etaPresetOptions = [10, 15, 20, 30, 45, 60] as const
+const etaPresetsSelected = ref<number[]>([10, 15, 20, 30, 45])
+const etaRateLimitSec = ref(180)
 const staffBotBindings = ref<Array<{ id: string; channel: string; externalUserId: string; staffRole: string; displayName: string; isActive: boolean }>>([])
 const serviceCallStats = ref<{ total: number; open: number; avgFirstResponseSec: number | null; avgResolvedSec: number | null }>({
   total: 0,
@@ -270,6 +302,13 @@ async function loadSettings() {
   serviceCallTypeWaiter.value = types.includes('call_waiter')
   serviceCallTypeHookah.value = types.includes('call_hookah')
   serviceCallTypeBill.value = types.includes('request_bill')
+  etaButtonsEnabled.value = item.etaButtonsEnabled === true
+  etaPresetsSelected.value = Array.isArray(item.etaPresets)
+    ? item.etaPresets
+        .map((value: unknown) => Number(value))
+        .filter((value: number) => Number.isFinite(value) && etaPresetOptions.includes(value as (typeof etaPresetOptions)[number]))
+    : [10, 15, 20, 30, 45]
+  etaRateLimitSec.value = Number.isFinite(Number(item.etaRateLimitSec)) ? Number(item.etaRateLimitSec) : 180
   await loadOrganizationRestrictions()
   if (!orgAllowedWaiter.value) serviceCallTypeWaiter.value = false
   if (!orgAllowedHookah.value) serviceCallTypeHookah.value = false
@@ -311,6 +350,18 @@ async function saveSettings() {
     pushToast('error', 'Получатели должны быть JSON-массивом')
     return
   }
+  const etaPresets = Array.from(new Set<number>(etaPresetsSelected.value))
+    .filter((value: number) => etaPresetOptions.includes(value as (typeof etaPresetOptions)[number]))
+    .slice(0, 8)
+  if (!etaPresets.length) {
+    pushToast('error', 'Укажите хотя бы один корректный preset ETA')
+    return
+  }
+  const normalizedRateLimit = Number(etaRateLimitSec.value)
+  if (!Number.isFinite(normalizedRateLimit) || normalizedRateLimit < 30 || normalizedRateLimit > 3600) {
+    pushToast('error', 'Ограничение ETA должно быть от 30 до 3600 секунд')
+    return
+  }
   saving.value = true
   const response = await fetch('/api/dashboard/integrations/notifications', {
     method: 'PUT',
@@ -328,6 +379,9 @@ async function saveSettings() {
           ...(orgAllowedHookah.value && serviceCallTypeHookah.value ? ['call_hookah'] : []),
           ...(orgAllowedBill.value && serviceCallTypeBill.value ? ['request_bill'] : []),
         ],
+        etaButtonsEnabled: etaButtonsEnabled.value,
+        etaPresets,
+        etaRateLimitSec: Math.floor(normalizedRateLimit),
       },
     }),
   })

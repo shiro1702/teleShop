@@ -7,6 +7,14 @@ export type DashboardAccess = {
   role: 'owner' | 'manager'
 }
 
+type CachedDashboardAccess = {
+  value: DashboardAccess
+  expiresAt: number
+}
+
+const DASHBOARD_ACCESS_TTL_MS = 15_000
+const dashboardAccessCache = new Map<string, CachedDashboardAccess>()
+
 function normalizeRole(input: unknown): 'owner' | 'manager' {
   if (typeof input !== 'string') return 'owner'
   const value = input.trim().toLowerCase()
@@ -27,6 +35,12 @@ export async function requireDashboardAccess(event: any): Promise<DashboardAcces
       : null
   if (!userId) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+
+  const now = Date.now()
+  const cached = dashboardAccessCache.get(userId)
+  if (cached && cached.expiresAt > now) {
+    return cached.value
   }
 
   const client = await serverSupabaseServiceRole(event)
@@ -97,5 +111,10 @@ export async function requireDashboardAccess(event: any): Promise<DashboardAcces
     throw createError({ statusCode: 403, statusMessage: 'No shop access. Complete onboarding first.' })
   }
 
-  return { userId, shopId, role }
+  const value: DashboardAccess = { userId, shopId, role }
+  dashboardAccessCache.set(userId, {
+    value,
+    expiresAt: now + DASHBOARD_ACCESS_TTL_MS,
+  })
+  return value
 }

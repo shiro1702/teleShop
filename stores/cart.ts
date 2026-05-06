@@ -69,6 +69,7 @@ export interface PendingRemovalMeta {
 }
 
 const pendingRemovalTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const pendingCartClearTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 export interface CatalogBlock {
   blockId: string
@@ -209,6 +210,7 @@ export const useCartStore = defineStore('cart', {
     deliveryCost: 200,
     deliveryError: null as string | null,
     pendingRemovals: {} as Record<string, PendingRemovalMeta>,
+    pendingCartClear: null as PendingRemovalMeta | null,
   }),
   getters: {
     total: (state) =>
@@ -359,6 +361,7 @@ export const useCartStore = defineStore('cart', {
       return out
     },
     pendingRemovalById: (state) => (cartItemId: string) => state.pendingRemovals[cartItemId] ?? null,
+    pendingCartClearMeta: (state) => state.pendingCartClear,
   },
   actions: {
     timerKey(cartItemId: string) {
@@ -371,6 +374,18 @@ export const useCartStore = defineStore('cart', {
         clearTimeout(timer)
         pendingRemovalTimers.delete(key)
       }
+    },
+    clearPendingCartClearTimer() {
+      const key = this.scopeKey ?? 'global'
+      const timer = pendingCartClearTimers.get(key)
+      if (timer) {
+        clearTimeout(timer)
+        pendingCartClearTimers.delete(key)
+      }
+    },
+    clearPendingCartClear() {
+      this.clearPendingCartClearTimer()
+      this.pendingCartClear = null
     },
     clearPendingRemoval(cartItemId: string) {
       this.clearPendingRemovalTimer(cartItemId)
@@ -409,12 +424,34 @@ export const useCartStore = defineStore('cart', {
       ids.forEach((id) => this.removeItemNow(id))
     },
     removeItemNow(cartItemId: string) {
+      this.clearPendingCartClear()
       this.clearPendingRemoval(cartItemId)
       this.items = this.items.filter((i) => i.cartItemId !== cartItemId)
       persistCart(this.scopeKey, this.items)
       if (this.deliveryZone) {
         this.setDeliveryZone(this.deliveryZone)
       }
+    },
+    scheduleCartClear(durationMs = 5000) {
+      if (!this.items.length) {
+        this.clearPendingCartClear()
+        return
+      }
+      this.clearPendingCartClearTimer()
+      const now = Date.now()
+      this.pendingCartClear = {
+        startedAt: now,
+        expiresAt: now + durationMs,
+        durationMs,
+      }
+      const key = this.scopeKey ?? 'global'
+      const timeout = setTimeout(() => {
+        this.clear()
+      }, durationMs)
+      pendingCartClearTimers.set(key, timeout)
+    },
+    cancelPendingCartClear() {
+      this.clearPendingCartClear()
     },
     setScope(nextScopeKey: string | null) {
       const normalized = typeof nextScopeKey === 'string' && nextScopeKey.trim()
@@ -423,12 +460,14 @@ export const useCartStore = defineStore('cart', {
 
       if (this.scopeKey !== normalized) {
         this.flushPendingRemovals()
+        this.clearPendingCartClear()
         this.scopeKey = normalized
         this.items = getStoredCartItems(this.scopeKey)
         this.deliveryZone = null
         this.deliveryError = null
         this.deliveryCost = this.items.length ? 200 : 0
         this.pendingRemovals = {}
+        this.pendingCartClear = null
         // Каталог товаров должен загружаться заново для нового ресторана
         this.products = []
         return
@@ -468,6 +507,7 @@ export const useCartStore = defineStore('cart', {
       this.products = Array.isArray(products) ? products : []
     },
     addItem(product: Product, quantity = 1, modifiers: SelectedModifier[] = [], parameters: SelectedParameter[] = []) {
+      this.clearPendingCartClear()
       const cartItemId = generateCartItemId(product.id, modifiers, parameters)
       this.clearPendingRemoval(cartItemId)
       const existing = this.items.find((i) => i.cartItemId === cartItemId)
@@ -497,6 +537,7 @@ export const useCartStore = defineStore('cart', {
     updateQuantity(cartItemId: string, quantity: number) {
       const item = this.items.find((i) => i.cartItemId === cartItemId)
       if (item) {
+        this.clearPendingCartClear()
         if (quantity <= 0) this.removeItem(cartItemId)
         else {
           this.clearPendingRemoval(cartItemId)
@@ -514,6 +555,7 @@ export const useCartStore = defineStore('cart', {
       this.updateQuantity(item.cartItemId, item.quantity - 1)
     },
     clear() {
+      this.clearPendingCartClear()
       this.flushPendingRemovals()
       this.items = []
       this.pendingRemovals = {}
@@ -526,9 +568,11 @@ export const useCartStore = defineStore('cart', {
     hydrateFromStorage(scopeKey: string | null = null) {
       if (typeof localStorage === 'undefined') return
       this.scopeKey = typeof scopeKey === 'string' && scopeKey.trim() ? scopeKey.trim() : null
+      this.clearPendingCartClear()
       this.flushPendingRemovals()
       this.items = getStoredCartItems(this.scopeKey)
       this.pendingRemovals = {}
+      this.pendingCartClear = null
       this.deliveryZone = null
       this.deliveryError = null
       this.deliveryCost = this.items.length ? 200 : 0

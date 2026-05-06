@@ -27,7 +27,7 @@
             <article v-for="item in group.items" :key="item.id" class="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
               <div class="mb-3 flex items-start gap-3">
                 <div class="h-14 w-14 overflow-hidden rounded bg-gray-100">
-                  <img v-if="item.image" :src="item.image" class="h-full w-full object-cover" />
+                  <img v-if="item.image" :src="productImageCard(item.image)" class="h-full w-full object-cover" />
                 </div>
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
@@ -200,7 +200,7 @@
             <label class="block text-sm font-medium text-gray-700">Изображение</label>
             <div class="mt-1 flex items-center gap-4">
               <div v-if="form.image" class="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-                <img :src="form.image" class="h-full w-full object-cover" />
+                <img :src="productImageCard(form.image)" class="h-full w-full object-cover" />
               </div>
               <div class="flex-1">
                 <input 
@@ -276,6 +276,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { productImageCard } from '~/utils/productImage'
 
 definePageMeta({ layout: 'dashboard' })
 
