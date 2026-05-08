@@ -2,13 +2,14 @@ import { defineEventHandler, readBody, createError } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'node:crypto'
+import { findProfileIdByPhone, normalizePhone, setProfilePhone } from '~/server/utils/accountPhoneLink'
 
 interface ExchangeSessionBody {
   token?: string
 }
 
 async function findAuthUserIdByEmail(
-  serviceClient: Awaited<ReturnType<typeof serverSupabaseServiceRole>>,
+  serviceClient: any,
   email: string,
 ): Promise<string | null> {
   let page = 1
@@ -17,7 +18,7 @@ async function findAuthUserIdByEmail(
     const { data, error } = await serviceClient.auth.admin.listUsers({ page, perPage })
     if (error) return null
     const users = data?.users ?? []
-    const hit = users.find((user) => (user.email || '').toLowerCase() === email.toLowerCase())
+    const hit = users.find((user: any) => (user.email || '').toLowerCase() === email.toLowerCase())
     if (hit?.id) return hit.id
     if (users.length < perPage) break
     page += 1
@@ -68,9 +69,9 @@ export default defineEventHandler(async (event) => {
   const bridgePayload = (tokenRow.bridge_payload as Record<string, unknown> | null) || {}
   const sharedPhoneRaw = bridgePayload.max_shared_phone
   const sharedPhone =
-    typeof sharedPhoneRaw === 'string' && sharedPhoneRaw.trim() ? sharedPhoneRaw.trim() : ''
+    typeof sharedPhoneRaw === 'string' && sharedPhoneRaw.trim() ? normalizePhone(sharedPhoneRaw.trim()) : ''
 
-  const { data: existingProfile, error: profileError } = await serviceClient
+  const { data: existingProfileByMax, error: profileError } = await serviceClient
     .from('profiles')
     .select('id')
     .eq('max_user_id', maxUserId)
@@ -84,6 +85,11 @@ export default defineEventHandler(async (event) => {
   const syntheticPassword = crypto.createHash('sha256').update(`${maxUserId}:${secret}`).digest('hex')
 
   let userId: string
+  const existingProfileByPhoneId = !existingProfileByMax && sharedPhone
+    ? await findProfileIdByPhone(serviceClient, sharedPhone)
+    : null
+  const existingProfile = existingProfileByMax || (existingProfileByPhoneId ? { id: existingProfileByPhoneId } : null)
+
   if (!existingProfile) {
     const { data: createdUser, error: createUserError } = await serviceClient.auth.admin.createUser({
       email: syntheticEmail,
@@ -168,12 +174,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: 'Failed to create MAX Supabase session' })
   }
 
+  await serviceClient
+    .from('profiles')
+    .update({ max_user_id: maxUserId, max_conversation_id: maxConversationId })
+    .eq('id', userId)
+
   if (sharedPhone) {
-    const { data: authWrap } = await serviceClient.auth.admin.getUserById(userId)
-    const prevMeta = (authWrap?.user?.user_metadata ?? {}) as Record<string, unknown>
-    await serviceClient.auth.admin.updateUserById(userId, {
-      user_metadata: { ...prevMeta, phone: sharedPhone },
-    })
+    await setProfilePhone(serviceClient, userId, sharedPhone)
   }
 
   await serviceClient.from('auth_tokens').delete().eq('token', body.token)

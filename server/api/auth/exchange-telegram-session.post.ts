@@ -2,6 +2,7 @@ import { defineEventHandler, readBody, createError } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'node:crypto'
+import { findProfileIdByPhone, normalizePhone, setProfilePhone } from '~/server/utils/accountPhoneLink'
 
 interface ExchangeSessionBody {
   token?: string
@@ -94,7 +95,7 @@ export default defineEventHandler(async (event) => {
   const bridgeFromToken = (tokenRow.bridge_payload as Record<string, unknown> | null) || {}
   const sharedPhoneRaw = bridgeFromToken.telegram_shared_phone ?? bridgeFromToken.shared_phone
   const sharedPhone =
-    typeof sharedPhoneRaw === 'string' && sharedPhoneRaw.trim() ? sharedPhoneRaw.trim() : ''
+    typeof sharedPhoneRaw === 'string' && sharedPhoneRaw.trim() ? normalizePhone(sharedPhoneRaw.trim()) : ''
 
   const rawTg = tokenRow.telegram_id as unknown
   const telegramId =
@@ -117,7 +118,11 @@ export default defineEventHandler(async (event) => {
     .eq('telegram_id', telegramId)
     .limit(1)
 
-  const existingProfile = profileRows?.[0] ?? null
+  const profileByTelegram = profileRows?.[0] ?? null
+  const profileByPhoneId = !profileByTelegram && sharedPhone
+    ? await findProfileIdByPhone(serviceClient, sharedPhone)
+    : null
+  const existingProfile = profileByTelegram || (profileByPhoneId ? { id: profileByPhoneId } : null)
 
   if (profileError) {
     console.error('Error querying profiles by telegram_id in exchange-session:', profileError)
@@ -331,12 +336,13 @@ export default defineEventHandler(async (event) => {
 
   const session = signInData.session
 
+  await serviceClient
+    .from('profiles')
+    .update({ telegram_id: telegramId })
+    .eq('id', userId)
+
   if (sharedPhone) {
-    const { data: authWrap } = await serviceClient.auth.admin.getUserById(userId)
-    const prevMeta = (authWrap?.user?.user_metadata ?? {}) as Record<string, unknown>
-    await serviceClient.auth.admin.updateUserById(userId, {
-      user_metadata: { ...prevMeta, phone: sharedPhone },
-    })
+    await setProfilePhone(serviceClient, userId, sharedPhone)
   }
 
   // Токен больше не нужен — удаляем

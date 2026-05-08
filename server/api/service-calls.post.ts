@@ -295,6 +295,7 @@ export default defineEventHandler(async (event) => {
       [{ text: 'Скоро подойду', callback_data: `svc:soon:${serviceCallId}` }],
       [{ text: 'Уже бегу к вам', callback_data: `svc:on_my_way:${serviceCallId}` }],
       [{ text: 'Запрос выполнен', callback_data: `svc:done:${serviceCallId}` }],
+      [{ text: '📱 Связаться с клиентом', callback_data: `svc:contact:${serviceCallId}` }],
     ],
   }
 
@@ -319,7 +320,7 @@ export default defineEventHandler(async (event) => {
   if (managerMaxChatId && maxBaseUrl && maxToken) {
     await sendMax(maxBaseUrl, maxToken, {
       conversationId: managerMaxChatId,
-      text: `${requestText}\n\nОтветьте командой: /sc <call_id> soon|on_my_way|done`,
+      text: `${requestText}\n\nОтветьте командой: /sc <call_id> soon|on_my_way|done\nДля запроса контакта: /contact <call_id>`,
     }).catch((err) => {
       console.error('service call max notify failed:', err)
     })

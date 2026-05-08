@@ -3,6 +3,7 @@ import { buildAuthSiteLinkUrl } from '~/server/utils/authSiteLink'
 import { applyFestivalModerationAction } from '~/server/utils/festivalUgcModeration'
 import { createServiceCallEvent, getStaffResponseText, mapActionToStatus } from '~/server/utils/serviceCalls'
 import { appendOrderTimelineEntry, applyOrderStatusFromChat, getUnifiedFlowConfig } from '~/server/utils/orderFlowActions'
+import { getProfilePhone, normalizePhone, setProfilePhone } from '~/server/utils/accountPhoneLink'
 
 const TELEGRAM_API = (token: string) => `https://api.telegram.org/bot${token}`
 
@@ -157,6 +158,14 @@ function parseServiceCallbackData(data: string): { action: 'soon' | 'on_my_way' 
   return { action, serviceCallId }
 }
 
+function parseServiceContactCallbackData(data: string): { serviceCallId: string } | null {
+  const parts = data.split(':')
+  if (parts.length !== 3 || parts[0] !== 'svc' || parts[1] !== 'contact') return null
+  const serviceCallId = parts[2]?.trim()
+  if (!serviceCallId) return null
+  return { serviceCallId }
+}
+
 const CLIENT_MESSAGES: Record<'work' | 'courier' | 'done', (orderRef: string) => string> = {
   work: (orderRef) =>
     `👨‍🍳 Ваш заказ ${orderRef} принят в работу. Кухня уже готовит ваш заказ.`,
@@ -250,7 +259,7 @@ export default defineEventHandler(async (event) => {
   /** Ответ контактом после кнопки request_contact (часто без поля text). */
   if (body.message?.contact?.phone_number && body.message.chat?.id !== undefined) {
     const chatId = body.message.chat.id
-    const phone = String(body.message.contact.phone_number || '').trim()
+    const phone = normalizePhone(String(body.message.contact.phone_number || '').trim())
     if (phone) {
       const supabaseContact = await serverSupabaseServiceRole(event)
       const { data: tokenForPhone } = await supabaseContact
@@ -271,6 +280,14 @@ export default defineEventHandler(async (event) => {
             bridge_payload: { ...prev, telegram_shared_phone: phone },
           })
           .eq('token', tokenForPhone.token)
+        const { data: profile } = await supabaseContact
+          .from('profiles')
+          .select('id')
+          .eq('telegram_id', chatId)
+          .maybeSingle()
+        if (profile?.id) {
+          await setProfilePhone(supabaseContact as any, String(profile.id), phone)
+        }
         try {
           await telegram(botToken, 'sendMessage', {
             chat_id: chatId,
@@ -383,7 +400,7 @@ export default defineEventHandler(async (event) => {
           }
         }
 
-        const phoneFromMessage = body.message.contact?.phone_number?.trim()
+        const phoneFromMessage = normalizePhone(body.message.contact?.phone_number?.trim() || '')
         const baseBridge = ((row as { bridge_payload?: Record<string, unknown> }).bridge_payload ?? null) as
           | Record<string, unknown>
           | null
@@ -416,6 +433,16 @@ export default defineEventHandler(async (event) => {
           one_time_keyboard: true,
         }
 
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('telegram_id', chatId)
+          .maybeSingle()
+        const existingPhone = existingProfile?.id
+          ? await getProfilePhone(supabase as any, String(existingProfile.id))
+          : ''
+        const shouldAskForContact = !(phoneFromMessage || existingPhone)
+
         try {
           await telegram(botToken, 'sendMessage', {
             chat_id: chatId,
@@ -428,7 +455,7 @@ export default defineEventHandler(async (event) => {
             ].join('\n'),
             reply_markup: replyMarkup,
           })
-          try {
+          if (shouldAskForContact) try {
             await telegram(botToken, 'sendMessage', {
               chat_id: chatId,
               text: 'Нажмите кнопку ниже, если хотите сохранить номер для заказов.',
@@ -453,7 +480,7 @@ export default defineEventHandler(async (event) => {
               inline_keyboard: [[{ text: 'Открыть сайт для завершения входа', url: link }]],
             },
           })
-          try {
+          if (shouldAskForContact) try {
             await telegram(botToken, 'sendMessage', {
               chat_id: chatId,
               text: 'Нажмите кнопку ниже, если хотите сохранить номер для заказов.',
@@ -697,6 +724,52 @@ export default defineEventHandler(async (event) => {
   }
 
   const serviceCb = parseServiceCallbackData(query.data)
+  const serviceContactCb = parseServiceContactCallbackData(query.data)
+  if (serviceContactCb) {
+    const supabase = await serverSupabaseServiceRole(event)
+    const { serviceCallId } = serviceContactCb
+    const { data: callRow } = await supabase
+      .from('service_calls')
+      .select('id,shop_id,restaurant_id,order_id,customer_telegram_id,customer_max_user_id,customer_max_conversation_id,customer_profile_id')
+      .eq('id', serviceCallId)
+      .maybeSingle()
+    if (!callRow) {
+      await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id, text: 'Запрос не найден', show_alert: false })
+      return { ok: true }
+    }
+    const { data: restaurant } = await supabase
+      .from('restaurants')
+      .select('name')
+      .eq('id', (callRow as any).restaurant_id)
+      .maybeSingle()
+    const customerProfileId = typeof (callRow as any).customer_profile_id === 'string'
+      ? String((callRow as any).customer_profile_id)
+      : ''
+    const knownPhone = customerProfileId ? await getProfilePhone(supabase as any, customerProfileId) : ''
+    const customerTelegramIdRaw = Number((callRow as any).customer_telegram_id)
+    const customerTelegramId = Number.isFinite(customerTelegramIdRaw) && customerTelegramIdRaw > 0 ? customerTelegramIdRaw : null
+    if (customerTelegramId) {
+      await telegram(botToken, 'sendMessage', {
+        chat_id: customerTelegramId,
+        text: knownPhone
+          ? `Менеджер ресторана "${String((restaurant as any)?.name || 'Ресторан')}" хочет связаться с вами. Ваш номер уже сохранен: ${knownPhone}.`
+          : `Менеджер ресторана "${String((restaurant as any)?.name || 'Ресторан')}" хочет связаться с вами. Поделиться контактом?`,
+        ...(knownPhone ? {} : {
+          reply_markup: {
+            keyboard: [[{ text: 'Поделиться номером', request_contact: true }]],
+            resize_keyboard: true,
+            one_time_keyboard: true,
+          },
+        }),
+      }).catch(() => {})
+    }
+    await telegram(botToken, 'answerCallbackQuery', {
+      callback_query_id: query.id,
+      text: knownPhone ? `Номер клиента: ${knownPhone}` : 'Запрос контакта отправлен клиенту',
+      show_alert: false,
+    })
+    return { ok: true }
+  }
   if (serviceCb) {
     const supabase = await serverSupabaseServiceRole(event)
     const actorTelegramId = String(query.from?.id || '').trim()

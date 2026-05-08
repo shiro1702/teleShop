@@ -4,6 +4,7 @@ import { buildAuthSiteLinkUrl, parseAuthLinkTokenUuidFromText } from '~/server/u
 import { applyFestivalModerationAction } from '~/server/utils/festivalUgcModeration'
 import { createServiceCallEvent, getStaffResponseText, mapActionToStatus, sendMax } from '~/server/utils/serviceCalls'
 import { appendOrderTimelineEntry, getUnifiedFlowConfig } from '~/server/utils/orderFlowActions'
+import { getProfilePhone, normalizePhone, setProfilePhone } from '~/server/utils/accountPhoneLink'
 
 type MaxMessage = {
   sender?: { user_id?: number | string; is_bot?: boolean }
@@ -124,6 +125,16 @@ function parseMaxServiceCommand(text: string): { serviceCallId: string; action: 
   return { serviceCallId, action: actionRaw }
 }
 
+function parseMaxContactCommand(text: string): { serviceCallId: string } | null {
+  const parts = text.trim().split(/\s+/)
+  if (parts.length < 2) return null
+  const cmd = parts[0].toLowerCase()
+  if (cmd !== '/contact' && cmd !== 'contact') return null
+  const serviceCallId = parts[1]?.trim()
+  if (!serviceCallId) return null
+  return { serviceCallId }
+}
+
 function extractMaxConversationId(update: MaxUpdate): string | null {
   const raw = update as Record<string, unknown>
   const msg = update.message
@@ -213,16 +224,6 @@ function extractTelFromVcf(vcf: string): string | null {
   return loose ? loose[0].replace(/\s/g, '') : null
 }
 
-function normalizeRuPhoneCandidate(raw: string): string {
-  const trimmed = raw.trim()
-  if (!trimmed) return trimmed
-  const digits = trimmed.replace(/\D/g, '')
-  if (digits.length === 11 && digits.startsWith('8')) return `+7${digits.slice(1)}`
-  if (digits.length === 11 && digits.startsWith('7')) return `+${digits}`
-  if (digits.length === 10) return `+7${digits}`
-  return trimmed.startsWith('+') ? trimmed : `+${digits}`
-}
-
 /** Телефон из вложения contact (ответ на кнопку request_contact). */
 function extractPhoneFromMaxMessageBody(msg: MaxMessage | undefined): string | null {
   const atts = msg?.body?.attachments
@@ -233,11 +234,11 @@ function extractPhoneFromMaxMessageBody(msg: MaxMessage | undefined): string | n
     const p = a.payload
     if (!p || typeof p !== 'object') continue
     const direct = p.vcf_phone
-    if (typeof direct === 'string' && direct.trim()) return normalizeRuPhoneCandidate(direct.trim())
+    if (typeof direct === 'string' && direct.trim()) return normalizePhone(direct.trim())
     const vcf = p.vcf_info
     if (typeof vcf === 'string' && vcf.trim()) {
       const tel = extractTelFromVcf(vcf.trim())
-      if (tel) return normalizeRuPhoneCandidate(tel)
+      if (tel) return normalizePhone(tel)
     }
   }
   return null
@@ -698,6 +699,84 @@ export default defineEventHandler(async (event) => {
   }
 
   if (actorUserId != null) {
+    const contactCommand = parseMaxContactCommand(messageTextRaw)
+    if (contactCommand) {
+      const supabase = await serverSupabaseServiceRole(event)
+      const { data: callRow } = await supabase
+        .from('service_calls')
+        .select('id,shop_id,restaurant_id,customer_telegram_id,customer_max_user_id,customer_max_conversation_id,customer_profile_id')
+        .eq('id', contactCommand.serviceCallId)
+        .maybeSingle()
+      if (!callRow) {
+        await sendMaxDmPlain({
+          baseUrl: maxBaseUrl,
+          token: maxToken,
+          userId: actorUserId,
+          text: 'Service call не найден.',
+        }).catch(() => {})
+        return { ok: true }
+      }
+      const { data: restaurant } = await supabase
+        .from('restaurants')
+        .select('name')
+        .eq('id', (callRow as any).restaurant_id)
+        .maybeSingle()
+      const customerProfileId = typeof (callRow as any).customer_profile_id === 'string'
+        ? String((callRow as any).customer_profile_id)
+        : ''
+      const knownPhone = customerProfileId ? await getProfilePhone(supabase as any, customerProfileId) : ''
+      const contactRequestText = knownPhone
+        ? `Менеджер ресторана "${String((restaurant as any)?.name || 'Ресторан')}" хочет связаться с вами. Ваш номер уже сохранен: ${knownPhone}.`
+        : `Менеджер ресторана "${String((restaurant as any)?.name || 'Ресторан')}" хочет связаться с вами. Поделиться контактом?`
+
+      const botToken = String((config.botToken as string) || '').trim()
+      const customerTelegramIdRaw = Number((callRow as any).customer_telegram_id)
+      const customerTelegramId = Number.isFinite(customerTelegramIdRaw) && customerTelegramIdRaw > 0 ? customerTelegramIdRaw : null
+      if (customerTelegramId && botToken) {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: customerTelegramId,
+            text: contactRequestText,
+            ...(knownPhone ? {} : {
+              reply_markup: {
+                keyboard: [[{ text: 'Поделиться номером', request_contact: true }]],
+                resize_keyboard: true,
+                one_time_keyboard: true,
+              },
+            }),
+          }),
+        }).catch(() => {})
+      }
+      const customerMaxConversationId = typeof (callRow as any).customer_max_conversation_id === 'string'
+        ? String((callRow as any).customer_max_conversation_id).trim()
+        : ''
+      const customerMaxUserId = typeof (callRow as any).customer_max_user_id === 'string'
+        ? String((callRow as any).customer_max_user_id).trim()
+        : ''
+      if (customerMaxConversationId || customerMaxUserId) {
+        await sendMax(maxBaseUrl, maxToken, {
+          conversationId: customerMaxConversationId || undefined,
+          userId: customerMaxConversationId ? undefined : customerMaxUserId || undefined,
+          text: contactRequestText,
+          attachments: knownPhone
+            ? undefined
+            : [{
+              type: 'inline_keyboard',
+              payload: { buttons: [[{ type: 'request_contact', text: 'Поделиться номером' }]] },
+            }],
+        }).catch(() => {})
+      }
+      await sendMaxDmPlain({
+        baseUrl: maxBaseUrl,
+        token: maxToken,
+        userId: actorUserId,
+        text: knownPhone ? `Номер клиента: ${knownPhone}` : 'Запрос контакта отправлен клиенту',
+      }).catch(() => {})
+      return { ok: true }
+    }
+
     const serviceCommand = parseMaxServiceCommand(messageTextRaw)
     if (serviceCommand) {
       const conversationId = extractMaxConversationId(body)
@@ -861,7 +940,7 @@ export default defineEventHandler(async (event) => {
   /** Ответ только контактом (без текста link_) — сохраняем телефон в bridge_payload активного токена. */
   if (updateType === 'message_created' && actorUserId != null) {
     const tokenHint = extractTokenUuidFromUpdate(body)
-    const sharedPhone = extractPhoneFromMaxMessageBody(msg)
+    const sharedPhone = normalizePhone(extractPhoneFromMaxMessageBody(msg) || '')
     if (sharedPhone && !tokenHint) {
       const supabaseEarly = await serverSupabaseServiceRole(event)
       const { data: tokenForContact } = await supabaseEarly
@@ -882,6 +961,14 @@ export default defineEventHandler(async (event) => {
             bridge_payload: { ...prev, max_shared_phone: sharedPhone },
           })
           .eq('token', tokenForContact.token)
+        const { data: profile } = await supabaseEarly
+          .from('profiles')
+          .select('id')
+          .eq('max_user_id', String(actorUserId))
+          .maybeSingle()
+        if (profile?.id) {
+          await setProfilePhone(supabaseEarly as any, String(profile.id), sharedPhone)
+        }
         try {
           await sendMaxDmPlain({
             baseUrl: maxBaseUrl,
@@ -1041,7 +1128,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const phoneFromMessage = extractPhoneFromMaxMessageBody(msg)
+  const phoneFromMessage = normalizePhone(extractPhoneFromMaxMessageBody(msg) || '')
   const baseBridge = ((row as { bridge_payload?: Record<string, unknown> }).bridge_payload ?? null) as
     | Record<string, unknown>
     | null
@@ -1052,6 +1139,14 @@ export default defineEventHandler(async (event) => {
   if (phoneFromMessage) {
     await supabase.from('auth_tokens').update({ bridge_payload: bridgePayload }).eq('token', tokenKey)
   }
+
+  const { data: existingProfile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('max_user_id', maxUserIdStr)
+    .maybeSingle()
+  const existingPhone = existingProfile?.id ? await getProfilePhone(supabase as any, String(existingProfile.id)) : ''
+  const shouldAskForContact = !(phoneFromMessage || existingPhone)
 
   const tokenForLink = typeof (row as { token?: string }).token === 'string'
     ? (row as { token: string }).token
@@ -1081,14 +1176,16 @@ export default defineEventHandler(async (event) => {
       text: messageText,
       linkUrl: link,
     })
-    try {
-      await sendMaxDmRequestContactOnly({
-        baseUrl: maxBaseUrl,
-        token: maxToken,
-        userId: senderId,
-      })
-    } catch (eContact) {
-      console.warn('webhook-max: follow-up request_contact message failed:', eContact)
+    if (shouldAskForContact) {
+      try {
+        await sendMaxDmRequestContactOnly({
+          baseUrl: maxBaseUrl,
+          token: maxToken,
+          userId: senderId,
+        })
+      } catch (eContact) {
+        console.warn('webhook-max: follow-up request_contact message failed:', eContact)
+      }
     }
   } catch (e) {
     console.warn('webhook-max: send with link keyboard failed, retrying plain:', e)
