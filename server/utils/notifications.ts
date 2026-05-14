@@ -239,6 +239,21 @@ function buildCustomerMessage(payload: {
   return lines.join('\n')
 }
 
+/** Короткие тексты при смене статуса (как кнопки в менеджерском чате), без полного состава заказа. */
+function buildCustomerOrderStatusShortMessage(orderRef: string, status: string): string {
+  const normalized = status.trim().toLowerCase()
+  if (normalized === 'in_progress') {
+    return `👨‍🍳 Ваш заказ ${orderRef} принят в работу. Кухня уже готовит ваш заказ.`
+  }
+  if (normalized === 'out_for_delivery') {
+    return `🚚 Ваш заказ ${orderRef} передан курьеру и уже в пути.`
+  }
+  if (normalized === 'handed_to_customer') {
+    return `✅ Ваш заказ ${orderRef} доставлен. Спасибо, что выбрали нас! Приятного аппетита 🥘🍣🍜`
+  }
+  return `📦 Заказ ${orderRef}\nСтатус: ${getStatusLabel(status)}`
+}
+
 function formatRub(value: number): string {
   return `${new Intl.NumberFormat('ru-RU').format(value)} ₽`
 }
@@ -354,25 +369,28 @@ async function resolveRecipients(event: H3Event, input: NotificationEvent): Prom
     ? ((restaurant as any).manager_recipients as Array<Record<string, unknown>>)
     : []
 
-  if (mode === 'group') {
-    const tgGroupId = typeof (restaurant as any)?.manager_group_chat_id === 'string'
-      ? (restaurant as any).manager_group_chat_id.trim()
-      : ''
-    const maxGroupId = typeof (restaurant as any)?.manager_max_chat_id === 'string'
-      ? (restaurant as any).manager_max_chat_id.trim()
-      : ''
-    if (tgGroupId) {
-      recipients.push({ channel: 'telegram', targetType: 'manager_group', targetId: tgGroupId, conversationId: tgGroupId, maxUserId: null })
-    }
-    if (maxGroupId) {
-      recipients.push({ channel: 'max', targetType: 'manager_group', targetId: maxGroupId, conversationId: maxGroupId, maxUserId: null })
-    }
-  } else {
-    for (const manager of managerRecipients) {
-      const channel = manager.channel === 'max' ? 'max' : manager.channel === 'telegram' ? 'telegram' : null
-      const targetId = typeof manager.targetId === 'string' ? manager.targetId.trim() : ''
-      if (!channel || !targetId) continue
-      recipients.push({ channel, targetType: 'manager_user', targetId, conversationId: targetId, maxUserId: null })
+  /** Смена статуса — только клиент; менеджеры не дублируют полную карточку в группе. */
+  if (input.eventType !== 'ORDER_STATUS_CHANGED') {
+    if (mode === 'group') {
+      const tgGroupId = typeof (restaurant as any)?.manager_group_chat_id === 'string'
+        ? (restaurant as any).manager_group_chat_id.trim()
+        : ''
+      const maxGroupId = typeof (restaurant as any)?.manager_max_chat_id === 'string'
+        ? (restaurant as any).manager_max_chat_id.trim()
+        : ''
+      if (tgGroupId) {
+        recipients.push({ channel: 'telegram', targetType: 'manager_group', targetId: tgGroupId, conversationId: tgGroupId, maxUserId: null })
+      }
+      if (maxGroupId) {
+        recipients.push({ channel: 'max', targetType: 'manager_group', targetId: maxGroupId, conversationId: maxGroupId, maxUserId: null })
+      }
+    } else {
+      for (const manager of managerRecipients) {
+        const channel = manager.channel === 'max' ? 'max' : manager.channel === 'telegram' ? 'telegram' : null
+        const targetId = typeof manager.targetId === 'string' ? manager.targetId.trim() : ''
+        if (!channel || !targetId) continue
+        recipients.push({ channel, targetType: 'manager_user', targetId, conversationId: targetId, maxUserId: null })
+      }
     }
   }
 
@@ -443,6 +461,7 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
   const config = useRuntimeConfig(event)
   const client = await serverSupabaseServiceRole(event)
   const recipients = await resolveRecipients(event, input)
+  if (!recipients.length) return
 
   const { data: shopRow } = await client
     .from('shops')
@@ -481,6 +500,8 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
     branchAddress,
     cityName,
   })
+  const orderRef = formatOrderRef(orderDetails.orderNumber, input.orderContext.orderId)
+  const customerStatusShortText = buildCustomerOrderStatusShortMessage(orderRef, orderDetails.status)
 
   const maxBaseUrl = String((config as any).maxApiBaseUrl || '')
   const maxToken = String((config as any).maxApiToken || '')
@@ -503,7 +524,13 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
   for (const recipient of recipients) {
     const key = buildNotificationKey(input.eventType, input.orderContext.orderId, recipient.channel, recipient.targetType, recipient.targetId)
     const isManagerTarget = recipient.targetType === 'manager_group' || recipient.targetType === 'manager_user'
-    const text = isManagerTarget && input.eventType === 'ORDER_CREATED' ? managerText : customerText
+    const isCustomerTarget = recipient.targetType === 'customer'
+    const text =
+      isManagerTarget && input.eventType === 'ORDER_CREATED'
+        ? managerText
+        : isCustomerTarget && input.eventType === 'ORDER_STATUS_CHANGED'
+          ? customerStatusShortText
+          : customerText
 
     await upsertNotificationEvent(event, {
       key,
