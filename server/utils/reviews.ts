@@ -90,7 +90,19 @@ export async function requireOwnedOrderForReview(event: H3Event, args: {
 
   const profileMatch = args.identity.profileId && data.customer_profile_id && String(data.customer_profile_id) === args.identity.profileId
   const telegramMatch = args.identity.telegramId != null && data.customer_telegram_id != null && Number(data.customer_telegram_id) === Number(args.identity.telegramId)
-  if (!profileMatch && !telegramMatch) {
+
+  let maxMatch = false
+  if (args.identity.maxUserId && data.customer_profile_id) {
+    const { data: prof } = await client
+      .from('profiles')
+      .select('max_user_id')
+      .eq('id', String(data.customer_profile_id))
+      .maybeSingle()
+    const stored = typeof (prof as any)?.max_user_id === 'string' ? String((prof as any).max_user_id).trim() : ''
+    maxMatch = Boolean(stored && stored === String(args.identity.maxUserId).trim())
+  }
+
+  if (!profileMatch && !telegramMatch && !maxMatch) {
     throw createError({ statusCode: 403, statusMessage: 'Order does not belong to current customer' })
   }
 

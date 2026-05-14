@@ -8,6 +8,7 @@
 Связанные документы:
 - `docs/verticals/festival/festival-reviews-stories.md`
 - `docs/verticals/festival/festival-progress-log.md`
+- `docs/features/REVIEWS_ORDER_PROMPTS_RU.md` — промпты в Telegram/MAX после заказа, cron, дашборд
 - `docs/platform/SAAS_BILLING_RU.md`
 - `docs/platform/MULTI_TENANT_SAAS.md`
 - `docs/platform/FEATURE_TOGGLES_PRICING_RU.md`

@@ -4,6 +4,9 @@ import { applyFestivalModerationAction } from '~/server/utils/festivalUgcModerat
 import { createServiceCallEvent, getStaffResponseText, mapActionToStatus } from '~/server/utils/serviceCalls'
 import { appendOrderTimelineEntry, applyOrderStatusFromChat, getUnifiedFlowConfig } from '~/server/utils/orderFlowActions'
 import { getProfilePhone, normalizePhone, setProfilePhone } from '~/server/utils/accountPhoneLink'
+import { isShopFeatureEnabled } from '~/server/utils/features'
+import { applyReviewPromptTelegramCallback, processDueReviewPrompts } from '~/server/utils/reviewPromptFlow'
+import { parseReviewTokenCallback } from '~/server/utils/reviewPromptParse'
 
 const TELEGRAM_API = (token: string) => `https://api.telegram.org/bot${token}`
 
@@ -672,6 +675,66 @@ export default defineEventHandler(async (event) => {
   // Нажатие inline-кнопки менеджером (callback_query)
   const query = body.callback_query
   if (!query?.data || !query.message) {
+    return { ok: true }
+  }
+
+  await processDueReviewPrompts(event, { limit: 8 }).catch(() => {})
+
+  const rtParsed = parseReviewTokenCallback(String(query.data))
+  if (rtParsed.ok) {
+    const shopId = String((tenant as any)?.shopId || '').trim()
+    if (!shopId) {
+      await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id, text: 'Магазин не определён', show_alert: false })
+      return { ok: true }
+    }
+    const feat = await isShopFeatureEnabled(event, shopId, 'reputation_reviews_pro')
+    if (!feat) {
+      await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id, text: 'Модуль отзывов отключён', show_alert: false })
+      return { ok: true }
+    }
+    const fromId = Number(query.from?.id)
+    const chatId = Number(query.message.chat.id)
+    const messageId = Number(query.message.message_id)
+    if (!Number.isFinite(fromId) || !Number.isFinite(chatId) || !Number.isFinite(messageId)) {
+      await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id, text: 'Некорректный запрос', show_alert: false })
+      return { ok: true }
+    }
+    try {
+      if (rtParsed.action === 'edit') {
+        await applyReviewPromptTelegramCallback(event, {
+          shopId,
+          botToken,
+          telegramUserId: fromId,
+          chatId,
+          messageId,
+          token: rtParsed.token,
+          action: 'edit',
+        })
+      } else {
+        await applyReviewPromptTelegramCallback(event, {
+          shopId,
+          botToken,
+          telegramUserId: fromId,
+          chatId,
+          messageId,
+          token: rtParsed.token,
+          action: 'rate',
+          stars: rtParsed.stars,
+        })
+      }
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: rtParsed.action === 'edit' ? 'Выберите оценку' : 'Спасибо!',
+        show_alert: false,
+      })
+    } catch (e) {
+      console.error('review prompt telegram callback:', e)
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: 'Не удалось сохранить оценку',
+        show_alert: false,
+      })
+    }
     return { ok: true }
   }
 

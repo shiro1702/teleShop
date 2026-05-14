@@ -30,6 +30,10 @@ export default defineNuxtConfig({
     telegramRelayUrl: process.env.NUXT_TELEGRAM_RELAY_URL ?? '',
     /** Shared secret between main backend and relay service (x-relay-secret). */
     relaySharedSecret: process.env.NUXT_RELAY_SHARED_SECRET ?? '',
+    /** Minutes after handed_to_customer before sending review prompt (Telegram / Max). */
+    reviewPromptDelayMinutes: Number(process.env.NUXT_REVIEW_PROMPT_DELAY_MIN ?? '45'),
+    /** Secret for POST /api/cron/review-prompts (header x-cron-secret). */
+    cronReviewPromptsSecret: process.env.NUXT_CRON_REVIEW_PROMPTS_SECRET ?? '',
     vkIdClientSecret: process.env.NUXT_VK_ID_CLIENT_SECRET ?? '',
     /** Must match redirect URL in VK ID app settings (e.g. https://your.app/api/auth/vk-id/callback) */
     vkIdRedirectUri: process.env.NUXT_VK_ID_REDIRECT_URI ?? '',

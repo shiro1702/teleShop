@@ -104,6 +104,16 @@ export default defineEventHandler(async (event) => {
   const shopIds = Array.from(new Set(rows.map((x) => x.shop_id).filter(Boolean)))
   const restaurantIds = Array.from(new Set(rows.map((x) => x.restaurant_id).filter((x): x is string => !!x)))
 
+  const orderIds = rows.map((r) => r.id)
+  const reviewByOrderId = new Set<string>()
+  if (orderIds.length) {
+    const { data: revRows } = await client.from('shop_reviews').select('order_id').in('order_id', orderIds)
+    for (const rv of revRows ?? []) {
+      const oid = typeof (rv as any)?.order_id === 'string' ? String((rv as any).order_id) : ''
+      if (oid) reviewByOrderId.add(oid)
+    }
+  }
+
   const shopsMap = new Map<string, string>()
   if (shopIds.length) {
     const { data: shopsData } = await client
@@ -156,6 +166,7 @@ export default defineEventHandler(async (event) => {
       itemsCount,
       itemsPreview,
       createdAt: row.created_at,
+      hasShopReview: reviewByOrderId.has(row.id),
     }
   })
 

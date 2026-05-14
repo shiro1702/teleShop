@@ -2,6 +2,7 @@ import { createError, defineEventHandler, getRouterParam } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
 import { normalizeDashboardStatus, normalizeOrderItemsJson, parseOrderMetadata } from '~/server/utils/dashboardOrders'
+import { isShopFeatureEnabled } from '~/server/utils/features'
 
 type OrderRow = {
   id: string
@@ -130,6 +131,50 @@ export default defineEventHandler(async (event) => {
   const { data: shopRow } = await client.from('shops').select('name').eq('id', access.shopId).maybeSingle()
   if (shopRow?.name) shopName = shopRow.name as string
 
+  let reviewPrompt: {
+    moduleEnabled: boolean
+    hasReview: boolean
+    reviewRating: number | null
+    prompts: Array<{
+      channel: string
+      status: string
+      scheduledFor: string | null
+      sentAt: string | null
+      lastError: string | null
+      triggerKind: string
+    }>
+  } = {
+    moduleEnabled: false,
+    hasReview: false,
+    reviewRating: null,
+    prompts: [],
+  }
+
+  const reviewsEnabled = await isShopFeatureEnabled(event, access.shopId, 'reputation_reviews_pro')
+  if (reviewsEnabled) {
+    reviewPrompt.moduleEnabled = true
+    const [{ data: rev }, { data: prompts }] = await Promise.all([
+      client.from('shop_reviews').select('id,rating').eq('order_id', id).eq('shop_id', access.shopId).maybeSingle(),
+      client
+        .from('shop_order_review_prompts')
+        .select('channel,status,scheduled_for,sent_at,last_error,trigger_kind')
+        .eq('order_id', id)
+        .eq('shop_id', access.shopId),
+    ])
+    if (rev?.id) {
+      reviewPrompt.hasReview = true
+      reviewPrompt.reviewRating = typeof (rev as any).rating === 'number' ? Number((rev as any).rating) : null
+    }
+    reviewPrompt.prompts = (prompts ?? []).map((p: any) => ({
+      channel: String(p.channel || ''),
+      status: String(p.status || ''),
+      scheduledFor: p.scheduled_for ? String(p.scheduled_for) : null,
+      sentAt: p.sent_at ? String(p.sent_at) : null,
+      lastError: typeof p.last_error === 'string' ? p.last_error : null,
+      triggerKind: String(p.trigger_kind || ''),
+    }))
+  }
+
   return {
     ok: true,
     order: {
@@ -156,6 +201,7 @@ export default defineEventHandler(async (event) => {
       customerTelegramId: row.customer_telegram_id,
       customerProfileId: row.customer_profile_id,
       timeline: [...timeline].sort((a, b) => b.at.localeCompare(a.at)),
+      reviewPrompt,
     },
   }
 })

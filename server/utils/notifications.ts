@@ -2,6 +2,7 @@ import { serverSupabaseServiceRole } from '#supabase/server'
 import type { H3Event } from 'h3'
 import { randomBytes } from 'node:crypto'
 import { getUnifiedFlowConfig } from '~/server/utils/orderFlowActions'
+import { processDueReviewPrompts, scheduleReviewPromptsAfterHanded } from '~/server/utils/reviewPromptFlow'
 
 export type NotificationEventType = 'ORDER_CREATED' | 'ORDER_STATUS_CHANGED'
 export type NotificationChannel = 'telegram' | 'max'
@@ -741,5 +742,14 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
         lastError: err?.message || 'notification_send_failed',
       })
     }
+  }
+
+  if (input.eventType === 'ORDER_STATUS_CHANGED' && input.orderContext.status === 'handed_to_customer') {
+    await scheduleReviewPromptsAfterHanded(event, input).catch((err) => {
+      console.error('scheduleReviewPromptsAfterHanded:', err)
+    })
+    await processDueReviewPrompts(event, { limit: 8 }).catch((err) => {
+      console.error('processDueReviewPrompts:', err)
+    })
   }
 }

@@ -5,13 +5,11 @@ import {
   requireReviewsFeature,
   resolveReviewIdentity,
 } from '~/server/utils/reviews'
-import { insertShopReview } from '~/server/utils/shopReviewWrite'
+import { updateShopReviewRating } from '~/server/utils/shopReviewWrite'
 
 type Body = {
   orderId?: string
   rating?: number
-  comment?: string | null
-  videoUrl?: string | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -28,14 +26,12 @@ export default defineEventHandler(async (event) => {
   const identity = await resolveReviewIdentity(event)
   const order = await requireOwnedOrderForReview(event, { shopId, orderId, identity })
 
-  const review = await insertShopReview(event, {
+  const review = await updateShopReviewRating(event, {
     shopId,
     order: { id: order.id, shop_id: order.shop_id, restaurant_id: order.restaurant_id },
     identity,
     rating,
-    comment: body.comment,
-    videoUrl: body.videoUrl,
-    actorChannel: 'system',
+    actorChannel: identity.maxUserId ? 'max' : identity.telegramId ? 'telegram' : 'system',
   })
 
   return { ok: true, item: review }

@@ -375,6 +375,7 @@ type ClientOrder = {
   itemsCount: number
   itemsPreview?: Array<{ name: string; quantity: number }>
   createdAt: string
+  hasShopReview?: boolean
 }
 type FestivalEligibilityOrder = {
   id: string
@@ -502,7 +503,7 @@ async function submitShopReview() {
       ...requestHeaders(),
     }
     if (reviewShopId.value) headers['x-shop-id'] = reviewShopId.value
-    const res = await fetch('/api/reviews', {
+    let res = await fetch('/api/reviews', {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -512,17 +513,27 @@ async function submitShopReview() {
         videoUrl: null,
       }),
     })
+    if (res.status === 409) {
+      res = await fetch('/api/reviews', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          orderId: reviewOrderId.value,
+          rating: reviewRating.value,
+        }),
+      })
+    }
     const payload = await res.json().catch(() => ({} as any))
     if (!res.ok) {
-      if (res.status === 409) {
-        markReviewSubmitted(reviewOrderId.value)
-        closeReviewModal()
-        return
-      }
       throw new Error(payload?.statusMessage || payload?.message || 'Не удалось отправить отзыв')
     }
     markReviewSubmitted(reviewOrderId.value)
     closeReviewModal()
+    try {
+      data.value = await fetchOrders()
+    } catch {
+      /* ignore refresh errors */
+    }
   } catch (e: unknown) {
     reviewError.value = e instanceof Error ? e.message : 'Ошибка'
   } finally {
@@ -958,6 +969,62 @@ async function createServiceCall(callType: 'call_waiter' | 'call_hookah' | 'requ
   }
 }
 
+function parseMaxReviewRateFromStartParam(raw: string): { orderId: string; stars: number } | null {
+  const s = typeof raw === 'string' ? raw.trim() : ''
+  if (!s.startsWith('reviewrate_')) return null
+  const rest = s.slice('reviewrate_'.length)
+  const lastUnderscore = rest.lastIndexOf('_')
+  if (lastUnderscore <= 0) return null
+  const orderId = rest.slice(0, lastUnderscore).trim().toLowerCase()
+  const stars = Number(rest.slice(lastUnderscore + 1))
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(orderId) || !Number.isFinite(stars) || stars < 1 || stars > 5) {
+    return null
+  }
+  return { orderId, stars: Math.round(stars) }
+}
+
+async function trySubmitMaxReviewFromStartParam() {
+  if (!import.meta.client) return
+  const w = window as any
+  const raw = String(w?.WebApp?.initDataUnsafe?.start_param || route.query.startapp || '').trim()
+  const parsed = parseMaxReviewRateFromStartParam(raw)
+  if (!parsed) return
+  const list = data.value?.items || []
+  const order = list.find((x: ClientOrder) => x.id === parsed.orderId)
+  const sid = (order && typeof order.shopId === 'string' && order.shopId.trim()) || primaryShopId.value
+  if (!sid) return
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...requestHeaders(),
+      'x-shop-id': sid,
+    }
+    let res = await fetch('/api/reviews', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        orderId: parsed.orderId,
+        rating: parsed.stars,
+        comment: null,
+        videoUrl: null,
+      }),
+    })
+    if (res.status === 409) {
+      res = await fetch('/api/reviews', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ orderId: parsed.orderId, rating: parsed.stars }),
+      })
+    }
+    if (!res.ok) return
+    markReviewSubmitted(parsed.orderId)
+    pushServiceCallToast('success', `Оценка ${parsed.stars} из 5 сохранена`)
+    data.value = await fetchOrders()
+  } catch {
+    /* ignore */
+  }
+}
+
 function pushServiceCallToast(kind: 'success' | 'error', message: string, durationMs = 2600) {
   const text = (message || '').trim()
   if (!text) return
@@ -976,6 +1043,7 @@ onMounted(async () => {
     await waitForMessengerInitData()
     data.value = await fetchOrders()
     await loadReviewModuleFlagsForOrders()
+    await trySubmitMaxReviewFromStartParam()
     if (festivalSlug.value) {
       await loadFestivalEligibility()
     }
@@ -986,6 +1054,7 @@ onMounted(async () => {
         await waitForMessengerInitData(4000)
         data.value = await fetchOrders()
         await loadReviewModuleFlagsForOrders()
+        await trySubmitMaxReviewFromStartParam()
         errorMessage.value = ''
       } catch (retryError: any) {
         errorMessage.value = retryError?.statusMessage || retryError?.message || 'Не удалось загрузить заказы'
@@ -1093,6 +1162,7 @@ const eligibleReviewOrders = computed(() =>
   normalizedOrders.value.filter((o: NormalizedOrder) => {
     if (o.isActive) return false
     if (!orderCompletedForReview(o.status)) return false
+    if (o.hasShopReview) return false
     if (reviewedOrderIds.value.includes(o.id)) return false
     const sid = (typeof o.shopId === 'string' && o.shopId.trim()) || primaryShopId.value
     if (!sid) return false
