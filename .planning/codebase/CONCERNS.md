@@ -6,13 +6,13 @@
 
 **B2B billing documented but not implemented:**
 - Issue: B2B subscription flows are specified in docs, but there are no matching API routes or DB runtime handling for subscription lifecycle.
-- Files: `docs/SAAS_BILLING_RU.md`, `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`, `server/api/checkout/create.post.ts`, `server/api/webhooks/yookassa.post.ts`
+- Files: `docs/platform/SAAS_BILLING_RU.md`, `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`, `server/api/checkout/create.post.ts`, `server/api/webhooks/yookassa.post.ts`
 - Impact: Product commitments (`trial`, `active`, `past_due`, `grace`, `canceled`) cannot be enforced in code; billing policy remains manual.
-- Fix approach: Implement `server/api/billing/checkout.post.ts`, `server/api/webhooks/billing/[provider].post.ts`, `server/api/billing/subscription.get.ts` and add `billing_subscriptions`/`billing_payments` schema migrations aligned with `docs/SAAS_BILLING_RU.md`.
+- Fix approach: Implement `server/api/billing/checkout.post.ts`, `server/api/webhooks/billing/[provider].post.ts`, `server/api/billing/subscription.get.ts` and add `billing_subscriptions`/`billing_payments` schema migrations aligned with `docs/platform/SAAS_BILLING_RU.md`.
 
 **Payment provider architecture mismatch (single-provider runtime):**
 - Issue: Docs define YooKassa + T-Bank with provider abstraction, but runtime payment creation/webhook handling is YooKassa-only.
-- Files: `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`, `server/utils/yookassa.ts`, `server/api/checkout/create.post.ts`, `server/api/webhooks/yookassa.post.ts`
+- Files: `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`, `server/utils/yookassa.ts`, `server/api/checkout/create.post.ts`, `server/api/webhooks/yookassa.post.ts`
 - Impact: Scaling to second provider requires endpoint and schema branching later; increases integration risk and migration overhead.
 - Fix approach: Add provider strategy layer (`provider -> createPayment/verifyWebhook`) and provider-specific webhooks under unified contract before launching T-Bank.
 
@@ -34,7 +34,7 @@
 
 **Payment webhook replay/forgery risk:**
 - Risk: Signature header is read but not validated; idempotency covers duplicates, not forged first-delivery events.
-- Files: `server/api/webhooks/yookassa.post.ts`, `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`
+- Files: `server/api/webhooks/yookassa.post.ts`, `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`
 - Current mitigation: Unique constraint on `payment_webhook_events(provider, event_id)` and duplicate short-circuit.
 - Recommendations: Verify provider signature/secret, validate event timestamp window, persist explicit `is_verified`, reject unverified events before `orders` update.
 
@@ -55,7 +55,7 @@
 ## Fragile Areas
 
 **Docs-to-code divergence in payment contracts:**
-- Files: `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/SAAS_BILLING_RU.md`, `server/api/checkout/create.post.ts`, `server/api/webhooks/yookassa.post.ts`
+- Files: `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/platform/SAAS_BILLING_RU.md`, `server/api/checkout/create.post.ts`, `server/api/webhooks/yookassa.post.ts`
 - Why fragile: Documentation defines broader architecture and statuses than implemented runtime, creating false confidence for product/ops decisions.
 - Safe modification: Treat docs as target state; introduce explicit "implemented vs planned" matrix in docs and gate feature flags by implemented endpoints only.
 - Test coverage: No automated tests detected for payment routes, webhook flows, or billing state transitions.
@@ -65,7 +65,7 @@
 **Shop-level credentials only for B2C acquiring:**
 - Current capacity: One payment credential set per `shop` via `shops.yookassa_shop_id`/`shops.yookassa_secret_key`.
 - Limit: Multi-branch organizations with different merchant contracts cannot be represented without manual workaround.
-- Scaling path: Add `restaurant_payment_providers` + fallback resolution (`restaurant` -> `shop`) as outlined in `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`.
+- Scaling path: Add `restaurant_payment_providers` + fallback resolution (`restaurant` -> `shop`) as outlined in `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`.
 
 ## Dependencies at Risk
 
@@ -78,7 +78,7 @@
 
 **SaaS subscription enforcement loop missing:**
 - Problem: No executable logic for plan billing, renewal failure handling, grace policy, or downgrade scheduling.
-- Blocks: Monetization controls and automated entitlement management promised in `docs/SAAS_BILLING_RU.md`.
+- Blocks: Monetization controls and automated entitlement management promised in `docs/platform/SAAS_BILLING_RU.md`.
 
 **Billing audit and operator tooling incomplete:**
 - Problem: Docs require billing event/audit traceability for plan changes and grace overrides; no B2B audit model/API implemented.
@@ -94,7 +94,7 @@
 
 **Billing (B2B) lifecycle lacks executable tests and implementation:**
 - What's not tested: subscription creation, renewal, `past_due`, grace, cancellation, plan upgrade/downgrade semantics.
-- Files: `docs/SAAS_BILLING_RU.md`, `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`
+- Files: `docs/platform/SAAS_BILLING_RU.md`, `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`
 - Risk: Product behavior cannot be validated against documented commitments.
 - Priority: High
 

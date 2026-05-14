@@ -2727,7 +2727,7 @@ const isAuthorizedForOrder = computed(() => {
   return hasMiniAppOrderAuth.value || hasWebOrderAuth.value
 })
 
-/** Один канонический путь оформления; шаг задаётся только через ?step=1|2 (см. docs/TODO/CART_CHECKOUT_FETCH_OPTIMIZATION_PLAN_RU.md). */
+/** Один канонический путь оформления; шаг задаётся только через ?step=1|2 (см. docs/backlog/CART_CHECKOUT_FETCH_OPTIMIZATION_PLAN_RU.md). */
 const checkoutFlowPath = computed(() => tenantPath('/checkout'))
 
 function readStepQuery(): number | null {

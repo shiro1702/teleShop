@@ -41,7 +41,7 @@ Not detected (no test suite tree present in repository)
 **Patterns:**
 - Validation currently relies on manual route/API checks and runtime behavior.
 - Payment/webhook reliability is implemented via database-backed idempotency and status transitions rather than formal unit/integration tests.
-- Documentation-driven scenarios exist for billing/payment behavior in `docs/SAAS_BILLING_RU.md` and `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`.
+- Documentation-driven scenarios exist for billing/payment behavior in `docs/platform/SAAS_BILLING_RU.md` and `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`.
 
 ## Mocking
 
@@ -107,10 +107,10 @@ Not available (coverage tooling is not configured)
 ## Current Practical Verification Flow (Repository Grounded)
 
 - Verify billing/payment requirements against docs:
-  - `docs/SAAS_BILLING_RU.md`
-  - `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`
-  - `docs/MULTI_TENANT_SAAS.md`
-  - `docs/TERMS.md`
+  - `docs/platform/SAAS_BILLING_RU.md`
+  - `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`
+  - `docs/platform/MULTI_TENANT_SAAS.md`
+  - `docs/reference/TERMS.md`
 - Validate checkout + webhook behavior through live API endpoints:
   - `server/api/checkout/create.post.ts`
   - `server/api/webhooks/yookassa.post.ts`

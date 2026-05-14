@@ -10,7 +10,7 @@
   - Auth: per-shop credentials from `shops.yookassa_shop_id` / `shops.yookassa_secret_key` and `shops.integration_keys` in `server/api/checkout/create.post.ts`, `server/utils/tenant.ts`.
 
 **Payments (documented target, not detected in runtime code):**
-- T-Bank acquiring - architecture and target contracts documented in `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`.
+- T-Bank acquiring - architecture and target contracts documented in `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`.
   - SDK/Client: Not detected in code.
   - Auth: documented concept only in docs; env/schema wiring not detected in server routes.
 
@@ -26,7 +26,7 @@
 
 **Address suggestions:**
 - DaData - token wiring exists in runtime config (`nuxt.config.ts`), usage path referenced in docs.
-  - SDK/Client: token consumption referenced in `docs/VERCEL_SUPABASE_TEST_PROD.md`.
+  - SDK/Client: token consumption referenced in `docs/platform/VERCEL_SUPABASE_TEST_PROD.md`.
   - Auth: `DADATA_TOKEN`.
 
 ## Data Storage
@@ -59,7 +59,7 @@
 ## CI/CD & Deployment
 
 **Hosting:**
-- Vercel (documented and referenced in `README.md`, `docs/VERCEL_SUPABASE_TEST_PROD.md`).
+- Vercel (documented and referenced in `README.md`, `docs/platform/VERCEL_SUPABASE_TEST_PROD.md`).
 
 **CI Pipeline:**
 - Explicit CI service configuration not detected in repository files.
@@ -73,12 +73,12 @@
 - `NUXT_APP_URL`
 - `NUXT_BOT_TOKEN`
 - `NUXT_MANAGER_CHAT_ID`
-- `NUXT_SESSION_SECRET` (documented in `docs/VERCEL_SUPABASE_TEST_PROD.md`)
+- `NUXT_SESSION_SECRET` (documented in `docs/platform/VERCEL_SUPABASE_TEST_PROD.md`)
 - Optional payment-adjacent: `YANDEX_MAPS_API_KEY`, `YANDEX_GEOCODER_API_KEY`, `DADATA_TOKEN`
 
 **Secrets location:**
 - Local development template in `.env.example`.
-- Deployment secrets expected in Vercel Environment Variables (`docs/VERCEL_SUPABASE_TEST_PROD.md`).
+- Deployment secrets expected in Vercel Environment Variables (`docs/platform/VERCEL_SUPABASE_TEST_PROD.md`).
 - Tenant-level payment/telegram credentials stored in `shops` table columns and `shops.integration_keys` (`server/utils/tenant.ts`, `supabase/migrations/018_payments_and_requisites.sql`).
 
 ## Webhooks & Callbacks

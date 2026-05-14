@@ -4,7 +4,7 @@
 
 Связанные документы:
 - `docs/integrations/quickresto-api-contract.md`
-- `docs/QUICK_RESTO_INTEGRATION_PLAN_RU.md`
+- `docs/integrations/QUICK_RESTO_INTEGRATION_PLAN_RU.md`
 
 ## 1) Цель тестирования
 

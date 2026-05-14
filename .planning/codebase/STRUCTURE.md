@@ -22,7 +22,7 @@ teleShop/
 **`docs/`:**
 - Purpose: Defines product contracts and implementation targets for billing/payments and tenant model.
 - Contains: Architecture docs and operational rules.
-- Key files: `docs/TERMS.md`, `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/SAAS_BILLING_RU.md`, `docs/MULTI_TENANT_SAAS.md`.
+- Key files: `docs/reference/TERMS.md`, `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/platform/SAAS_BILLING_RU.md`, `docs/platform/MULTI_TENANT_SAAS.md`.
 
 **`server/api/`:**
 - Purpose: Server endpoints for order lifecycle, checkout/payment, webhooks, dashboard data.
@@ -88,7 +88,7 @@ teleShop/
 - Primary code: `server/api/billing/` for B2B endpoints and/or `server/api/webhooks/billing/` for billing callbacks (path currently not detected; create new modules there to keep parity with existing payment API grouping).
 - Shared provider logic: `server/utils/` (for example, new adapter alongside `server/utils/yookassa.ts`).
 - DB schema changes: new SQL migration in `supabase/migrations/` with next sequential prefix.
-- Documentation contract updates: `docs/SAAS_BILLING_RU.md` and `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`.
+- Documentation contract updates: `docs/platform/SAAS_BILLING_RU.md` and `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`.
 
 **New Storefront Billing UI or Payment UX:**
 - City-aware storefront pages: `pages/[city_slug]/[tenant_slug]/...` (primary canonical path).

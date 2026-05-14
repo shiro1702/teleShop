@@ -65,8 +65,8 @@
 - Supabase project with migrations from `supabase/migrations`.
 
 **Production:**
-- Vercel deployment model documented in `README.md` and `docs/VERCEL_SUPABASE_TEST_PROD.md`.
-- Separate staging/production environments documented in `docs/VERCEL_SUPABASE_TEST_PROD.md`.
+- Vercel deployment model documented in `README.md` and `docs/platform/VERCEL_SUPABASE_TEST_PROD.md`.
+- Separate staging/production environments documented in `docs/platform/VERCEL_SUPABASE_TEST_PROD.md`.
 
 ---
 

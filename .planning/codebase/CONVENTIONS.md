@@ -8,7 +8,7 @@
 - Nuxt route files use filesystem routing with dynamic params in brackets, e.g. `pages/[city_slug]/[tenant_slug]/checkout.vue`, `pages/dashboard/orders/[id].vue`.
 - Nitro API handlers follow method suffix naming, e.g. `server/api/checkout/create.post.ts`, `server/api/dashboard/orders/[id]/status.put.ts`, `server/api/cities.get.ts`.
 - Utilities and composables use camelCase file names, e.g. `server/utils/yookassa.ts`, `server/utils/tenant.ts`, `composables/useDashboardAccess.ts`.
-- Billing/payment docs use uppercase snake-like documentation naming, e.g. `docs/SAAS_BILLING_RU.md`, `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/MULTI_TENANT_SAAS.md`, `docs/TERMS.md`.
+- Billing/payment docs use uppercase snake-like documentation naming, e.g. `docs/platform/SAAS_BILLING_RU.md`, `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/platform/MULTI_TENANT_SAAS.md`, `docs/reference/TERMS.md`.
 
 **Functions:**
 - Functions use camelCase (`buildFallbackReturnUrl`, `createYooKassaPayment`, `requireTenantShop`).
@@ -85,11 +85,11 @@
 ## SaaS Billing and Payment Documentation Conventions
 
 - Treat B2B billing and B2C checkout as separate domains consistently across docs and code:
-  - Docs: `docs/SAAS_BILLING_RU.md`, `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`
+  - Docs: `docs/platform/SAAS_BILLING_RU.md`, `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`
   - Code paths: `server/api/checkout/create.post.ts`, `server/api/webhooks/yookassa.post.ts`
-- Keep terminology synchronized with `docs/TERMS.md` and domain model in `docs/MULTI_TENANT_SAAS.md` (`shop`, `restaurant`, dashboard wording).
+- Keep terminology synchronized with `docs/reference/TERMS.md` and domain model in `docs/platform/MULTI_TENANT_SAAS.md` (`shop`, `restaurant`, dashboard wording).
 - Use webhook-first payment truth model in implementation and docs:
-  - Doc guidance in `docs/PAYMENTS_RU_YOOKASSA_TBANK.md` and `docs/SAAS_BILLING_RU.md`
+  - Doc guidance in `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md` and `docs/platform/SAAS_BILLING_RU.md`
   - Event persistence pattern in `payment_webhook_events` from `supabase/migrations/018_payments_and_requisites.sql`.
 
 ---

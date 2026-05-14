@@ -179,7 +179,7 @@ Dependency rationale:
   - `.planning/codebase/ARCHITECTURE.md`
   - `.planning/codebase/STRUCTURE.md`
 - Domain contracts:
-  - `docs/TERMS.md`
-  - `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`
-  - `docs/SAAS_BILLING_RU.md`
-  - `docs/MULTI_TENANT_SAAS.md`
+  - `docs/reference/TERMS.md`
+  - `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`
+  - `docs/platform/SAAS_BILLING_RU.md`
+  - `docs/platform/MULTI_TENANT_SAAS.md`

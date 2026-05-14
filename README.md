@@ -91,11 +91,13 @@ npm run generate  # static generation (если применимо)
 
 ## Недавние существенные изменения
 
-- `docs/RECENT_MAJOR_CHANGES_RU.md` — что кардинально добавлено или изменено в ряде коммитов (Telegram-чат, адреса клиента, настройки организации, карта самовывоза и геокодинг).
+- `docs/reference/RECENT_MAJOR_CHANGES_RU.md` — что кардинально добавлено или изменено в ряде коммитов (Telegram-чат, адреса клиента, настройки организации, карта самовывоза и геокодинг).
 
 ## Документация по платежам
 
-- `docs/PAYMENTS_RU_YOOKASSA_TBANK.md` - архитектура платежей YooKassa/Т-Банк, B2C/B2B контуры, webhook-процессы.
-- `docs/SAAS_BILLING_RU.md` - модель SaaS-подписки платформы: продления, grace period, upgrade/downgrade.
-- `docs/MULTI_TENANT_SAAS.md` (раздел `14.2`) - краткая привязка платежной модели к общей мультитенантной архитектуре.
+- `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md` - архитектура платежей YooKassa/Т-Банк, B2C/B2B контуры, webhook-процессы.
+- `docs/platform/SAAS_BILLING_RU.md` - модель SaaS-подписки платформы: продления, grace period, upgrade/downgrade.
+- `docs/platform/MULTI_TENANT_SAAS.md` (раздел `14.2`) - краткая привязка платежной модели к общей мультитенантной архитектуре.
+
+Полная карта каталога `docs/`: [docs/README.md](docs/README.md).
 

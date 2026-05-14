@@ -5,7 +5,7 @@
 в `startapp` (deep link) и `start_param` (внутри Mini App).
 
 См. также общий план мультитенантных омниканальных уведомлений:
-- `docs/OMNICHANNEL_MULTITENANT_PLAN_RU.md`
+- `docs/platform/OMNICHANNEL_MULTITENANT_PLAN_RU.md`
 
 ---
 

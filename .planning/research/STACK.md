@@ -110,4 +110,4 @@ npm install pino @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-no
 - YooKassa webhooks/docs (official): [https://yookassa.ru/developers/using-api/webhooks](https://yookassa.ru/developers/using-api/webhooks)  
 - BullMQ flows/docs (official): [https://docs.bullmq.io/guide/flows](https://docs.bullmq.io/guide/flows)  
 - OpenTelemetry JS instrumentation (official): [https://opentelemetry.io/docs/languages/js/instrumentation/](https://opentelemetry.io/docs/languages/js/instrumentation/)  
-- Project context docs: `.planning/PROJECT.md`, `.planning/codebase/STACK.md`, `.planning/codebase/ARCHITECTURE.md`, `docs/TERMS.md`, `docs/SAAS_BILLING_RU.md`, `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/MULTI_TENANT_SAAS.md`
+- Project context docs: `.planning/PROJECT.md`, `.planning/codebase/STACK.md`, `.planning/codebase/ARCHITECTURE.md`, `docs/reference/TERMS.md`, `docs/platform/SAAS_BILLING_RU.md`, `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/platform/MULTI_TENANT_SAAS.md`

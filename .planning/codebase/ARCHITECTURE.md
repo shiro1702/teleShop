@@ -8,8 +8,8 @@
 
 **Key Characteristics:**
 - Tenant isolation is resolved before handlers via `server/middleware/tenant.ts` and propagated as `event.context.tenant`.
-- Payment architecture is split by intent: implemented B2C order payments (`YooKassa`) in code, and documented B2B SaaS billing as target state in `docs/SAAS_BILLING_RU.md`.
-- Source-of-truth for payment completion is provider webhook, while client redirect is UX-only (`docs/PAYMENTS_RU_YOOKASSA_TBANK.md`, `server/api/webhooks/yookassa.post.ts`).
+- Payment architecture is split by intent: implemented B2C order payments (`YooKassa`) in code, and documented B2B SaaS billing as target state in `docs/platform/SAAS_BILLING_RU.md`.
+- Source-of-truth for payment completion is provider webhook, while client redirect is UX-only (`docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`, `server/api/webhooks/yookassa.post.ts`).
 
 ## Layers
 
@@ -43,7 +43,7 @@
 
 **Documentation Contract Layer:**
 - Purpose: Define target billing/payment behavior and business policies.
-- Location: `docs/TERMS.md`, `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/SAAS_BILLING_RU.md`, `docs/MULTI_TENANT_SAAS.md`.
+- Location: `docs/reference/TERMS.md`, `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/platform/SAAS_BILLING_RU.md`, `docs/platform/MULTI_TENANT_SAAS.md`.
 - Contains: B2C vs B2B split, plan model, webhook-first status policy, role/tenant semantics.
 - Depends on: Product policy decisions.
 - Used by: Implementation planning and future API/schema work.
@@ -57,7 +57,7 @@
 4. YooKassa sends callback to `POST /api/webhooks/yookassa`; `server/api/webhooks/yookassa.post.ts` persists `payment_webhook_events`, updates intent status, and sets final `orders.payment_status`.
 
 **B2B SaaS Billing Flow (documented target, not detected in server routes):**
-1. Owner starts billing checkout (`docs/SAAS_BILLING_RU.md`).
+1. Owner starts billing checkout (`docs/platform/SAAS_BILLING_RU.md`).
 2. Platform merchant creates subscription payment.
 3. Billing webhook updates subscription/payment state.
 4. Access controls follow `trial/active/past_due/canceled` lifecycle policy.
@@ -113,7 +113,7 @@
 **Logging:** Minimal inline logging through `console.error` in API handlers (`server/api/order.post.ts`, `server/api/client-order-status.get.ts`).
 **Validation:** Request-level type narrowing and business checks in route handlers; schema-level constraints in migrations.
 **Authentication:** Tenant scoping through middleware and utility checks; dashboard role checks via `requireDashboardAccess` (example `server/api/dashboard/storefront.get.ts`).
-**Secrets Boundary:** Runtime config and server-side DB columns used for secrets (`nuxt.config.ts`, `shops.yookassa_secret_key` from `supabase/migrations/018_payments_and_requisites.sql`); UI-only docs specify masking policies (`docs/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/MULTI_TENANT_SAAS.md`).
+**Secrets Boundary:** Runtime config and server-side DB columns used for secrets (`nuxt.config.ts`, `shops.yookassa_secret_key` from `supabase/migrations/018_payments_and_requisites.sql`); UI-only docs specify masking policies (`docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/platform/MULTI_TENANT_SAAS.md`).
 
 ---
 

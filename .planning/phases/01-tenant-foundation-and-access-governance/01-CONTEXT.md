@@ -52,13 +52,13 @@ Establish safe ownership and access governance for the platform core: restaurant
 - `.planning/PROJECT.md` - Product constraints, core value, and v1 boundaries.
 - `.planning/REQUIREMENTS.md` - Requirement IDs mapped to this phase (TENA-01..04, ADMN-02).
 - `.planning/ROADMAP.md` - Phase 1 goal, dependencies, and success criteria.
-- `docs/TERMS.md` - Domain terminology that should remain consistent in implementation.
+- `docs/reference/TERMS.md` - Domain terminology that should remain consistent in implementation.
 
 ### Architecture and Multi-Tenant Constraints
 - `.planning/research/ARCHITECTURE.md` - Recommended component boundaries and sequencing.
 - `.planning/codebase/ARCHITECTURE.md` - Current runtime architecture and tenant/payment context.
 - `.planning/codebase/STRUCTURE.md` - Canonical locations for API, middleware, and domain modules.
-- `docs/MULTI_TENANT_SAAS.md` - Multi-tenant policy expectations and separation principles.
+- `docs/platform/MULTI_TENANT_SAAS.md` - Multi-tenant policy expectations and separation principles.
 
 ### Security and Access Context
 - `.planning/codebase/CONVENTIONS.md` - Existing error-handling and server utility conventions.

@@ -3,7 +3,7 @@
 Этот файл описывает, что нужно реализовать на бэкенде (Nuxt 3 / Nitro), чтобы довести архитектуру до полноценной омниканальности: единый бэкенд, обслуживающий внешний веб‑сайт и Telegram Mini App.
 
 См. также целевой мультитенантный омниканальный план:
-- `docs/OMNICHANNEL_MULTITENANT_PLAN_RU.md`
+- `docs/platform/OMNICHANNEL_MULTITENANT_PLAN_RU.md`
 
 ---
 

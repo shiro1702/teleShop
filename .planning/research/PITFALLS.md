@@ -109,7 +109,7 @@ Mistakes that usually cause payment incidents, tenant trust loss, or expensive r
 
 ## Sources
 
-- Internal project context (`.planning/PROJECT.md`, `.planning/codebase/CONCERNS.md`, `docs/TERMS.md`, `docs/SAAS_BILLING_RU.md`, `docs/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/MULTI_TENANT_SAAS.md`) — **HIGH**.
+- Internal project context (`.planning/PROJECT.md`, `.planning/codebase/CONCERNS.md`, `docs/reference/TERMS.md`, `docs/platform/SAAS_BILLING_RU.md`, `docs/payments/PAYMENTS_RU_YOOKASSA_TBANK.md`, `docs/platform/MULTI_TENANT_SAAS.md`) — **HIGH**.
 - Stripe official webhook signature guidance: [https://stripe.com/docs/webhooks/signatures](https://stripe.com/docs/webhooks/signatures) — **HIGH**.
 - AWS tenant routing strategies (updated 2025-05-07): [https://aws.amazon.com/blogs/networking-and-content-delivery/tenant-routing-strategies-for-saas-applications-on-aws/](https://aws.amazon.com/blogs/networking-and-content-delivery/tenant-routing-strategies-for-saas-applications-on-aws/) — **MEDIUM-HIGH**.
 - YooKassa developer docs (payment/webhook ecosystem pages): [https://yookassa.ru/developers/using-api/webhooks](https://yookassa.ru/developers/using-api/webhooks), [https://yookassa.ru/developers/payment-acceptance/scenario-extensions/recurring-payments/save-payment-method/save-during-payment](https://yookassa.ru/developers/payment-acceptance/scenario-extensions/recurring-payments/save-payment-method/save-during-payment) — **MEDIUM** (webhook page intermittently unavailable during fetch).
