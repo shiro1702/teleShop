@@ -99,5 +99,5 @@ npm run generate  # static generation (если применимо)
 - `docs/platform/SAAS_BILLING_RU.md` - модель SaaS-подписки платформы: продления, grace period, upgrade/downgrade.
 - `docs/platform/MULTI_TENANT_SAAS.md` (раздел `14.2`) - краткая привязка платежной модели к общей мультитенантной архитектуре.
 
-Полная карта каталога `docs/`: [docs/README.md](docs/README.md).
+Полная карта каталога `docs/`: [docs/README.md](docs/README.md). Шпаргалка по папкам и куда класть файлы: [docs/STRUCTURE.md](docs/STRUCTURE.md).
 
