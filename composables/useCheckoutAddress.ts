@@ -232,6 +232,7 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
 
   async function saveAddressToServer(payload: SaveAddressPayload): Promise<SavedAddressItem | null> {
     if (!canUseAddressApi()) return null
+    await persistAddresses()
     try {
       await $fetch('/api/customer/addresses', {
         method: 'POST',

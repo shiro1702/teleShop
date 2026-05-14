@@ -1,8 +1,9 @@
 import { defineEventHandler, readBody, createError } from 'h3'
-import { serverSupabaseServiceRole } from '#supabase/server'
+import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'node:crypto'
 import { findProfileIdByPhone, normalizePhone, setProfilePhone } from '~/server/utils/accountPhoneLink'
+import { migrateCustomerDeliveryAddresses } from '~/server/utils/customerDeliveryAddressMerge'
 
 interface ExchangeSessionBody {
   token?: string
@@ -70,6 +71,82 @@ export default defineEventHandler(async (event) => {
   const sharedPhoneRaw = bridgePayload.max_shared_phone
   const sharedPhone =
     typeof sharedPhoneRaw === 'string' && sharedPhoneRaw.trim() ? normalizePhone(sharedPhoneRaw.trim()) : ''
+
+  const linkProfileRaw = bridgePayload.link_profile_id
+  const linkProfileId =
+    typeof linkProfileRaw === 'string' && linkProfileRaw.trim() ? linkProfileRaw.trim() : ''
+
+  if (linkProfileId) {
+    const supabaseUser = await serverSupabaseUser(event)
+    const sessionUid = (() => {
+      const u = supabaseUser as { id?: string; sub?: string } | null
+      const id = typeof u?.id === 'string' ? u.id.trim() : ''
+      if (id) return id
+      return typeof u?.sub === 'string' ? u.sub.trim() : ''
+    })()
+    if (!sessionUid || sessionUid !== linkProfileId) {
+      throw createError({
+        statusCode: 403,
+        statusMessage:
+          'Войдите на сайте в этом браузере под тем же аккаунтом и завершите привязку MAX снова.',
+      })
+    }
+
+    const { data: holder, error: holderErr } = await serviceClient
+      .from('profiles')
+      .select('id')
+      .eq('max_user_id', maxUserId)
+      .maybeSingle()
+    if (holderErr) {
+      throw createError({ statusCode: 500, statusMessage: 'Failed to resolve MAX profile holder' })
+    }
+    const maxHolderId = holder?.id ? String(holder.id) : null
+
+    if (maxHolderId && maxHolderId !== linkProfileId) {
+      await migrateCustomerDeliveryAddresses(serviceClient, maxHolderId, linkProfileId)
+      await serviceClient
+        .from('profiles')
+        .update({ max_user_id: null, max_conversation_id: null })
+        .eq('id', maxHolderId)
+    }
+
+    const { error: attachErr } = await serviceClient
+      .from('profiles')
+      .update({
+        max_user_id: maxUserId,
+        max_conversation_id: maxConversationId,
+      })
+      .eq('id', linkProfileId)
+    if (attachErr) {
+      throw createError({ statusCode: 500, statusMessage: 'Failed to attach MAX to profile' })
+    }
+
+    const { data: authUser, error: authReadErr } = await serviceClient.auth.admin.getUserById(linkProfileId)
+    if (authReadErr || !authUser?.user) {
+      throw createError({ statusCode: 500, statusMessage: 'Failed to read auth user for MAX link' })
+    }
+    const meta = (authUser.user.user_metadata ?? {}) as Record<string, unknown>
+    await serviceClient.auth.admin.updateUserById(linkProfileId, {
+      user_metadata: {
+        ...meta,
+        max_user_id: maxUserId,
+        ...(maxConversationId ? { max_conversation_id: maxConversationId } : {}),
+      },
+    })
+
+    if (sharedPhone) {
+      await setProfilePhone(serviceClient, linkProfileId, sharedPhone)
+    }
+
+    await serviceClient.from('auth_tokens').delete().eq('token', body.token)
+    return {
+      success: true,
+      userId: linkProfileId,
+      maxUserId,
+      bridge_payload: tokenRow.bridge_payload ?? null,
+      session_unchanged: true as const,
+    }
+  }
 
   const { data: existingProfileByMax, error: profileError } = await serviceClient
     .from('profiles')

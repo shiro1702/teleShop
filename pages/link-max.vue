@@ -207,9 +207,10 @@ const linkMax = async () => {
   try {
     const res = await $fetch<{
       success: boolean
-      access_token: string
-      refresh_token: string
-      expires_in: number
+      session_unchanged?: boolean
+      access_token?: string
+      refresh_token?: string
+      expires_in?: number
       bridge_payload?: {
         scopeKey?: string
         items?: unknown[]
@@ -220,14 +221,24 @@ const linkMax = async () => {
     })
 
     if (res?.success) {
-      const { access_token, refresh_token } = res
-      const { error: setError } = await supabase.auth.setSession({
-        access_token,
-        refresh_token,
-      })
+      if (res.session_unchanged) {
+        const { error: refreshErr } = await supabase.auth.refreshSession()
+        if (refreshErr) {
+          console.warn('link-max: refreshSession after MAX attach', refreshErr)
+        }
+      } else {
+        const { access_token, refresh_token } = res
+        if (!access_token || !refresh_token) {
+          throw new Error('Не удалось получить токены сессии.')
+        }
+        const { error: setError } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        })
 
-      if (setError) {
-        throw new Error('Не удалось установить сессию Supabase на клиенте.')
+        if (setError) {
+          throw new Error('Не удалось установить сессию Supabase на клиенте.')
+        }
       }
 
       if (res.bridge_payload) {

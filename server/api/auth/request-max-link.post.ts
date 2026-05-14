@@ -1,6 +1,6 @@
 import { createError, defineEventHandler, readBody } from 'h3'
 import { randomUUID } from 'node:crypto'
-import { serverSupabaseServiceRole } from '#supabase/server'
+import { serverSupabaseServiceRole, serverSupabaseUser } from '#supabase/server'
 import { getShopById } from '~/server/utils/tenant'
 
 type Body = {
@@ -64,6 +64,17 @@ export default defineEventHandler(async (event) => {
     city_slug: citySlug,
     redirect_path: redirectPath,
     custom_domain_hostname: shop?.custom_domain ? String(shop.custom_domain).trim() : null,
+  }
+
+  const loggedIn = await serverSupabaseUser(event)
+  const sessionUid = (() => {
+    const u = loggedIn as { id?: string; sub?: string } | null
+    const id = typeof u?.id === 'string' ? u.id.trim() : ''
+    if (id) return id
+    return typeof u?.sub === 'string' ? u.sub.trim() : ''
+  })()
+  if (sessionUid) {
+    bridgePayload.link_profile_id = sessionUid
   }
 
   const token = randomUUID()
