@@ -4,6 +4,12 @@ import { resolveCartScopeKey } from '~/utils/cartScope'
 export type UserFulfillmentType = 'delivery' | 'pickup' | 'qr-menu'
 export type CityFulfillmentType = 'delivery' | 'pickup' | 'dine-in'
 
+/** Заказ оформлен «в зале» (в т.ч. legacy dine-in / showcase-order в БД). */
+export function isHallOrderFulfillmentType(type: string | null | undefined): boolean {
+  const raw = typeof type === 'string' ? type.trim().toLowerCase() : ''
+  return raw === 'qr-menu' || raw === 'dine-in' || raw === 'showcase-order'
+}
+
 const FULFILLMENT_STORAGE_KEY = 'teleshop-fulfillment-preferences'
 const FALLBACK_PRIORITY: UserFulfillmentType[] = ['pickup', 'delivery', 'qr-menu']
 type FulfillmentStorageShape = {
