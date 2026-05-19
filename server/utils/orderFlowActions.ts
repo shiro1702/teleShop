@@ -3,7 +3,7 @@ import type { H3Event } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { mergeMetadataWithTimeline, type TimelineEntry } from '~/server/utils/dashboardOrders'
 import { shouldNotifyCustomerOfStatus } from '~/server/utils/orderChatFlow'
-import type { ChatFlowOrderStatus } from '~/server/utils/orderChatFlowPure'
+import type { ChatFlowOrderStatus } from './orderChatFlowPure'
 import { dispatchNotificationEvent } from '~/server/utils/notifications'
 
 export type UnifiedFlowConfig = {

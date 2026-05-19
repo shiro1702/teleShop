@@ -1,9 +1,9 @@
 import type { H3Event } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { appendOrderTimelineEntry } from '~/server/utils/orderFlowActions'
-import type { ShopBranchRow } from '~/server/utils/orderChatFlowPure'
+import type { ShopBranchRow } from './orderChatFlowPure'
 
-export * from '~/server/utils/orderChatFlowPure'
+export * from './orderChatFlowPure'
 
 export type AssignBranchResult =
   | { ok: true; branchName: string; branchAddress: string; branchId: string; previousBranchId: string | null }

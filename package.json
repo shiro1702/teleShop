@@ -7,7 +7,8 @@
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:types": "node scripts/gen-database-types.mjs"
   },
   "dependencies": {
     "@nuxtjs/supabase": "^2.0.4",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@nuxtjs/tailwindcss": "^6.12.0",
     "@pinia/nuxt": "^0.5.0",
+    "supabase": "^2.100.0",
     "@types/leaflet": "^1.9.21",
     "@types/leaflet-draw": "^1.0.13",
     "@types/qrcode": "^1.5.6",
