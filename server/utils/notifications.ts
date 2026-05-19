@@ -108,17 +108,25 @@ async function sendTelegramMessage(
   text: string,
   options?: { replyMarkup?: Record<string, unknown> },
 ): Promise<void> {
+  const replyMarkup = options?.replyMarkup
+  const hasKeyboard =
+    replyMarkup
+    && Array.isArray((replyMarkup as { inline_keyboard?: unknown }).inline_keyboard)
+    && ((replyMarkup as { inline_keyboard: unknown[] }).inline_keyboard.length > 0)
+
   const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       chat_id: chatId,
       text,
-      ...(options?.replyMarkup ? { reply_markup: options.replyMarkup } : {}),
+      ...(hasKeyboard ? { reply_markup: replyMarkup } : {}),
     }),
   })
-  if (!response.ok) {
-    throw new Error(`telegram_send_failed:${response.status}`)
+  const payload = await response.json().catch(() => null) as { ok?: boolean; description?: string } | null
+  if (!response.ok || payload?.ok === false) {
+    const detail = payload?.description || `http_${response.status}`
+    throw new Error(`telegram_send_failed:${detail}`)
   }
 }
 

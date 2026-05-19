@@ -949,31 +949,33 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // Notifications should not delay API response and client redirect.
-  void dispatchNotificationEvent(event, {
-    eventId: crypto.randomUUID(),
-    eventType: 'ORDER_CREATED',
-    occurredAt: orderCreatedAtIso,
-    tenantContext: {
-      shopId: tenantShopId,
-      restaurantId: restaurant.id,
-      cityId: restaurant.city_id,
-    },
-    orderContext: {
-      orderId,
-      orderNumber,
-      totalAmount: grandTotal,
-      status: 'new',
-    },
-    actorContext: {
-      customerTelegramId: customerTelegramIdForInsert,
-      customerMaxUserId:
-        miniChannel === 'max_mini' ? String(user.id) : webMaxUserIdForActor,
-      customerMaxConversationId: maxConversationId,
-    },
-  }).catch((notifyError) => {
+  try {
+    await dispatchNotificationEvent(event, {
+      eventId: crypto.randomUUID(),
+      eventType: 'ORDER_CREATED',
+      occurredAt: orderCreatedAtIso,
+      tenantContext: {
+        shopId: tenantShopId,
+        restaurantId: restaurant.id,
+        cityId: restaurant.city_id,
+      },
+      orderContext: {
+        orderId,
+        orderNumber,
+        totalAmount: grandTotal,
+        status: 'new',
+        fulfillmentType,
+      },
+      actorContext: {
+        customerTelegramId: customerTelegramIdForInsert,
+        customerMaxUserId:
+          miniChannel === 'max_mini' ? String(user.id) : webMaxUserIdForActor,
+        customerMaxConversationId: maxConversationId,
+      },
+    })
+  } catch (notifyError) {
     console.error('dispatchNotificationEvent (ORDER_CREATED) failed:', notifyError)
-  })
+  }
 
   try {
     const { data: shopRow } = await serviceClient
