@@ -2,6 +2,8 @@ import crypto from 'node:crypto'
 import type { H3Event } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { mergeMetadataWithTimeline, type TimelineEntry } from '~/server/utils/dashboardOrders'
+import { shouldNotifyCustomerOfStatus } from '~/server/utils/orderChatFlow'
+import type { ChatFlowOrderStatus } from '~/server/utils/orderChatFlowPure'
 import { dispatchNotificationEvent } from '~/server/utils/notifications'
 
 export type UnifiedFlowConfig = {
@@ -67,14 +69,14 @@ export async function appendOrderTimelineEntry(event: H3Event, args: {
 
 export async function applyOrderStatusFromChat(event: H3Event, args: {
   orderId: string
-  status: 'in_progress' | 'out_for_delivery' | 'handed_to_customer'
+  status: ChatFlowOrderStatus
   source: 'telegram' | 'max'
   actorUserId: string
 }): Promise<void> {
   const client = await serverSupabaseServiceRole(event)
   const { data: order } = await client
     .from('orders')
-    .select('id,shop_id,restaurant_id,city_id,order_number,total,status,customer_telegram_id,customer_profile_id,metadata')
+    .select('id,shop_id,restaurant_id,city_id,order_number,total,status,fulfillment_type,customer_telegram_id,customer_profile_id,metadata')
     .eq('id', args.orderId)
     .maybeSingle()
   if (!order) return
@@ -110,26 +112,29 @@ export async function applyOrderStatusFromChat(event: H3Event, args: {
     customerMaxConversationId = typeof rawConversationId === 'string' && rawConversationId.trim() ? rawConversationId.trim() : null
   }
 
-  await dispatchNotificationEvent(event, {
-    eventId: crypto.randomUUID(),
-    eventType: 'ORDER_STATUS_CHANGED',
-    occurredAt: now,
-    tenantContext: {
-      shopId: String((order as any).shop_id),
-      restaurantId: String((order as any).restaurant_id || ''),
-      cityId: (order as any).city_id ? String((order as any).city_id) : null,
-    },
-    orderContext: {
-      orderId: String((order as any).id),
-      orderNumber: String((order as any).order_number || (order as any).id).slice(0, 32),
-      totalAmount: Number((order as any).total || 0),
-      status: args.status,
-    },
-    actorContext: {
-      customerTelegramId: (order as any).customer_telegram_id ?? null,
-      customerMaxUserId,
-      customerMaxConversationId,
-    },
-  })
+  if (shouldNotifyCustomerOfStatus(args.status)) {
+    await dispatchNotificationEvent(event, {
+      eventId: crypto.randomUUID(),
+      eventType: 'ORDER_STATUS_CHANGED',
+      occurredAt: now,
+      tenantContext: {
+        shopId: String((order as any).shop_id),
+        restaurantId: String((order as any).restaurant_id || ''),
+        cityId: (order as any).city_id ? String((order as any).city_id) : null,
+      },
+      orderContext: {
+        orderId: String((order as any).id),
+        orderNumber: String((order as any).order_number || (order as any).id).slice(0, 32),
+        totalAmount: Number((order as any).total || 0),
+        status: args.status,
+        fulfillmentType: String((order as any).fulfillment_type || 'delivery'),
+      },
+      actorContext: {
+        customerTelegramId: (order as any).customer_telegram_id ?? null,
+        customerMaxUserId,
+        customerMaxConversationId,
+      },
+    })
+  }
 }
 

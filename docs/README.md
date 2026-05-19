@@ -43,7 +43,7 @@
 
 - `AGGREGATOR_UX_FEATURES_RU.md` — главная города, избранное, повтор заказа, «настроение», отзывы (часть может быть в планах; сверять с кодом).
 - `LEGAL_UX_PD_COOKIES_RF_PLAN_RU.md` — ПДн, cookie, согласия.
-- `ORDER_STATUS_REALTIME_RFC_RU.md`, `ORDER_WORKFLOW_CUSTOMIZATION_OPTIONS_RU.md`, `HOME_CONFECTIONERS_ORDER_FLOW_PLAN_RU.md`, `REVIEWS_MODULE_ROLLOUT_RU.md`.
+- `ORDER_STATUS_REALTIME_RFC_RU.md`, `ORDER_WORKFLOW_CUSTOMIZATION_OPTIONS_RU.md`, `ORDER_CHAT_OPERATOR_FLOW_RU.md` (статусы и филиал в Telegram-чате), `ORDER_BRANCH_LOAD_BALANCING_RU.md` (план режимов нагрузки), `HOME_CONFECTIONERS_ORDER_FLOW_PLAN_RU.md`, `REVIEWS_MODULE_ROLLOUT_RU.md`.
 
 ### `payments/`
 

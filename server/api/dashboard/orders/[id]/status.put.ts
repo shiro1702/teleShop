@@ -218,6 +218,7 @@ export default defineEventHandler(async (event) => {
       orderNumber: String((existing as any).order_number || (existing as any).id).slice(0, 32),
       totalAmount: Number((existing as any).total || 0),
       status: nextStatus,
+      fulfillmentType: String((existing as any).fulfillment_type || 'delivery'),
     },
     actorContext: {
       customerTelegramId: (existing as any).customer_telegram_id ?? null,

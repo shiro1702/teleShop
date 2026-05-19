@@ -3,6 +3,19 @@ import { buildAuthSiteLinkUrl } from '~/server/utils/authSiteLink'
 import { applyFestivalModerationAction } from '~/server/utils/festivalUgcModeration'
 import { createServiceCallEvent, getStaffResponseText, mapActionToStatus } from '~/server/utils/serviceCalls'
 import { appendOrderTimelineEntry, applyOrderStatusFromChat, getUnifiedFlowConfig } from '~/server/utils/orderFlowActions'
+import {
+  assignOrderBranchFromChat,
+  buildBranchPickerInlineKeyboard,
+  buildManagerOrderInlineKeyboard,
+  canManageOrderFromManagerChat,
+  loadActiveShopBranches,
+  mapChatCallbackToOrderStatus,
+  notifyBranchAssignedInTelegram,
+  parseBranchCallback,
+  updateManagerMessageBranchLines,
+} from '~/server/utils/orderChatFlow'
+import type { ChatFlowOrderStatus } from '~/server/utils/orderChatFlowPure'
+import { isDeliveryFulfillment } from '~/utils/dashboardOrderStatus'
 import { getProfilePhone, normalizePhone, setProfilePhone } from '~/server/utils/accountPhoneLink'
 import { isShopFeatureEnabled } from '~/server/utils/features'
 import { applyReviewPromptTelegramCallback, processDueReviewPrompts } from '~/server/utils/reviewPromptFlow'
@@ -112,7 +125,7 @@ function formatOrderRef(orderNumber: unknown, fallbackOrderId: string): string {
 
 function parseCallbackData(
   data: string,
-): { kind: CallbackKind; status: 'work' | 'courier' | 'done'; userId: string | null; orderId: string } | null {
+): { kind: CallbackKind; status: 'work' | 'courier' | 'pickup' | 'done'; userId: string | null; orderId: string } | null {
   const parts = data.split('_')
   if (parts.length !== 3) return null
   const [rawStatus, userIdRaw, orderId] = parts
@@ -120,7 +133,7 @@ function parseCallbackData(
   if (!rawStatus || !orderId) return null
 
   // Обычные статусы
-  if (rawStatus === 'work' || rawStatus === 'courier' || rawStatus === 'done') {
+  if (rawStatus === 'work' || rawStatus === 'courier' || rawStatus === 'pickup' || rawStatus === 'done') {
     return { kind: 'status', status: rawStatus, userId, orderId }
   }
 
@@ -169,13 +182,27 @@ function parseServiceContactCallbackData(data: string): { serviceCallId: string 
   return { serviceCallId }
 }
 
-const CLIENT_MESSAGES: Record<'work' | 'courier' | 'done', (orderRef: string) => string> = {
+const CLIENT_MESSAGES: Record<'work' | 'courier' | 'pickup' | 'done', (orderRef: string) => string> = {
   work: (orderRef) =>
     `👨‍🍳 Ваш заказ ${orderRef} принят в работу. Кухня уже готовит ваш заказ.`,
   courier: (orderRef) =>
     `🚚 Ваш заказ ${orderRef} передан курьеру и уже в пути.`,
+  pickup: (orderRef) =>
+    `📦 Ваш заказ ${orderRef} готов к выдаче. Можно забирать.`,
   done: (orderRef) =>
     `✅ Ваш заказ ${orderRef} доставлен. Спасибо, что выбрали нас! Приятного аппетита 🥘🍣🍜`,
+}
+
+function managerStatusLine(
+  status: 'work' | 'courier' | 'pickup' | 'done',
+  fulfillmentType: string,
+): string {
+  if (status === 'work') return '🟡 Статус заказа: принят в работу'
+  if (status === 'pickup') return '🟢 Статус заказа: готов к выдаче'
+  if (status === 'courier') return '🟠 Статус заказа: передан курьеру'
+  return isDeliveryFulfillment(fulfillmentType)
+    ? '🟢 Статус заказа: доставлен клиенту ✅'
+    : '🟢 Статус заказа: выдан клиенту ✅'
 }
 
 const CLIENT_DELAY_MESSAGES: Record<Exclude<'work' | 'courier' | 'done', 'done'>, (orderRef: string) => string> = {
@@ -919,6 +946,149 @@ export default defineEventHandler(async (event) => {
     return { ok: true }
   }
 
+  const branchCb = parseBranchCallback(query.data)
+  if (branchCb && query.message?.chat?.id != null && query.message?.message_id != null) {
+    const chatId = String(query.message.chat.id)
+    const messageId = query.message.message_id
+    const currentText = query.message.text || ''
+    const supabaseBranch = await serverSupabaseServiceRole(event)
+    const { data: orderRow } = await supabaseBranch
+      .from('orders')
+      .select('id,shop_id,restaurant_id,city_id,status,fulfillment_type,order_number,customer_telegram_id')
+      .eq('id', branchCb.orderId)
+      .maybeSingle()
+
+    if (!orderRow) {
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: 'Заказ не найден',
+        show_alert: false,
+      })
+      return { ok: true }
+    }
+
+    const shopId = String((orderRow as any).shop_id)
+    const allowed = await canManageOrderFromManagerChat(event, shopId, chatId)
+    if (!allowed) {
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: 'Нет доступа к этому заказу',
+        show_alert: true,
+      })
+      return { ok: true }
+    }
+
+    const appUrlBaseBranch = ((config.appUrl as string) || '').replace(/\/$/, '')
+    const dashboardOrderUrlBranch = appUrlBaseBranch
+      ? `${appUrlBaseBranch}/dashboard/orders/${encodeURIComponent(branchCb.orderId)}`
+      : ''
+    const shopBranches = await loadActiveShopBranches(event, shopId)
+    const flowConfigBranch = await getUnifiedFlowConfig(event, String((orderRow as any).restaurant_id || ''))
+
+    if (branchCb.kind === 'menu') {
+      const picker = buildBranchPickerInlineKeyboard(shopBranches, branchCb.orderId)
+      await telegram(botToken, 'editMessageReplyMarkup', {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: picker,
+      })
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: 'Выберите филиал',
+        show_alert: false,
+      })
+      return { ok: true }
+    }
+
+    if (branchCb.kind === 'cancel') {
+      const keyboard = buildManagerOrderInlineKeyboard({
+        orderId: branchCb.orderId,
+        fulfillmentType: String((orderRow as any).fulfillment_type || 'delivery'),
+        orderStatus: String((orderRow as any).status || 'new'),
+        customerTelegramId: Number((orderRow as any).customer_telegram_id) || null,
+        dashboardOrderUrl: dashboardOrderUrlBranch,
+        etaButtonsEnabled: flowConfigBranch.etaButtonsEnabled,
+        etaPresets: flowConfigBranch.etaPresets,
+        branchPickerEnabled: shopBranches.length > 1,
+      })
+      await telegram(botToken, 'editMessageReplyMarkup', {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: keyboard,
+      })
+      await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id })
+      return { ok: true }
+    }
+
+    const assignResult = await assignOrderBranchFromChat(event, {
+      orderId: branchCb.orderId,
+      branchIndex: branchCb.branchIndex,
+      source: 'telegram',
+      actorUserId: String(query.from?.id || ''),
+      managerChatId: chatId,
+    })
+
+    if (!assignResult.ok) {
+      const alertText =
+        assignResult.reason === 'same_branch'
+          ? 'Заказ уже на этом филиале'
+          : assignResult.reason === 'forbidden'
+            ? 'Нет доступа'
+            : 'Не удалось сменить филиал'
+      await telegram(botToken, 'answerCallbackQuery', {
+        callback_query_id: query.id,
+        text: alertText,
+        show_alert: assignResult.reason !== 'same_branch',
+      })
+      return { ok: true }
+    }
+
+    const { data: shopRow } = await supabaseBranch.from('shops').select('name').eq('id', shopId).maybeSingle()
+    const cityId = (orderRow as any).city_id ? String((orderRow as any).city_id) : ''
+    let cityName = '—'
+    if (cityId) {
+      const { data: cityRow } = await supabaseBranch.from('cities').select('name').eq('id', cityId).maybeSingle()
+      cityName = String((cityRow as any)?.name || '—')
+    }
+    const brandName = String((shopRow as any)?.name || '—')
+    const updatedText = updateManagerMessageBranchLines(currentText, {
+      brandName,
+      branchName: assignResult.branchName,
+      branchAddress: assignResult.branchAddress,
+      cityName,
+    })
+    const statusLine = withStatusLine(updatedText, `🏪 Назначен филиал: ${assignResult.branchName}`)
+    const keyboard = buildManagerOrderInlineKeyboard({
+      orderId: branchCb.orderId,
+      fulfillmentType: String((orderRow as any).fulfillment_type || 'delivery'),
+      orderStatus: String((orderRow as any).status || 'new'),
+      customerTelegramId: Number((orderRow as any).customer_telegram_id) || null,
+      dashboardOrderUrl: dashboardOrderUrlBranch,
+      etaButtonsEnabled: flowConfigBranch.etaButtonsEnabled,
+      etaPresets: flowConfigBranch.etaPresets,
+      branchPickerEnabled: shopBranches.length > 1,
+    })
+    await telegram(botToken, 'editMessageText', {
+      chat_id: chatId,
+      message_id: messageId,
+      text: statusLine,
+      reply_markup: keyboard,
+    })
+    await notifyBranchAssignedInTelegram(event, {
+      botToken,
+      shopId,
+      branchId: assignResult.branchId,
+      orderId: branchCb.orderId,
+      orderNumber: (orderRow as any).order_number ? String((orderRow as any).order_number) : null,
+    })
+    await telegram(botToken, 'answerCallbackQuery', {
+      callback_query_id: query.id,
+      text: `Филиал: ${assignResult.branchName}`,
+      show_alert: false,
+    })
+    return { ok: true }
+  }
+
   const parsed = parseCallbackData(query.data)
   const isEtaCallback = query.data.startsWith('etaWork_') || query.data.startsWith('etaCourier_')
   if (isEtaCallback) {
@@ -1056,7 +1226,7 @@ export default defineEventHandler(async (event) => {
   const supabase = await serverSupabaseServiceRole(event)
   const { data: orderDetails } = await supabase
     .from('orders')
-    .select('id,shop_id,total,delivery_cost,restaurant_id,customer_telegram_id,customer_profile_id,order_number')
+    .select('id,shop_id,total,delivery_cost,restaurant_id,status,fulfillment_type,customer_telegram_id,customer_profile_id,order_number')
     .eq('id', orderId)
     .maybeSingle()
   if (!orderDetails) {
@@ -1064,6 +1234,16 @@ export default defineEventHandler(async (event) => {
       callback_query_id: query.id,
       text: 'Заказ не найден',
       show_alert: false,
+    })
+    return { ok: true }
+  }
+  const managerChatId = String(query.message?.chat?.id || '')
+  const orderShopId = String((orderDetails as any).shop_id)
+  if (managerChatId && !(await canManageOrderFromManagerChat(event, orderShopId, managerChatId))) {
+    await telegram(botToken, 'answerCallbackQuery', {
+      callback_query_id: query.id,
+      text: 'Нет доступа к этому заказу',
+      show_alert: true,
     })
     return { ok: true }
   }
@@ -1142,8 +1322,9 @@ export default defineEventHandler(async (event) => {
   }
 
   // kind === 'status'
+  const fulfillmentType = String((orderDetails as any).fulfillment_type || 'delivery')
   if (unifiedFlowEnabled) {
-    const nextStatus = status === 'work' ? 'in_progress' : status === 'courier' ? 'out_for_delivery' : 'handed_to_customer'
+    const nextStatus: ChatFlowOrderStatus = mapChatCallbackToOrderStatus(status)
     await applyOrderStatusFromChat(event, {
       orderId,
       status: nextStatus,
@@ -1179,57 +1360,39 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const callbackSuffix = customerTelegramId ? `${customerTelegramId}_${orderId}` : `_${orderId}`
-  const managerContactRow: Array<Record<string, string>> = customerTelegramId
-    ? [{ text: '✉️ Написать клиенту', url: `tg://user?id=${customerTelegramId}` }]
-    : []
-
-  let updatedText = currentText
-  if (status === 'work') {
-    updatedText = withStatusLine(currentText, '🟡 Статус заказа: принят в работу')
-    const nextData = `courier_${callbackSuffix}`
-    const delayData = `delayWork_${callbackSuffix}`
-    const keyboardRows = [
-      [
-        { text: '🚚 Передать курьеру', callback_data: nextData },
-        { text: '⏱ Задержка (кухня)', callback_data: delayData },
-      ],
-      ...(managerContactRow.length ? [managerContactRow] : []),
-    ]
-    await telegram(botToken, 'editMessageText', {
-      chat_id: chatId,
-      message_id: messageId,
-      text: updatedText,
-      reply_markup: keyboardRows.length ? { inline_keyboard: keyboardRows } : undefined,
-    })
-  } else if (status === 'courier') {
-    updatedText = withStatusLine(currentText, '🟠 Статус заказа: передан курьеру')
-    const nextData = `done_${callbackSuffix}`
-    const delayData = `delayCourier_${callbackSuffix}`
-    const keyboardRows = [
-      [
-        { text: '✅ Доставлен', callback_data: nextData },
-        { text: '⏱ Задержка (доставка)', callback_data: delayData },
-      ],
-      ...(managerContactRow.length ? [managerContactRow] : []),
-    ]
-    await telegram(botToken, 'editMessageText', {
-      chat_id: chatId,
-      message_id: messageId,
-      text: updatedText,
-      reply_markup: keyboardRows.length ? { inline_keyboard: keyboardRows } : undefined,
-    })
-  } else {
-    // done — кнопки убираем, добавляем финальный статус
-    const finalText = withStatusLine(currentText, '🟢 Статус заказа: доставлен клиенту ✅')
-    const keyboardRows = managerContactRow.length ? [managerContactRow] : []
-    await telegram(botToken, 'editMessageText', {
-      chat_id: chatId,
-      message_id: messageId,
-      text: finalText,
-      reply_markup: keyboardRows.length ? { inline_keyboard: keyboardRows } : undefined,
-    })
-  }
+  const appUrlBaseStatus = ((config.appUrl as string) || '').replace(/\/$/, '')
+  const dashboardOrderUrlStatus = appUrlBaseStatus
+    ? `${appUrlBaseStatus}/dashboard/orders/${encodeURIComponent(orderId)}`
+    : ''
+  const shopBranchesStatus = await loadActiveShopBranches(event, orderShopId)
+  const nextDbStatus = unifiedFlowEnabled ? mapChatCallbackToOrderStatus(status) : String((orderDetails as any).status || 'new')
+  const updatedText = withStatusLine(currentText, managerStatusLine(status, fulfillmentType))
+  const keyboard =
+    status === 'done'
+      ? buildManagerOrderInlineKeyboard({
+          orderId,
+          fulfillmentType,
+          orderStatus: 'handed_to_customer',
+          customerTelegramId,
+          dashboardOrderUrl: dashboardOrderUrlStatus,
+          branchPickerEnabled: false,
+        })
+      : buildManagerOrderInlineKeyboard({
+          orderId,
+          fulfillmentType,
+          orderStatus: nextDbStatus,
+          customerTelegramId,
+          dashboardOrderUrl: dashboardOrderUrlStatus,
+          etaButtonsEnabled: flowConfig.etaButtonsEnabled,
+          etaPresets: flowConfig.etaPresets,
+          branchPickerEnabled: shopBranchesStatus.length > 1,
+        })
+  await telegram(botToken, 'editMessageText', {
+    chat_id: chatId,
+    message_id: messageId,
+    text: updatedText,
+    reply_markup: keyboard.inline_keyboard.length ? keyboard : undefined,
+  })
 
   await telegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id })
   return { ok: true }

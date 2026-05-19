@@ -40,3 +40,17 @@
 2. Включить MAX для 1-2 пилотных ресторанов.
 3. Проверить retry/fallback на тестовом событии.
 4. Расширять на остальные рестораны поэтапно.
+
+## Операторский чат Telegram (статусы и филиал)
+
+Кнопки в групповом чате менеджера обрабатывает `server/api/webhook.post.ts` (не путать с привязкой чата через `/bind`).
+
+| Симптом | Что проверить |
+|---------|----------------|
+| Кнопки не реагируют | webhook бота tenant’а, `telegram_bot_token` в `shops` |
+| «Нет доступа к заказу» | callback из чужого чата; нужен `manager_chat_id` shop или `manager_group_chat_id` филиала |
+| Нет «Сменить филиал» | в сети один активный филиал (`is_active`); нужно ≥ 2 |
+| Клиент не получил статус | unified flow: смотреть `ORDER_STATUS_CHANGED` в `notification_events`; статус `new` клиенту не шлётся |
+| После смены филиала клиенту пришло лишнее | баг: смена филиала не должна вызывать `ORDER_STATUS_CHANGED` |
+
+Подробная спека: [`features/ORDER_CHAT_OPERATOR_FLOW_RU.md`](../features/ORDER_CHAT_OPERATOR_FLOW_RU.md).

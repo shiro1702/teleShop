@@ -5,6 +5,24 @@
 ---
 ---
 
+## Операторский Telegram: переназначение филиала и статусы самовывоза
+
+**Дата:** 2026-05-15
+
+**Суть:** в групповом чате менеджера по inline-кнопкам можно сменить исполняющий филиал заказа и провести заказ по статусам с учётом `fulfillment_type` (доставка vs самовывоз). Смена филиала не уведомляет клиента; публичные статусы фильтруются отдельно.
+
+**Что появилось:**
+
+- `server/utils/orderChatFlowPure.ts`, `server/utils/orderChatFlow.ts` — callback, клавиатуры, `assignOrderBranchFromChat`.
+- Расширение `server/api/webhook.post.ts` — `brmenu__`, `br{N}__`, `pickup__`.
+- `buildManagerOrderInlineKeyboard` в исходящих уведомлениях (`notifications.ts`).
+- `ready_for_pickup` в цепочке чата и в коротких текстах клиенту.
+- Тесты `tests/orderChatFlow.spec.ts`.
+
+Подробности: [`docs/features/ORDER_CHAT_OPERATOR_FLOW_RU.md`](../features/ORDER_CHAT_OPERATOR_FLOW_RU.md). План автобалансировки: [`docs/features/ORDER_BRANCH_LOAD_BALANCING_RU.md`](../features/ORDER_BRANCH_LOAD_BALANCING_RU.md).
+
+---
+
 ## Согласие на ПДн в модалках входа и cookie-баннер (витрина)
 
 **Дата:** 2026-05-02

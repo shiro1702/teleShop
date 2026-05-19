@@ -2,6 +2,12 @@ import { serverSupabaseServiceRole } from '#supabase/server'
 import type { H3Event } from 'h3'
 import { randomBytes } from 'node:crypto'
 import { getUnifiedFlowConfig } from '~/server/utils/orderFlowActions'
+import {
+  buildCustomerStatusShortText,
+  buildManagerOrderInlineKeyboard,
+  loadActiveShopBranches,
+} from '~/server/utils/orderChatFlow'
+import { normalizeDashboardStatus } from '~/utils/dashboardOrderStatus'
 import { processDueReviewPrompts, scheduleReviewPromptsAfterHanded } from '~/server/utils/reviewPromptFlow'
 
 export type NotificationEventType = 'ORDER_CREATED' | 'ORDER_STATUS_CHANGED'
@@ -22,6 +28,7 @@ export type NotificationEvent = {
     orderNumber: string
     totalAmount: number
     status: string
+    fulfillmentType?: string
   }
   actorContext?: {
     customerTelegramId?: number | null
@@ -241,18 +248,9 @@ function buildCustomerMessage(payload: {
 }
 
 /** Короткие тексты при смене статуса (как кнопки в менеджерском чате), без полного состава заказа. */
-function buildCustomerOrderStatusShortMessage(orderRef: string, status: string): string {
-  const normalized = status.trim().toLowerCase()
-  if (normalized === 'in_progress') {
-    return `👨‍🍳 Ваш заказ ${orderRef} принят в работу. Кухня уже готовит ваш заказ.`
-  }
-  if (normalized === 'out_for_delivery') {
-    return `🚚 Ваш заказ ${orderRef} передан курьеру и уже в пути.`
-  }
-  if (normalized === 'handed_to_customer') {
-    return `✅ Ваш заказ ${orderRef} доставлен. Спасибо, что выбрали нас! Приятного аппетита 🥘🍣🍜`
-  }
-  return `📦 Заказ ${orderRef}\nСтатус: ${getStatusLabel(status)}`
+function buildCustomerOrderStatusShortMessage(orderRef: string, status: string, fulfillmentType: string): string | null {
+  const normalized = normalizeDashboardStatus(status)
+  return buildCustomerStatusShortText(orderRef, normalized, fulfillmentType)
 }
 
 function formatRub(value: number): string {
@@ -502,7 +500,8 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
     cityName,
   })
   const orderRef = formatOrderRef(orderDetails.orderNumber, input.orderContext.orderId)
-  const customerStatusShortText = buildCustomerOrderStatusShortMessage(orderRef, orderDetails.status)
+  const fulfillmentForCustomer = input.orderContext.fulfillmentType || orderDetails.fulfillmentType
+  const customerStatusShortText = buildCustomerOrderStatusShortMessage(orderRef, orderDetails.status, fulfillmentForCustomer)
 
   const maxBaseUrl = String((config as any).maxApiBaseUrl || '')
   const maxToken = String((config as any).maxApiToken || '')
@@ -526,11 +525,15 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
     const key = buildNotificationKey(input.eventType, input.orderContext.orderId, recipient.channel, recipient.targetType, recipient.targetId)
     const isManagerTarget = recipient.targetType === 'manager_group' || recipient.targetType === 'manager_user'
     const isCustomerTarget = recipient.targetType === 'customer'
+    if (isCustomerTarget && input.eventType === 'ORDER_STATUS_CHANGED' && !customerStatusShortText) {
+      continue
+    }
+
     const text =
       isManagerTarget && input.eventType === 'ORDER_CREATED'
         ? managerText
         : isCustomerTarget && input.eventType === 'ORDER_STATUS_CHANGED'
-          ? customerStatusShortText
+          ? (customerStatusShortText || customerText)
           : customerText
 
     await upsertNotificationEvent(event, {
@@ -548,45 +551,24 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
         const customerMiniAppUrl = customerBridgeToken && telegramBotName
           ? `https://t.me/${telegramBotName}?startapp=${encodeURIComponent(customerBridgeToken)}`
           : ''
-        const managerKeyboard = input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
-          ? (() => {
-              const etaRows: Array<Array<Record<string, string>>> = []
-              return {
-                inline_keyboard: [
-                  [
-                    { text: '👨‍🍳 Принять в работу', callback_data: `work__${input.orderContext.orderId}` },
-                    { text: '⏱ Задержка (кухня)', callback_data: `delayWork__${input.orderContext.orderId}` },
-                  ],
-                  ...etaRows,
-                  [
-                    ...(input.actorContext?.customerTelegramId
-                      ? [{ text: '✉️ Написать клиенту', url: `tg://user?id=${input.actorContext.customerTelegramId}` }]
-                      : []),
-                  ],
-                  ...(dashboardOrderUrl ? [[{ text: '📋 Открыть заказ (менеджер)', url: dashboardOrderUrl }]] : []),
-                ].filter((row) => Array.isArray(row) && row.length > 0),
-              }
-            })()
-          : null
-        const managerKeyboardWithEta = input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
-          ? {
-              ...(managerKeyboard || {}),
-              inline_keyboard: [
-                ...(managerKeyboard?.inline_keyboard || []),
-              ],
-            }
-          : null
         const flowConfig = await getUnifiedFlowConfig(event, input.tenantContext.restaurantId)
-        if (managerKeyboardWithEta && flowConfig.etaButtonsEnabled) {
-          const firstRow = flowConfig.etaPresets.slice(0, 4).map((mins) => ({
-            text: `⌛ ${mins} мин`,
-            callback_data: `etaWork_${mins}_${input.orderContext.orderId}`,
-          }))
-          if (firstRow.length) {
-            managerKeyboardWithEta.inline_keyboard.splice(1, 0, firstRow)
-          }
-        }
-        const finalManagerKeyboard = managerKeyboardWithEta
+        const shopBranches =
+          input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
+            ? await loadActiveShopBranches(event, input.tenantContext.shopId)
+            : []
+        const finalManagerKeyboard =
+          input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
+            ? buildManagerOrderInlineKeyboard({
+                orderId: input.orderContext.orderId,
+                fulfillmentType: orderDetails.fulfillmentType,
+                orderStatus: orderDetails.status,
+                customerTelegramId: input.actorContext?.customerTelegramId ?? null,
+                dashboardOrderUrl,
+                etaButtonsEnabled: flowConfig.etaButtonsEnabled,
+                etaPresets: flowConfig.etaPresets,
+                branchPickerEnabled: shopBranches.length > 1,
+              })
+            : null
         const customerKeyboardRows: Array<Array<Record<string, string>>> = []
         if (recipient.targetType === 'customer') {
           if (input.eventType === 'ORDER_CREATED') {
