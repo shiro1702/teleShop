@@ -8,8 +8,6 @@ export default defineNuxtPlugin(() => {
 
   // Если Mini App запущен со start_param (из веб-сайта) — восстановим корзину по токену
   const startParam = webApp.value.initDataUnsafe?.start_param
-  console.log('[TMA][Bridge] initDataUnsafe:', webApp.value.initDataUnsafe)
-  console.log('[TMA][Bridge] start_param:', startParam)
   if (startParam) {
     if (startParam.startsWith('order_')) {
       $fetch<{ ok: boolean; orderId?: string; shopId?: string }>('/api/order-bridge', {
@@ -42,7 +40,6 @@ export default defineNuxtPlugin(() => {
             fallbackScopeKey,
           )
           setOrderContinuationHint('web_to_telegram')
-          console.log('[TMA][Bridge] Restoring cart from token, items:', res.items.length)
         }
       })
       .catch((err) => {
