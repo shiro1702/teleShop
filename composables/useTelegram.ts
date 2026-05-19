@@ -102,11 +102,13 @@ export function useTelegram() {
     return typeof webApp !== 'undefined' && !!webApp.initData
   })
 
-  /** MAX мини-приложение: глобальный window.WebApp с initData (не пересекается с Telegram.WebApp). */
+  /** MAX мини-приложение: глобальный window.WebApp (не Telegram.WebApp). initData может быть только в hash/sessionStorage. */
   const isMaxMiniApp = computed(() => {
     if (!isClient) return false
     if (window.Telegram?.WebApp?.initData) return false
-    return typeof window.WebApp !== 'undefined' && !!window.WebApp?.initData
+    if (typeof window.WebApp === 'undefined') return false
+    const init = window.WebApp?.initData || readCachedInitData() || readInitDataFromUrl()
+    return !!init
   })
 
   const isMessengerMiniApp = computed(() => isTelegram.value || isMaxMiniApp.value)

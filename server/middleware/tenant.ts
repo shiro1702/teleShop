@@ -15,6 +15,7 @@ const REQUIRED_PATHS = [
   '/api/order',
   '/api/checkout/create',
   '/api/client-order-status',
+  '/api/customer/addresses',
   '/api/tenant',
   '/api/products',
   '/api/restaurants',

@@ -1,14 +1,25 @@
 import { useTelegram } from '~/composables/useTelegram'
 
+/** Нормализует ответ MAX DeviceStorage / Telegram CloudStorage. */
+export function parseMessengerStorageValue(raw: unknown): string | null {
+  if (raw == null) return null
+  if (typeof raw === 'string') return raw
+  if (typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  if (typeof o.value === 'string') return o.value
+  if (o.value === null) return null
+  return null
+}
+
 /**
  * Облако Telegram CloudStorage vs MAX DeviceStorage — единый async API для ключей checkout/адресов.
  */
 export function useMessengerStorage() {
-  const { isTelegram, isMaxMiniApp, webApp } = useTelegram()
+  const { isTelegram, isMaxMiniApp } = useTelegram()
 
   function canUseMessengerStorage(): boolean {
     if (!process.client) return false
-    if (isTelegram.value && (webApp.value as { CloudStorage?: unknown } | null)?.CloudStorage) {
+    if (isTelegram.value && window.Telegram?.WebApp?.CloudStorage) {
       return true
     }
     if (isMaxMiniApp.value && window.WebApp?.DeviceStorage) {
@@ -18,29 +29,39 @@ export function useMessengerStorage() {
   }
 
   async function setItem(key: string, value: string): Promise<void> {
-    if (isTelegram.value && (webApp.value as any)?.CloudStorage) {
+    const tg = window.Telegram?.WebApp
+    if (isTelegram.value && tg?.CloudStorage) {
       await new Promise<void>((resolve) => {
-        ;(webApp.value as any).CloudStorage.setItem(key, value, () => resolve())
+        ;(tg as any).CloudStorage.setItem(key, value, () => resolve())
       })
       return
     }
     if (isMaxMiniApp.value && window.WebApp?.DeviceStorage) {
-      await window.WebApp.DeviceStorage.setItem(key, value)
+      try {
+        await window.WebApp.DeviceStorage.setItem(key, value)
+      } catch (err) {
+        console.warn('[messengerStorage] DeviceStorage.setItem failed', err)
+      }
     }
   }
 
   async function getItem(key: string): Promise<string | null> {
-    if (isTelegram.value && (webApp.value as any)?.CloudStorage) {
+    const tg = window.Telegram?.WebApp
+    if (isTelegram.value && tg?.CloudStorage) {
       return new Promise((resolve) => {
-        ;(webApp.value as any).CloudStorage.getItem(key, (_err: unknown, v: string | null) => {
+        ;(tg as any).CloudStorage.getItem(key, (_err: unknown, v: string | null) => {
           resolve(v ?? null)
         })
       })
     }
     if (isMaxMiniApp.value && window.WebApp?.DeviceStorage) {
-      const res = await window.WebApp.DeviceStorage.getItem(key)
-      if (res && typeof res.value === 'string') return res.value
-      return null
+      try {
+        const res = await window.WebApp.DeviceStorage.getItem(key)
+        return parseMessengerStorageValue(res)
+      } catch (err) {
+        console.warn('[messengerStorage] DeviceStorage.getItem failed', err)
+        return null
+      }
     }
     return null
   }

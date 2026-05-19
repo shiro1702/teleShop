@@ -5,6 +5,7 @@ import {
   uniqueNonEmptyTokens,
   validateWebAppInitDataAnyToken,
 } from '~/server/utils/messengerInitData'
+import { ensureMaxCustomerProfile } from '~/server/utils/ensureMaxCustomerProfile'
 
 function maskToken(token: string | null | undefined): string {
   if (typeof token !== 'string') return 'missing'
@@ -84,14 +85,19 @@ export async function resolveCustomerProfileId(event: H3Event, botToken: string 
     const maxUser = validateWebAppInitDataAnyToken(initData, maxTokens)
     if (maxUser) {
       const client = await serverSupabaseServiceRole(event)
+      const maxId = String(maxUser.id)
       const { data: profile } = await client
         .from('profiles')
         .select('id')
-        .eq('max_user_id', String(maxUser.id))
+        .eq('max_user_id', maxId)
         .maybeSingle()
       if (profile?.id) return String(profile.id)
-      console.info('[auth:customerProfile] max profile missing', {
-        maxUserId: String(maxUser.id),
+
+      const ensured = await ensureMaxCustomerProfile(event, maxId)
+      if (ensured) return ensured
+
+      console.info('[auth:customerProfile] max profile missing after ensure', {
+        maxUserId: maxId,
         path: event.path,
       })
     }

@@ -232,9 +232,13 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
 
   async function saveAddressToServer(payload: SaveAddressPayload): Promise<SavedAddressItem | null> {
     if (!canUseAddressApi()) return null
+    const inMemoryBefore = savedAddresses.value.slice()
     await persistAddresses()
+    const dedupe = addressDedupeKey({ address: payload.addressLine, flat: payload.flat })
+    const localMatch = () => savedAddresses.value.find((a) => addressDedupeKey(a) === dedupe) ?? null
+
     try {
-      await $fetch('/api/customer/addresses', {
+      const postRes = await $fetch<{ ok: boolean; skipped?: boolean }>('/api/customer/addresses', {
         method: 'POST',
         headers: buildAuthHeaders(),
         body: {
@@ -245,12 +249,29 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
           lon: normalizeCoords(payload.lat, payload.lon).lon,
         },
       })
+      if (postRes?.skipped) {
+        await persistAddresses()
+        const matched = localMatch()
+        if (matched?.id) selectedAddressId.value = matched.id
+        return matched
+      }
       await loadSavedAddresses({ force: true })
-      const dedupe = addressDedupeKey({ address: payload.addressLine, flat: payload.flat })
-      const matched = savedAddresses.value.find((a) => addressDedupeKey(a) === dedupe) ?? null
+      let matched = localMatch()
+      if (!matched && inMemoryBefore.length > 0) {
+        savedAddresses.value = mergeAddressesDedupe(savedAddresses.value, inMemoryBefore)
+        await persistAddresses()
+        matched = localMatch()
+      }
       if (matched?.id) selectedAddressId.value = matched.id
       return matched
     } catch {
+      if (inMemoryBefore.length > 0) {
+        savedAddresses.value = mergeAddressesDedupe(inMemoryBefore, savedAddresses.value)
+        await persistAddresses()
+        const matched = localMatch()
+        if (matched?.id) selectedAddressId.value = matched.id
+        return matched
+      }
       return null
     }
   }
@@ -380,7 +401,11 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
             if (addressBookContextKey.value !== loadKey) return
             const guestAfter = await readGuestAddressesForMerge()
             if (addressBookContextKey.value !== loadKey) return
+            const inMemoryDuringLoad = savedAddresses.value.slice()
             savedAddresses.value = mergeAddressesDedupe(apiItems, guestAfter)
+            if (inMemoryDuringLoad.length > 0) {
+              savedAddresses.value = mergeAddressesDedupe(savedAddresses.value, inMemoryDuringLoad)
+            }
             if (!selectedAddressId.value && savedAddresses.value[0]?.id) {
               selectedAddressId.value = savedAddresses.value[0].id
             } else if (selectedAddressId.value && !savedAddresses.value.some((a) => a.id === selectedAddressId.value)) {
