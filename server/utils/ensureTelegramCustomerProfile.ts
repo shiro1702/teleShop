@@ -30,11 +30,12 @@ export async function ensureTelegramCustomerProfile(
   if (!Number.isFinite(telegramId)) return null
 
   const serviceClient = await serverSupabaseServiceRole(event)
-  const { data: existing } = await serviceClient
+  const { data: existingRows } = await serviceClient
     .from('profiles')
     .select('id')
     .eq('telegram_id', telegramId)
-    .maybeSingle()
+    .limit(1)
+  const existing = Array.isArray(existingRows) ? existingRows[0] : null
   if (existing?.id) return String(existing.id)
 
   const config = useRuntimeConfig()

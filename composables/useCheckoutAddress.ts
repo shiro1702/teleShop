@@ -350,6 +350,15 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
       } else {
         refreshZone(item.lat, item.lon)
       }
+      if (isMessengerMiniApp.value) {
+        await saveAddress({
+          addressLine: item.displayName,
+          flat: flat.value.trim() || null,
+          comment: comment.value.trim() || null,
+          lat: item.lat,
+          lon: item.lon,
+        })
+      }
     }
   }
 
@@ -495,7 +504,10 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     const local = upsertAddressLocal(payload)
     if (canUseAddressApi()) {
       const server = await saveAddressToServer(payload)
-      if (server) return server
+      if (server) {
+        await persistAddresses()
+        return server
+      }
     }
     await persistAddresses()
     return local

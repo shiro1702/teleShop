@@ -31,9 +31,18 @@ export function useMessengerStorage() {
   async function setItem(key: string, value: string): Promise<void> {
     const tg = window.Telegram?.WebApp
     if (isTelegram.value && tg?.CloudStorage) {
-      await new Promise<void>((resolve) => {
-        ;(tg as any).CloudStorage.setItem(key, value, () => resolve())
-      })
+      try {
+        await new Promise<void>((resolve) => {
+          ;(tg as any).CloudStorage.setItem(key, value, (err: unknown) => {
+            if (err) {
+              console.warn('[messengerStorage] CloudStorage.setItem failed', err)
+            }
+            resolve()
+          })
+        })
+      } catch (err) {
+        console.warn('[messengerStorage] CloudStorage.setItem threw', err)
+      }
       return
     }
     if (isMaxMiniApp.value && window.WebApp?.DeviceStorage) {
