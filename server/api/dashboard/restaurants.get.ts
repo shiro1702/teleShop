@@ -1,7 +1,6 @@
 import { createError, defineEventHandler, getQuery } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireDashboardAccess } from '~/server/utils/dashboard'
-import { applyGlobalFulfillmentPolicy } from '~/server/utils/platformOperationSettings'
 import { getDefaultOrganizationSettings, getOrganizationSettings } from '~/server/utils/organizationStyle'
 import { normalizeWeeklyWorkingHours } from '~/utils/workingHours'
 
@@ -88,7 +87,7 @@ export default defineEventHandler(async (event) => {
     const client = await clientPromise
     const { data, error } = await client
       .from('restaurants')
-      .select('id,name,address,is_active,created_at')
+      .select('id,name,address,city_id,cities(name),is_active,created_at')
       .eq('shop_id', access.shopId)
       .order('created_at', { ascending: false })
     if (error) {
@@ -98,13 +97,21 @@ export default defineEventHandler(async (event) => {
     return {
       ok: true,
       shopId: access.shopId,
-      items: (data ?? []).map((row: any) => ({
-        id: row.id,
-        name: row.name,
-        address: row.address,
-        isActive: row.is_active === true,
-        createdAt: row.created_at,
-      })),
+      items: (data ?? []).map((row: any) => {
+        const cityRow = Array.isArray(row.cities) ? row.cities[0] : row.cities
+        const cityName = typeof cityRow?.name === 'string' && cityRow.name.trim().length
+          ? cityRow.name.trim()
+          : null
+        return {
+          id: row.id,
+          name: row.name,
+          address: row.address,
+          cityId: typeof row.city_id === 'string' ? row.city_id : null,
+          cityName,
+          isActive: row.is_active === true,
+          createdAt: row.created_at,
+        }
+      }),
     }
   }
 
@@ -112,8 +119,7 @@ export default defineEventHandler(async (event) => {
     getOrganizationSettings(event, access.shopId),
     clientPromise,
   ])
-  const allowedModes = await applyGlobalFulfillmentPolicy(event, access.shopId, org.ops.fulfillmentTypes)
-  const allowedSet = new Set(allowedModes)
+  const allowedSet = new Set(org.ops.fulfillmentTypes)
   const hallMode = org.ops.dineInHallMode
   const hallOrderingEnabled = allowedSet.has('dine-in') && hallMode !== 'qr-menu-browse'
   let data: RestaurantFallbackRow[] | null = null

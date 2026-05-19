@@ -141,7 +141,7 @@ onMounted(async () => {
   pending.value = true
   errorMessage.value = null
   try {
-    const res = await fetch('/api/dashboard/restaurants')
+    const res = await fetch('/api/dashboard/restaurants?branchList=1')
     if (!res.ok) {
       throw new Error('Не удалось загрузить филиалы')
     }
