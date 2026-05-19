@@ -8,6 +8,7 @@ import {
   sendTelegram,
   type ServiceCallType,
 } from '~/server/utils/serviceCalls'
+import { isHallOrderFulfillmentType } from '~/utils/fulfillmentPreference'
 import { getOrganizationSettings } from '~/server/utils/organizationStyle'
 import {
   getMaxBotTokenForShop,
@@ -94,7 +95,7 @@ export default defineEventHandler(async (event) => {
   if (orderId) {
     let directOrderQuery = client
       .from('orders')
-      .select('id,shop_id,restaurant_id,customer_profile_id,customer_telegram_id,order_number')
+      .select('id,shop_id,restaurant_id,customer_profile_id,customer_telegram_id,order_number,fulfillment_type')
       .eq('id', orderId)
     if (resolvedProfileFilterId) {
       directOrderQuery = directOrderQuery.eq('customer_profile_id', resolvedProfileFilterId)
@@ -108,7 +109,7 @@ export default defineEventHandler(async (event) => {
   } else if (restaurantIdFromBody && resolvedProfileFilterId) {
     const { data: fallbackOrder } = await client
       .from('orders')
-      .select('id,shop_id,restaurant_id,customer_profile_id,customer_telegram_id,order_number')
+      .select('id,shop_id,restaurant_id,customer_profile_id,customer_telegram_id,order_number,fulfillment_type')
       .eq('customer_profile_id', resolvedProfileFilterId)
       .eq('restaurant_id', restaurantIdFromBody)
       .in('status', ['new', 'in_progress', 'ready_for_pickup', 'out_for_delivery'])
@@ -120,7 +121,7 @@ export default defineEventHandler(async (event) => {
   } else if (resolvedProfileFilterId) {
     const { data: latestOrder } = await client
       .from('orders')
-      .select('id,shop_id,restaurant_id,customer_profile_id,customer_telegram_id,order_number')
+      .select('id,shop_id,restaurant_id,customer_profile_id,customer_telegram_id,order_number,fulfillment_type')
       .eq('customer_profile_id', resolvedProfileFilterId)
       .in('status', ['new', 'in_progress', 'ready_for_pickup', 'out_for_delivery'])
       .order('created_at', { ascending: false })
@@ -129,6 +130,14 @@ export default defineEventHandler(async (event) => {
     order = latestOrder
     if (latestOrder?.id) orderId = String(latestOrder.id)
   }
+
+  if (order && orderId && !isHallOrderFulfillmentType(String((order as any).fulfillment_type || ''))) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Сервис в зале доступен только для заказов, оформленных в зале',
+    })
+  }
+
   let shopId = ''
   let restaurantId = ''
   if (order && (order as any).restaurant_id) {

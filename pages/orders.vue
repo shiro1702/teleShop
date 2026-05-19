@@ -172,7 +172,7 @@
             </li>
           </ul>
         </div>
-        <div class="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+        <div v-if="showOrderHallService" class="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
           <h3 class="text-sm font-semibold text-gray-900">Сервис в зале</h3>
           <p class="mt-1 text-xs text-gray-600">Можно отправить запрос персоналу прямо из заказа.</p>
           <div class="mt-2 flex flex-wrap gap-2">
@@ -361,6 +361,7 @@ import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch, t
 import { useRoute } from 'vue-router'
 import { useTenant } from '~/composables/useTenant'
 import { useTelegram } from '~/composables/useTelegram'
+import { isHallOrderFulfillmentType } from '~/utils/fulfillmentPreference'
 
 type ClientOrder = {
   id: string
@@ -606,6 +607,9 @@ const activeOrderStatuses = new Set(['new', 'in_progress', 'ready_for_pickup', '
 
 const detailErrorMessage = ref('')
 const detailOrder = ref<ClientOrderStatusDetail | null>(null)
+const showOrderHallService = computed(() =>
+  detailOrder.value != null && isHallOrderFulfillmentType(detailOrder.value.fulfillmentType),
+)
 const serviceCallSubmitting = ref(false)
 const serviceCallMessage = ref('')
 const serviceCallMessageType = ref<'ok' | 'error'>('ok')
@@ -829,7 +833,12 @@ async function loadDetailOrderStatus() {
     }
     detailOrder.value = json.order
     syncListOrderWithDetail(json.order)
-    await loadServiceCalls()
+    if (isHallOrderFulfillmentType(json.order.fulfillmentType)) {
+      await loadServiceCalls()
+    } else {
+      serviceCalls.value = []
+      serviceCallMessage.value = ''
+    }
     const st = (json.order.status || '').toLowerCase()
     if (st === 'cancelled' || st === 'handed_to_customer' || st === 'done') {
       if (detailPollHandle != null) {
@@ -860,7 +869,12 @@ async function loadDetailOrderStatus() {
         detailOrder.value = retryJson.order
         syncListOrderWithDetail(retryJson.order)
         detailErrorMessage.value = ''
-        await loadServiceCalls()
+        if (isHallOrderFulfillmentType(retryJson.order.fulfillmentType)) {
+          await loadServiceCalls()
+        } else {
+          serviceCalls.value = []
+          serviceCallMessage.value = ''
+        }
       } catch (retryError: any) {
         detailErrorMessage.value = retryError?.message || 'Не удалось загрузить статус заказа'
       }
@@ -904,7 +918,7 @@ function serviceCallStatusLabel(status: string) {
 }
 
 async function loadServiceCalls() {
-  if (!selectedOrderId.value) return
+  if (!selectedOrderId.value || !showOrderHallService.value) return
   const res = await fetch(`/api/service-calls?orderId=${encodeURIComponent(selectedOrderId.value)}`, {
     method: 'GET',
     headers: requestHeaders(),
@@ -924,7 +938,7 @@ async function loadServiceCalls() {
 }
 
 async function createServiceCall(callType: 'call_waiter' | 'call_hookah' | 'request_bill') {
-  if (!selectedOrderId.value) return
+  if (!selectedOrderId.value || !showOrderHallService.value) return
   serviceCallSubmitting.value = true
   serviceCallMessage.value = ''
   const idempotencyKey = `${callType}:${Date.now()}`
