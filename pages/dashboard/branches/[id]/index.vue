@@ -314,9 +314,75 @@
       </ul>
     </div>
   </section>
+
+  <section
+    v-else-if="loading"
+    class="space-y-4"
+    aria-busy="true"
+    aria-label="Загрузка карточки филиала"
+  >
+    <div class="animate-pulse">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div class="space-y-2">
+          <div class="h-8 w-56 rounded-lg bg-gray-200" />
+          <div class="h-4 w-40 rounded bg-gray-100" />
+          <div class="flex gap-3 pt-1">
+            <div class="h-4 w-28 rounded bg-gray-100" />
+            <div class="h-4 w-24 rounded bg-gray-100" />
+            <div class="h-8 w-36 rounded-lg bg-gray-200" />
+          </div>
+        </div>
+        <div class="h-6 w-16 rounded-full bg-gray-100" />
+      </div>
+    </div>
+
+    <div class="animate-pulse rounded-xl border border-gray-200 bg-white p-4">
+      <div class="h-4 w-32 rounded bg-gray-200" />
+      <div class="mt-3 h-3 w-full max-w-md rounded bg-gray-100" />
+      <div class="mt-4 flex flex-col gap-4 sm:flex-row">
+        <div class="h-[220px] w-[220px] rounded-lg bg-gray-100" />
+        <div class="min-w-0 flex-1 space-y-2">
+          <div class="h-10 w-full rounded-lg bg-gray-100" />
+          <div class="h-9 w-36 rounded-lg bg-gray-200" />
+        </div>
+      </div>
+    </div>
+
+    <div class="animate-pulse rounded-xl border border-gray-200 bg-white p-4">
+      <div class="h-4 w-36 rounded bg-gray-200" />
+      <div class="mt-3 h-10 w-full max-w-xs rounded-lg bg-gray-100" />
+      <div class="mt-2 h-16 w-full rounded-lg bg-gray-50" />
+    </div>
+
+    <div class="animate-pulse grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-2">
+      <div class="h-16 rounded-lg bg-gray-100" />
+      <div class="h-16 rounded-lg bg-gray-100" />
+      <div class="h-5 w-28 rounded bg-gray-100" />
+      <div class="h-5 w-28 rounded bg-gray-100" />
+      <div class="md:col-span-2 space-y-2">
+        <div class="h-24 rounded-lg bg-gray-50" />
+        <div class="flex gap-2">
+          <div class="h-9 w-24 rounded-lg bg-gray-200" />
+          <div class="h-9 w-32 rounded-lg bg-gray-100" />
+        </div>
+      </div>
+    </div>
+
+    <div class="animate-pulse rounded-xl border border-gray-200 bg-white p-4">
+      <div class="h-4 w-44 rounded bg-gray-200" />
+      <div class="mt-3 space-y-2">
+        <div class="h-8 rounded bg-gray-50" />
+        <div class="h-8 rounded bg-gray-50" />
+      </div>
+    </div>
+  </section>
+
   <section v-else>
     <h1 class="text-2xl font-semibold">Филиал не найден</h1>
     <p class="mt-2 text-sm text-gray-600">Проверьте ссылку или вернитесь к списку филиалов.</p>
+    <NuxtLink to="/dashboard/branches" class="mt-4 inline-block text-sm text-primary hover:underline">
+      К списку филиалов
+    </NuxtLink>
   </section>
 </template>
 
@@ -355,6 +421,7 @@ type RestaurantTable = {
   isActive: boolean
 }
 
+const loading = ref(true)
 const branch = ref<Branch | null>(null)
 const form = ref({
   name: '',
@@ -622,52 +689,57 @@ async function rebuildTableQrData() {
 }
 
 onMounted(async () => {
-  const [restaurantsRes, orgRes, storefrontRes] = await Promise.all([
-    fetch('/api/dashboard/restaurants'),
-    fetch('/api/dashboard/organization/style'),
-    fetch('/api/dashboard/storefront'),
-  ])
-  if (storefrontRes.ok) {
-    const sf = (await storefrontRes.json()) as { ok?: boolean; path?: string }
-    if (sf?.ok && typeof sf.path === 'string' && sf.path.trim()) {
-      storefrontPath.value = sf.path.trim()
-    }
-  }
-  if (!restaurantsRes.ok) return
-  const payload = await restaurantsRes.json() as { items?: Branch[] }
-  const found = (payload.items || []).find((item) => item.id === String(route.params.id)) || null
-  branch.value = found
-  if (orgRes.ok) {
-    const orgPayload = await orgRes.json() as {
-      settings?: {
-        ops?: {
-          fulfillmentTypes?: Array<'delivery' | 'pickup' | 'dine-in'>
-          dineInHallMode?: 'qr-menu-browse' | 'to-table' | 'pickup-point'
-        }
+  loading.value = true
+  try {
+    const [restaurantsRes, orgRes, storefrontRes] = await Promise.all([
+      fetch('/api/dashboard/restaurants'),
+      fetch('/api/dashboard/organization/style'),
+      fetch('/api/dashboard/storefront'),
+    ])
+    if (storefrontRes.ok) {
+      const sf = (await storefrontRes.json()) as { ok?: boolean; path?: string }
+      if (sf?.ok && typeof sf.path === 'string' && sf.path.trim()) {
+        storefrontPath.value = sf.path.trim()
       }
     }
-    const modes = orgPayload.settings?.ops?.fulfillmentTypes
-    if (Array.isArray(modes) && modes.length) allowedModes.value = modes
-    const hall = orgPayload.settings?.ops?.dineInHallMode
-    if (hall === 'qr-menu-browse' || hall === 'to-table' || hall === 'pickup-point') {
-      orgDineInHallMode.value = hall
+    if (orgRes.ok) {
+      const orgPayload = await orgRes.json() as {
+        settings?: {
+          ops?: {
+            fulfillmentTypes?: Array<'delivery' | 'pickup' | 'dine-in'>
+            dineInHallMode?: 'qr-menu-browse' | 'to-table' | 'pickup-point'
+          }
+        }
+      }
+      const modes = orgPayload.settings?.ops?.fulfillmentTypes
+      if (Array.isArray(modes) && modes.length) allowedModes.value = modes
+      const hall = orgPayload.settings?.ops?.dineInHallMode
+      if (hall === 'qr-menu-browse' || hall === 'to-table' || hall === 'pickup-point') {
+        orgDineInHallMode.value = hall
+      }
     }
-  }
-  if (found) {
-    form.value = {
-      name: found.name,
-      address: found.address,
-      lat: found.lat,
-      lon: found.lon,
-      supportsDelivery: found.supportsDelivery && allowedModesSet.value.has('delivery'),
-      supportsPickup: found.supportsPickup && allowedModesSet.value.has('pickup'),
-      supportsDineIn: found.supportsDineIn && allowedModesSet.value.has('dine-in'),
-      supportsQrMenu: found.supportsQrMenu,
-      supportsShowcaseOrder: found.supportsShowcaseOrder,
-      useOrganizationWorkingHours: found.useOrganizationWorkingHours !== false,
-      workingHours: found.workingHours,
+    if (!restaurantsRes.ok) return
+    const payload = await restaurantsRes.json() as { items?: Branch[] }
+    const found = (payload.items || []).find((item) => item.id === String(route.params.id)) || null
+    branch.value = found
+    if (found) {
+      form.value = {
+        name: found.name,
+        address: found.address,
+        lat: found.lat,
+        lon: found.lon,
+        supportsDelivery: found.supportsDelivery && allowedModesSet.value.has('delivery'),
+        supportsPickup: found.supportsPickup && allowedModesSet.value.has('pickup'),
+        supportsDineIn: found.supportsDineIn && allowedModesSet.value.has('dine-in'),
+        supportsQrMenu: found.supportsQrMenu,
+        supportsShowcaseOrder: found.supportsShowcaseOrder,
+        useOrganizationWorkingHours: found.useOrganizationWorkingHours !== false,
+        workingHours: found.workingHours,
+      }
+      await loadTables()
     }
-    await loadTables()
+  } finally {
+    loading.value = false
   }
 })
 
