@@ -110,8 +110,16 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
   let restaurantsLoadInFlightKey: string | null = null
   let restaurantsLoadInFlightPromise: Promise<void> | null = null
 
+  function normalizeShopRef(value: string | null | undefined): string {
+    return typeof value === 'string' ? value.trim() : ''
+  }
+
+  function hasRestaurantLoadContext(): boolean {
+    return Boolean(normalizeShopRef(params.shopIdFromRoute.value) || messengerInitData.value)
+  }
+
   function getRestaurantsLoadKey(): string {
-    const shop = typeof params.shopIdFromRoute.value === 'string' ? params.shopIdFromRoute.value.trim() : ''
+    const shop = normalizeShopRef(params.shopIdFromRoute.value)
     const festival = typeof params.festivalSlug?.value === 'string' ? params.festivalSlug.value.trim() : ''
     const init = messengerInitData.value ? '1' : '0'
     return `${shop}\t${festival}\t${init}`
@@ -324,6 +332,10 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
   )
 
   async function loadRestaurants(options?: { force?: boolean }) {
+    if (!hasRestaurantLoadContext()) {
+      return
+    }
+
     const loadKey = getRestaurantsLoadKey()
 
     if (
@@ -364,7 +376,9 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
       } catch {
         // keep fallback behavior for local/dev
       } finally {
-        restaurantsLoaded.value = true
+        if (hasRestaurantLoadContext()) {
+          restaurantsLoaded.value = true
+        }
       }
     }
 

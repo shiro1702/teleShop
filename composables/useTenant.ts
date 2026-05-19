@@ -1,6 +1,7 @@
 import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { LocationQueryValue } from 'vue-router'
+import { useTelegram } from '~/composables/useTelegram'
 
 type TenantTheme = Record<string, string>
 type TenantState = {
@@ -122,6 +123,7 @@ const GLOBAL_THEME_VAR_KEYS = [
 
 export function useTenant() {
   const route = useRoute()
+  const { buildMessengerAuthHeaders } = useTelegram()
   const isDashboardRoute = computed(() => {
     const routePath = typeof route.path === 'string' ? route.path : ''
     if (routePath.startsWith('/dashboard')) return true
@@ -383,7 +385,7 @@ export function useTenant() {
           uiSettings?: Record<string, unknown>
         }>('/api/tenant', {
           query: Object.keys(query).length ? query : undefined,
-          headers: tenantRef ? { 'x-shop-id': tenantRef } : undefined,
+          headers: buildMessengerAuthHeaders(tenantRef ? { 'x-shop-id': tenantRef } : undefined),
         })
         if (res?.ok) {
           applyTenant(res)

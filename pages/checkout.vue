@@ -1526,6 +1526,9 @@ const checkoutXShopId = computed(() => {
   const fromTenant = typeof tenant.value.shopId === 'string' ? tenant.value.shopId.trim() : ''
   return fromTenant || shopIdFromRoute.value
 })
+
+/** Для загрузки филиалов: предпочитаем UUID тенанта (стабильнее в TMA после гидратации). */
+const checkoutShopIdForRestaurants = computed(() => checkoutXShopId.value || shopIdFromRoute.value)
 function checkoutXShopIdHeaders(): { 'x-shop-id': string } | undefined {
   const id = checkoutXShopId.value
   return id ? { 'x-shop-id': id } : undefined
@@ -1630,7 +1633,7 @@ const {
   getRestaurantFulfillmentTypes,
   loadRestaurants,
 } = useCheckoutTenantRestaurants({
-  shopIdFromRoute,
+  shopIdFromRoute: checkoutShopIdForRestaurants,
   festivalSlug,
   pickupPointsConfigRaw,
   fulfillmentTypesConfigRaw,
@@ -3234,6 +3237,16 @@ watch(
   { deep: true },
 )
 
+async function syncFulfillmentAfterRestaurantsLoad() {
+  await loadRestaurants()
+  if (availableFulfillmentTypes.value.length) {
+    state.fulfillmentType = resolveCheckoutFulfillment(
+      availableFulfillmentTypes.value,
+      state.fulfillmentType,
+    ) ?? state.fulfillmentType
+  }
+}
+
 onMounted(async () => {
   if (isMessengerMiniApp.value) {
     expandMessengerViewport()
@@ -3244,11 +3257,17 @@ onMounted(async () => {
         '/api/tenant/resolve-canonical',
         {
           query: { shop_id: shopIdFromRoute.value },
+          headers: buildMessengerAuthHeaders(
+            checkoutXShopIdHeaders(),
+          ),
         },
       )
-      if (canonical?.ok && typeof canonical.checkoutPath === 'string') {
+      const targetPath = typeof canonical?.checkoutPath === 'string' ? canonical.checkoutPath.trim() : ''
+      const currentPath = (route.path || '').replace(/\/+$/, '') || '/'
+      if (canonical?.ok && targetPath && targetPath !== currentPath) {
+        const step = readStepQuery() ?? (cartStore.items.length > 0 ? 2 : 1)
         await navigateTo(
-          { path: canonical.checkoutPath, query: { ...route.query, step: '1' } },
+          { path: targetPath, query: { ...route.query, step: String(step) } },
           { replace: true },
         )
         return
@@ -3268,13 +3287,7 @@ onMounted(async () => {
 
   state.currentStep = deriveEffectiveStep()
 
-  await loadRestaurants()
-  if (availableFulfillmentTypes.value.length) {
-    state.fulfillmentType = resolveCheckoutFulfillment(
-      availableFulfillmentTypes.value,
-      state.fulfillmentType,
-    ) ?? state.fulfillmentType
-  }
+  await syncFulfillmentAfterRestaurantsLoad()
 })
 
 watch(
@@ -3289,13 +3302,12 @@ watch(
 
 watch(shopIdFromRoute, async () => {
   applyCartScope()
-  await loadRestaurants()
-  if (availableFulfillmentTypes.value.length) {
-    state.fulfillmentType = resolveCheckoutFulfillment(
-      availableFulfillmentTypes.value,
-      state.fulfillmentType,
-    ) ?? state.fulfillmentType
-  }
+  await syncFulfillmentAfterRestaurantsLoad()
+})
+
+watch(checkoutShopIdForRestaurants, async (nextId, prevId) => {
+  if (!nextId || nextId === prevId) return
+  await syncFulfillmentAfterRestaurantsLoad()
 })
 
 watch(
@@ -3305,13 +3317,7 @@ watch(
     // В Telegram/MAX initData может появляться после первого mount.
     // Если первая загрузка филиалов прошла без auth-заголовков, повторяем.
     if (initData === prevInitData) return
-    await loadRestaurants()
-    if (availableFulfillmentTypes.value.length) {
-      state.fulfillmentType = resolveCheckoutFulfillment(
-        availableFulfillmentTypes.value,
-        state.fulfillmentType,
-      ) ?? state.fulfillmentType
-    }
+    await syncFulfillmentAfterRestaurantsLoad()
   },
 )
 
