@@ -110,36 +110,4 @@ export async function assignOrderBranchFromChat(
   }
 }
 
-export async function notifyBranchAssignedInTelegram(
-  event: H3Event,
-  args: {
-    botToken: string
-    shopId: string
-    branchId: string
-    orderId: string
-    orderNumber: string | null
-  },
-): Promise<void> {
-  const branches = await loadActiveShopBranches(event, args.shopId)
-  const branch = branches.find((b) => b.id === args.branchId)
-  if (!branch?.managerGroupChatId) return
-  const shortRef =
-    typeof args.orderNumber === 'string' && args.orderNumber.trim()
-      ? `#${args.orderNumber.trim().replace(/\s+/g, '').slice(0, 8)}`
-      : `#${args.orderId.slice(0, 8)}`
-  const text = [
-    '🔀 Заказ переназначен на ваш филиал',
-    `📦 ${shortRef}`,
-    `🏪 ${branch.name}`,
-    'Откройте карточку в чате диспетчера или в дашборде.',
-  ].join('\n')
-  try {
-    await fetch(`https://api.telegram.org/bot${args.botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: branch.managerGroupChatId, text }),
-    })
-  } catch (err) {
-    console.error('notifyBranchAssignedInTelegram:', err)
-  }
-}
+export { syncTelegramChatsAfterBranchTransfer } from '~/server/utils/orderManagerTelegram'

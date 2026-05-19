@@ -144,6 +144,13 @@ export function buildManagerOrderInlineKeyboard(options: ManagerKeyboardOptions)
 }
 
 /** Подпись кнопки филиала в меню смены (лимит Telegram — 64 символа). */
+export function buildOrderTransferredNoticeText(orderRef: string, targetBranchName: string): string {
+  return [
+    `🔀 Заказ ${orderRef} перенесён на филиал «${targetBranchName}»`,
+    'Карточка заказа и кнопки управления — в чате назначенного филиала.',
+  ].join('\n')
+}
+
 export function formatBranchPickerButtonLabel(branchName: string, isCurrent: boolean): string {
   const raw = branchName.trim() || '—'
   const maxLen = isCurrent ? 28 : 32

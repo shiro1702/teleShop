@@ -5,6 +5,7 @@ import {
   buildBranchPickCallback,
   buildBranchPickerInlineKeyboard,
   buildManagerOrderInlineKeyboard,
+  buildOrderTransferredNoticeText,
   formatBranchPickerButtonLabel,
   parseBranchCallback,
   shouldNotifyCustomerOfStatus,
@@ -60,5 +61,11 @@ describe('orderChatFlow callbacks', () => {
     expect(labels[0]).toBe('Центр')
     expect(labels[1]).toBe(formatBranchPickerButtonLabel('Север', true))
     expect(formatBranchPickerButtonLabel('Север', true)).toContain('(сейчас)')
+  })
+
+  it('builds branch transfer notice with target name', () => {
+    const text = buildOrderTransferredNoticeText('#42', 'Север')
+    expect(text).toContain('Север')
+    expect(text).toContain('#42')
   })
 })

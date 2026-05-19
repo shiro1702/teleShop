@@ -10,9 +10,8 @@ import {
   canManageOrderFromManagerChat,
   loadActiveShopBranches,
   mapChatCallbackToOrderStatus,
-  notifyBranchAssignedInTelegram,
   parseBranchCallback,
-  updateManagerMessageBranchLines,
+  syncTelegramChatsAfterBranchTransfer,
 } from '~/server/utils/orderChatFlow'
 import type { ChatFlowOrderStatus } from '~/server/utils/orderChatFlowPure'
 import { isDeliveryFulfillment } from '~/utils/dashboardOrderStatus'
@@ -1049,43 +1048,18 @@ export default defineEventHandler(async (event) => {
       return { ok: true }
     }
 
-    const { data: shopRow } = await supabaseBranch.from('shops').select('name').eq('id', shopId).maybeSingle()
-    const cityId = (orderRow as any).city_id ? String((orderRow as any).city_id) : ''
-    let cityName = '—'
-    if (cityId) {
-      const { data: cityRow } = await supabaseBranch.from('cities').select('name').eq('id', cityId).maybeSingle()
-      cityName = String((cityRow as any)?.name || '—')
-    }
-    const brandName = String((shopRow as any)?.name || '—')
-    const updatedText = updateManagerMessageBranchLines(currentText, {
-      brandName,
-      branchName: assignResult.branchName,
-      branchAddress: assignResult.branchAddress,
-      cityName,
-    })
-    const statusLine = withStatusLine(updatedText, `🏪 Назначен филиал: ${assignResult.branchName}`)
-    const keyboard = buildManagerOrderInlineKeyboard({
-      orderId: branchCb.orderId,
-      fulfillmentType: String((orderRow as any).fulfillment_type || 'delivery'),
-      orderStatus: String((orderRow as any).status || 'new'),
-      customerTelegramId: Number((orderRow as any).customer_telegram_id) || null,
-      dashboardOrderUrl: dashboardOrderUrlBranch,
-      etaButtonsEnabled: flowConfigBranch.etaButtonsEnabled,
-      etaPresets: flowConfigBranch.etaPresets,
-      branchPickerEnabled: shopBranches.length > 1,
-    })
-    await telegram(botToken, 'editMessageText', {
-      chat_id: chatId,
-      message_id: messageId,
-      text: statusLine,
-      reply_markup: keyboard,
-    })
-    await notifyBranchAssignedInTelegram(event, {
+    const cityId = (orderRow as any).city_id ? String((orderRow as any).city_id) : null
+    await syncTelegramChatsAfterBranchTransfer(event, {
       botToken,
       shopId,
-      branchId: assignResult.branchId,
       orderId: branchCb.orderId,
-      orderNumber: (orderRow as any).order_number ? String((orderRow as any).order_number) : null,
+      cityId,
+      previousBranchId: assignResult.previousBranchId,
+      newBranchId: assignResult.branchId,
+      newBranchName: assignResult.branchName,
+      branches: shopBranches,
+      actingChatId: chatId,
+      actingMessageId: messageId,
     })
     await telegram(botToken, 'answerCallbackQuery', {
       callback_query_id: query.id,

@@ -8,6 +8,7 @@ import {
   loadActiveShopBranches,
 } from '~/server/utils/orderChatFlow'
 import { normalizeDashboardStatus } from '~/utils/dashboardOrderStatus'
+import { persistManagerTelegramPost } from '~/server/utils/orderManagerTelegram'
 import { processDueReviewPrompts, scheduleReviewPromptsAfterHanded } from '~/server/utils/reviewPromptFlow'
 
 export type NotificationEventType = 'ORDER_CREATED' | 'ORDER_STATUS_CHANGED'
@@ -107,7 +108,7 @@ async function sendTelegramMessage(
   chatId: string,
   text: string,
   options?: { replyMarkup?: Record<string, unknown> },
-): Promise<void> {
+): Promise<number | null> {
   const replyMarkup = options?.replyMarkup
   const hasKeyboard =
     replyMarkup
@@ -123,11 +124,17 @@ async function sendTelegramMessage(
       ...(hasKeyboard ? { reply_markup: replyMarkup } : {}),
     }),
   })
-  const payload = await response.json().catch(() => null) as { ok?: boolean; description?: string } | null
+  const payload = await response.json().catch(() => null) as {
+    ok?: boolean
+    description?: string
+    result?: { message_id?: number }
+  } | null
   if (!response.ok || payload?.ok === false) {
     const detail = payload?.description || `http_${response.status}`
     throw new Error(`telegram_send_failed:${detail}`)
   }
+  const messageId = payload?.result?.message_id
+  return typeof messageId === 'number' && Number.isFinite(messageId) ? Math.floor(messageId) : null
 }
 
 async function sendMaxMessage(
@@ -587,12 +594,29 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
           }
         }
         const customerKeyboard = customerKeyboardRows.length ? { inline_keyboard: customerKeyboardRows } : null
-        await sendTelegramMessage(
+        const sentMessageId = await sendTelegramMessage(
           botToken,
           recipient.targetId,
           text,
           { replyMarkup: finalManagerKeyboard || customerKeyboard || undefined },
         )
+        if (
+          input.eventType === 'ORDER_CREATED'
+          && isManagerTarget
+          && sentMessageId != null
+        ) {
+          await persistManagerTelegramPost(event, {
+            shopId: input.tenantContext.shopId,
+            orderId: input.orderContext.orderId,
+            post: {
+              chatId: recipient.targetId,
+              messageId: sentMessageId,
+              branchId: input.tenantContext.restaurantId,
+            },
+          }).catch((err) => {
+            console.error('persistManagerTelegramPost:', err)
+          })
+        }
       } else {
         if (!maxEnabledByRuntime) {
           await upsertNotificationEvent(event, {
