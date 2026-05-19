@@ -118,24 +118,30 @@ function buildMaxManagerContactUrl(maxBotUrl: string, orderId: string): string |
   return `${base}${sep}start=${encodeURIComponent(`ordercontact_${orderId}`)}`
 }
 
+function isValidHttpUrl(raw: string): boolean {
+  const trimmed = raw.trim()
+  return trimmed.startsWith('https://') || trimmed.startsWith('http://')
+}
+
 export function appendManagerContactButtons(
-  contactRow: Array<Record<string, string>>,
+  rows: Array<Array<Record<string, string>>>,
   ctx: ManagerCustomerContactContext,
 ): void {
   const phone = typeof ctx.customerPhone === 'string' ? ctx.customerPhone.trim() : ''
-  const isMaxClient = ctx.orderClientChannel === 'max_mini' || Boolean(ctx.customerMaxUserId)
+  const isMaxClient = ctx.orderClientChannel === 'max_mini'
   const contactLabel = phone
     ? '📞 Позвонить'
     : isMaxClient
       ? '📞 Связаться (MAX)'
       : '📞 Запросить номер'
 
-  contactRow.push({ text: contactLabel, callback_data: buildOrderContactCallback(ctx.orderId) })
+  rows.push([{ text: contactLabel, callback_data: buildOrderContactCallback(ctx.orderId) }])
 
-  if (isMaxClient && ctx.maxBotUrl) {
+  const linkRow: Array<Record<string, string>> = []
+  if (isMaxClient && ctx.maxBotUrl && isValidHttpUrl(ctx.maxBotUrl)) {
     const maxUrl = buildMaxManagerContactUrl(ctx.maxBotUrl, ctx.orderId)
-    if (maxUrl) {
-      contactRow.push({ text: '💬 Открыть MAX', url: maxUrl })
+    if (maxUrl && isValidHttpUrl(maxUrl)) {
+      linkRow.push({ text: '💬 Открыть MAX', url: maxUrl })
     }
   }
 
@@ -145,8 +151,10 @@ export function appendManagerContactButtons(
     && Number.isFinite(ctx.customerTelegramId)
     && ctx.customerTelegramId > 0
   ) {
-    contactRow.push({ text: '✉️ Telegram', url: `tg://user?id=${ctx.customerTelegramId}` })
+    linkRow.push({ text: '✉️ Telegram', url: `tg://user?id=${ctx.customerTelegramId}` })
   }
+
+  if (linkRow.length) rows.push(linkRow)
 }
 
 type ManagerKeyboardOptions = {
@@ -187,8 +195,8 @@ export function buildManagerOrderInlineKeyboard(options: ManagerKeyboardOptions)
   const status = (orderStatus || 'new').toLowerCase()
   const rows: Array<Array<Record<string, string>>> = []
 
-  const contactRow: Array<Record<string, string>> = []
-  appendManagerContactButtons(contactRow, {
+  const contactRows: Array<Array<Record<string, string>>> = []
+  appendManagerContactButtons(contactRows, {
     orderId,
     customerTelegramId,
     customerMaxUserId,
@@ -197,8 +205,8 @@ export function buildManagerOrderInlineKeyboard(options: ManagerKeyboardOptions)
     maxBotUrl,
     allowTelegramUserLink,
   })
-  if (dashboardOrderUrl) {
-    contactRow.push({ text: '📋 Открыть заказ', url: dashboardOrderUrl })
+  if (dashboardOrderUrl && isValidHttpUrl(dashboardOrderUrl)) {
+    contactRows.push([{ text: '📋 Открыть заказ', url: dashboardOrderUrl }])
   }
 
   if (branchPickerEnabled) {
@@ -241,7 +249,7 @@ export function buildManagerOrderInlineKeyboard(options: ManagerKeyboardOptions)
     }
   }
 
-  if (contactRow.length) rows.push(contactRow)
+  if (contactRows.length) rows.push(...contactRows)
   return { inline_keyboard: rows.filter((row) => row.length > 0) }
 }
 

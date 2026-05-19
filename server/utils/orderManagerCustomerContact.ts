@@ -37,13 +37,18 @@ export type OrderCustomerContact = {
 export async function loadOrderCustomerContact(
   event: H3Event,
   orderId: string,
+  options?: { includePhone?: boolean },
 ): Promise<OrderCustomerContact | null> {
+  const includePhone = options?.includePhone === true
   const client = await serverSupabaseServiceRole(event)
-  const { data: order } = await client
+  const { data: order, error: orderError } = await client
     .from('orders')
     .select('id,shop_id,restaurant_id,order_number,customer_telegram_id,customer_profile_id,order_client_channel')
     .eq('id', orderId)
     .maybeSingle()
+  if (orderError) {
+    console.error('loadOrderCustomerContact order query:', orderError)
+  }
   if (!order) return null
 
   const shopId = String((order as any).shop_id)
@@ -58,16 +63,30 @@ export async function loadOrderCustomerContact(
   let customerPhone = ''
 
   if (customerProfileId) {
-    customerPhone = await getProfilePhone(client as any, customerProfileId)
-    const { data: profile } = await client
-      .from('profiles')
-      .select('max_user_id,max_conversation_id,telegram_id')
-      .eq('id', customerProfileId)
-      .maybeSingle()
-    const rawMax = (profile as any)?.max_user_id
-    const rawConv = (profile as any)?.max_conversation_id
-    customerMaxUserId = typeof rawMax === 'string' && rawMax.trim() ? rawMax.trim() : null
-    customerMaxConversationId = typeof rawConv === 'string' && rawConv.trim() ? rawConv.trim() : null
+    if (includePhone) {
+      try {
+        customerPhone = await getProfilePhone(client as any, customerProfileId)
+      } catch (err) {
+        console.error('loadOrderCustomerContact getProfilePhone:', err)
+      }
+    }
+    try {
+      const { data: profile, error: profileError } = await client
+        .from('profiles')
+        .select('max_user_id,max_conversation_id,telegram_id')
+        .eq('id', customerProfileId)
+        .maybeSingle()
+      if (profileError) {
+        console.error('loadOrderCustomerContact profile query:', profileError)
+      } else {
+        const rawMax = (profile as any)?.max_user_id
+        const rawConv = (profile as any)?.max_conversation_id
+        customerMaxUserId = typeof rawMax === 'string' && rawMax.trim() ? rawMax.trim() : null
+        customerMaxConversationId = typeof rawConv === 'string' && rawConv.trim() ? rawConv.trim() : null
+      }
+    } catch (err) {
+      console.error('loadOrderCustomerContact profile load:', err)
+    }
   }
 
   const tgRaw = Number((order as any).customer_telegram_id)
@@ -196,7 +215,7 @@ export async function handleTelegramOrderContactCallback(
     callbackQueryId: string
   },
 ): Promise<{ alertText: string; showAlert: boolean }> {
-  const contact = await loadOrderCustomerContact(event, args.orderId)
+  const contact = await loadOrderCustomerContact(event, args.orderId, { includePhone: true })
   if (!contact) {
     return { alertText: 'Заказ не найден', showAlert: true }
   }

@@ -11,6 +11,7 @@ import { normalizeDashboardStatus } from '~/utils/dashboardOrderStatus'
 import {
   loadOrderCustomerContact,
   orderContactToKeyboardContext,
+  type OrderCustomerContact,
 } from '~/server/utils/orderManagerCustomerContact'
 import { formatManagerCustomerLine } from '~/server/utils/orderChatFlowPure'
 import { persistManagerTelegramPost } from '~/server/utils/orderManagerTelegram'
@@ -500,7 +501,12 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
   const branchName = String((branchRow as any)?.name || '—')
   const branchAddress = String((branchRow as any)?.address || 'Адрес не указан')
   const cityName = String((cityRow as any)?.name || '—')
-  let orderContact = await loadOrderCustomerContact(event, input.orderContext.orderId)
+  let orderContact: OrderCustomerContact | null = null
+  try {
+    orderContact = await loadOrderCustomerContact(event, input.orderContext.orderId)
+  } catch (err) {
+    console.error('dispatchNotificationEvent loadOrderCustomerContact:', err)
+  }
   if (orderContact && input.actorContext) {
     if (!orderContact.customerMaxUserId && input.actorContext.customerMaxUserId) {
       orderContact = {
@@ -655,8 +661,12 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
             { replyMarkup },
           )
         } catch (sendErr) {
-          if (replyMarkup && isManagerTarget) {
-            sentMessageId = await sendTelegramMessage(botToken, recipient.targetId, text)
+          if (replyMarkup) {
+            try {
+              sentMessageId = await sendTelegramMessage(botToken, recipient.targetId, text)
+            } catch (retryErr) {
+              throw retryErr
+            }
           } else {
             throw sendErr
           }

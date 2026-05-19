@@ -60,6 +60,7 @@ describe('orderChatFlow callbacks', () => {
     expect(flat.some((b) => b.callback_data === buildOrderContactCallback(ORDER_ID))).toBe(true)
     expect(flat.some((b) => b.url?.startsWith('tg://user'))).toBe(false)
     expect(flat.some((b) => b.text === '💬 Открыть MAX')).toBe(true)
+    expect(flat.filter((b) => b.callback_data?.startsWith('orderContact__')).length).toBe(1)
   })
 
   it('does not notify customer for internal new status', () => {
