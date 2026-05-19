@@ -1,4 +1,4 @@
-import { computed, ref, watch, type Ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import type { DeliveryZoneFeature } from '~/utils/deliveryZones'
 import { useTelegram } from '~/composables/useTelegram'
 import { useTenantRestaurantsCache } from '~/composables/useTenantRestaurantsCache'
@@ -21,6 +21,7 @@ export type RestaurantItem = {
   supports_delivery: boolean
   supports_pickup: boolean
   supports_qr_menu: boolean
+  supports_in_restaurant?: boolean
   service_calls_enabled?: boolean
   service_call_types?: string[]
   effective_working_hours?: Record<string, any>
@@ -87,9 +88,14 @@ type UseCheckoutTenantRestaurantsParams = {
   skipNextDeliveryZoneReset?: Ref<boolean>
 }
 
+function restaurantHasInHallMode(restaurant: RestaurantItem | null | undefined): boolean {
+  if (!restaurant) return false
+  return restaurant.supports_qr_menu === true || restaurant.supports_in_restaurant === true
+}
+
 export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurantsParams) {
   const cartStore = useCartStore()
-  const { buildMessengerAuthHeaders, messengerInitData } = useTelegram()
+  const { buildMessengerAuthHeaders, messengerInitData, isMessengerMiniApp } = useTelegram()
   const selectedPickupPointId = ref<string>('')
   function buildTenantHeaders(shopId: string | null): Record<string, string> | undefined {
     const base: Record<string, string> = shopId ? { 'x-shop-id': shopId } : {}
@@ -150,7 +156,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
     const fromFlags: FulfillmentType[] = []
     if (restaurant.supports_delivery) fromFlags.push('delivery')
     if (restaurant.supports_pickup) fromFlags.push('pickup')
-    if (restaurant.supports_qr_menu) fromFlags.push('qr-menu')
+    if (restaurantHasInHallMode(restaurant)) fromFlags.push('qr-menu')
     return fromFlags
   }
 
@@ -331,8 +337,8 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
     { immediate: true, deep: true },
   )
 
-  async function loadRestaurants(options?: { force?: boolean }) {
-    if (!hasRestaurantLoadContext()) {
+  async function loadRestaurants(options?: { force?: boolean; allowWithoutContext?: boolean }) {
+    if (!hasRestaurantLoadContext() && !options?.allowWithoutContext) {
       return
     }
 
@@ -359,9 +365,9 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
           force: options?.force,
         })
         if (res?.ok && Array.isArray(res.items)) {
-          await loadAllRestaurantZones(res.items)
           restaurants.value = res.items
           lastRestaurantsLoadedKey = loadKey
+          await loadAllRestaurantZones(res.items)
           if (typeof res.organizationTimezone === 'string' && res.organizationTimezone.trim()) {
             organizationTimezone.value = res.organizationTimezone
           }
@@ -376,9 +382,7 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
       } catch {
         // keep fallback behavior for local/dev
       } finally {
-        if (hasRestaurantLoadContext()) {
-          restaurantsLoaded.value = true
-        }
+        restaurantsLoaded.value = true
       }
     }
 
@@ -392,6 +396,60 @@ export function useCheckoutTenantRestaurants(params: UseCheckoutTenantRestaurant
       }
     })
     await p
+  }
+
+  watch(
+    () => hasRestaurantLoadContext(),
+    (ready) => {
+      if (!ready) return
+      void loadRestaurants()
+    },
+    { immediate: true },
+  )
+
+  let loadRetryTimer: ReturnType<typeof setTimeout> | null = null
+  let loadRetryAttempts = 0
+
+  function clearLoadRetryTimer() {
+    if (loadRetryTimer) {
+      clearTimeout(loadRetryTimer)
+      loadRetryTimer = null
+    }
+  }
+
+  function scheduleRestaurantLoadRetries() {
+    if (!import.meta.client || !isMessengerMiniApp.value) return
+    clearLoadRetryTimer()
+    loadRetryAttempts = 0
+
+    const tick = () => {
+      loadRetryAttempts += 1
+      if (!restaurantsLoaded.value || (restaurants.value.length === 0 && hasRestaurantLoadContext())) {
+        void loadRestaurants({ force: loadRetryAttempts > 1 })
+      }
+      if (restaurantsLoaded.value && restaurants.value.length > 0) {
+        clearLoadRetryTimer()
+        return
+      }
+      if (loadRetryAttempts >= 14) {
+        restaurantsLoaded.value = true
+        clearLoadRetryTimer()
+        return
+      }
+      const delay = loadRetryAttempts < 5 ? 120 : 280
+      loadRetryTimer = setTimeout(tick, delay)
+    }
+
+    tick()
+  }
+
+  if (import.meta.client) {
+    onMounted(() => {
+      scheduleRestaurantLoadRetries()
+    })
+    onBeforeUnmount(() => {
+      clearLoadRetryTimer()
+    })
   }
 
   async function loadAllRestaurantZones(items: RestaurantItem[]) {

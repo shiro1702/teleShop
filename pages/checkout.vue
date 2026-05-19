@@ -1284,7 +1284,7 @@ import {
   clearOrderContinuationHint,
   readOrderContinuationHint,
 } from '~/composables/useTelegram'
-import { readShopIdFromQuery, resolveCartScopeKey } from '~/utils/cartScope'
+import { readShopIdFromQuery, resolveCartScopeKey, resolveTenantSlugFromRoutePath } from '~/utils/cartScope'
 import { productImageHero } from '~/utils/productImage'
 import {
   mapFulfillmentToCityMode,
@@ -1516,8 +1516,8 @@ const pendingCartClearSecondsLeft = computed(() => {
 
 /** Сначала slug/query из маршрута — стабильно при гидратации tenant; иначе смена tenantKey дублирует loadRestaurants/zones. */
 const shopIdFromRoute = computed(() => {
-  const fromRouteSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
-  const fromQuery = typeof route.query.shop_id === 'string' ? route.query.shop_id.trim() : ''
+  const fromRouteSlug = resolveTenantSlugFromRoutePath(route)
+  const fromQuery = readShopIdFromQuery(route)
   const fromTenantState = typeof tenantKey.value === 'string' ? tenantKey.value.trim() : ''
   return fromRouteSlug || fromQuery || fromTenantState || null
 })
@@ -1533,10 +1533,7 @@ function checkoutXShopIdHeaders(): { 'x-shop-id': string } | undefined {
   const id = checkoutXShopId.value
   return id ? { 'x-shop-id': id } : undefined
 }
-const hasTenantRouteContext = computed(() => {
-  const tenantSlug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
-  return !!tenantSlug
-})
+const hasTenantRouteContext = computed(() => !!resolveTenantSlugFromRoutePath(route))
 
 if (!hasTenantRouteContext.value && !shopIdFromRoute.value) {
   throw createError({ statusCode: 404, statusMessage: 'Checkout route not found' })
@@ -3309,6 +3306,13 @@ watch(checkoutShopIdForRestaurants, async (nextId, prevId) => {
   if (!nextId || nextId === prevId) return
   await syncFulfillmentAfterRestaurantsLoad()
 })
+
+watch(
+  () => route.fullPath,
+  async () => {
+    await syncFulfillmentAfterRestaurantsLoad()
+  },
+)
 
 watch(
   () => messengerInitData.value,

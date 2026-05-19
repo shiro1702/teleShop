@@ -1,4 +1,4 @@
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 const BRIDGE_CONTINUATION_KEY = 'teleshop_order_continuation'
 const MESSENGER_INIT_DATA_CACHE_KEY = 'teleshop_messenger_init_data'
@@ -95,11 +95,11 @@ export function useTelegram() {
     }
   }
 
+  /** Mini App открыт в Telegram (initData на iOS может появиться с задержкой после ready). */
   const isTelegram = computed(() => {
     if (!isClient) return false
     // @ts-ignore: Telegram WebApp может быть не объявлен
-    const webApp = window.Telegram?.WebApp
-    return typeof webApp !== 'undefined' && !!webApp.initData
+    return typeof window.Telegram?.WebApp !== 'undefined'
   })
 
   /** MAX мини-приложение: глобальный window.WebApp (не Telegram.WebApp). initData может быть только в hash/sessionStorage. */
@@ -129,8 +129,11 @@ export function useTelegram() {
     return null
   })
 
-  const messengerInitData = computed(() => {
-    const fromBridge = messengerWebApp.value?.initData ?? ''
+  const messengerInitDataTick = ref(0)
+
+  function readMessengerInitDataNow(): string {
+    const tg = isClient ? window.Telegram?.WebApp : undefined
+    const fromBridge = tg?.initData?.trim() || messengerWebApp.value?.initData?.trim() || ''
     if (fromBridge) {
       cacheInitData(fromBridge)
       return fromBridge
@@ -141,7 +144,39 @@ export function useTelegram() {
       return fromUrl
     }
     return readCachedInitData()
+  }
+
+  const messengerInitData = computed(() => {
+    void messengerInitDataTick.value
+    return readMessengerInitDataNow()
   })
+
+  const initDataPollBootstrapped = useState('messenger-initdata-poll-bootstrapped', () => false)
+  if (isClient) {
+    onMounted(() => {
+      if (initDataPollBootstrapped.value) return
+      initDataPollBootstrapped.value = true
+
+      const tg = window.Telegram?.WebApp
+      try {
+        tg?.ready?.()
+      } catch {
+        // ignore
+      }
+      let lastInitData = ''
+      const poll = () => {
+        const next = readMessengerInitDataNow()
+        if (next && next !== lastInitData) {
+          lastInitData = next
+          messengerInitDataTick.value += 1
+        }
+      }
+      poll()
+      for (const delay of [50, 120, 250, 500, 1000, 2000]) {
+        window.setTimeout(poll, delay)
+      }
+    })
+  }
 
   /** Заголовки для API: тот же initData, legacy-имя + явный алиас. */
   function buildMessengerAuthHeaders(extra?: Record<string, string>): Record<string, string> {

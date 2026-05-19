@@ -2,9 +2,9 @@ import { setOrderContinuationHint } from '~/composables/useTelegram'
 
 export default defineNuxtPlugin(() => {
   const cartStore = useCartStore()
-  const { webApp, isTelegram, hideMainButton, expandMessengerViewport } = useTelegram()
+  const { webApp, hideMainButton, expandMessengerViewport } = useTelegram()
 
-  if (!isTelegram.value || !webApp.value) return
+  if (!webApp.value) return
 
   // Если Mini App запущен со start_param (из веб-сайта) — восстановим корзину по токену
   const startParam = webApp.value.initDataUnsafe?.start_param

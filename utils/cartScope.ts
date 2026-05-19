@@ -18,12 +18,58 @@ export function readShopIdFromQuery(route: RouteLike): string | null {
   return readString(route.query?.shop_id) || readString(route.query?.shopId)
 }
 
+const RESERVED_PATH_SEGMENTS = new Set([
+  'cart',
+  'checkout',
+  'dashboard',
+  'login',
+  'register',
+  'onboarding',
+  'profile',
+  'partners',
+  'platform',
+  'link-telegram',
+  'link-max',
+  'link-vk',
+  'orders',
+  'bonuses',
+  'achievements',
+  'festival',
+  'api',
+])
+
+/**
+ * Slug тенанта из params или pathname (iOS TMA: params иногда пустые при первом mount).
+ */
+export function resolveTenantSlugFromRoutePath(route: RouteLike): string | null {
+  const fromParam = readString(route.params?.tenant_slug)
+  if (fromParam) return fromParam
+
+  const path = pathForCartScope(route)
+  const segments = path.split('/').filter(Boolean)
+  if (!segments.length) return null
+
+  if (segments[1] === 'festival') {
+    const tenantSeg = segments[3]
+    return tenantSeg && !RESERVED_PATH_SEGMENTS.has(tenantSeg) ? tenantSeg : null
+  }
+
+  const [first, second] = segments
+  if (first && second && !RESERVED_PATH_SEGMENTS.has(first) && !RESERVED_PATH_SEGMENTS.has(second)) {
+    return second
+  }
+  if (first && !RESERVED_PATH_SEGMENTS.has(first)) {
+    return first
+  }
+  return null
+}
+
 /**
  * То же, что синхронная часть shopIdFromRoute на чекауте/витрине:
  * slug ресторана из маршрута или shop_id в query (без async useTenant).
  */
 export function shopIdLikeForCartScope(route: RouteLike): string | null {
-  return readString(route.params?.tenant_slug) || readShopIdFromQuery(route) || null
+  return resolveTenantSlugFromRoutePath(route) || readShopIdFromQuery(route) || null
 }
 
 /** Путь для разбора city/tenant: сначала route, на клиенте fallback на location (гидрация). */
