@@ -143,14 +143,25 @@ export function buildManagerOrderInlineKeyboard(options: ManagerKeyboardOptions)
   return { inline_keyboard: rows.filter((row) => row.length > 0) }
 }
 
+/** Подпись кнопки филиала в меню смены (лимит Telegram — 64 символа). */
+export function formatBranchPickerButtonLabel(branchName: string, isCurrent: boolean): string {
+  const raw = branchName.trim() || '—'
+  const maxLen = isCurrent ? 28 : 32
+  const truncated = raw.length > maxLen ? `${raw.slice(0, maxLen - 1)}…` : raw
+  return isCurrent ? `✓ ${truncated} (сейчас)` : truncated
+}
+
 export function buildBranchPickerInlineKeyboard(
   branches: ShopBranchRow[],
   orderId: string,
+  currentBranchId?: string | null,
 ): { inline_keyboard: Array<Array<Record<string, string>>> } {
+  const currentId = typeof currentBranchId === 'string' ? currentBranchId.trim() : ''
   const rows: Array<Array<Record<string, string>>> = []
   let row: Array<Record<string, string>> = []
   branches.forEach((branch, index) => {
-    const label = branch.name.length > 18 ? `${branch.name.slice(0, 16)}…` : branch.name
+    const isCurrent = Boolean(currentId && branch.id === currentId)
+    const label = formatBranchPickerButtonLabel(branch.name, isCurrent)
     row.push({ text: label, callback_data: buildBranchPickCallback(index, orderId) })
     if (row.length >= 2) {
       rows.push(row)

@@ -986,7 +986,11 @@ export default defineEventHandler(async (event) => {
     const flowConfigBranch = await getUnifiedFlowConfig(event, String((orderRow as any).restaurant_id || ''))
 
     if (branchCb.kind === 'menu') {
-      const picker = buildBranchPickerInlineKeyboard(shopBranches, branchCb.orderId)
+      const currentBranchId = (orderRow as any).restaurant_id ? String((orderRow as any).restaurant_id) : null
+      const picker = buildBranchPickerInlineKeyboard(shopBranches, branchCb.orderId, currentBranchId)
+      const currentBranchName = currentBranchId
+        ? shopBranches.find((b) => b.id === currentBranchId)?.name
+        : null
       await telegram(botToken, 'editMessageReplyMarkup', {
         chat_id: chatId,
         message_id: messageId,
@@ -994,7 +998,9 @@ export default defineEventHandler(async (event) => {
       })
       await telegram(botToken, 'answerCallbackQuery', {
         callback_query_id: query.id,
-        text: 'Выберите филиал',
+        text: currentBranchName
+          ? `Сейчас: ${currentBranchName}. Выберите филиал`
+          : 'Выберите филиал',
         show_alert: false,
       })
       return { ok: true }

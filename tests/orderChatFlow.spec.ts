@@ -3,7 +3,9 @@ import {
   buildBranchCancelCallback,
   buildBranchMenuCallback,
   buildBranchPickCallback,
+  buildBranchPickerInlineKeyboard,
   buildManagerOrderInlineKeyboard,
+  formatBranchPickerButtonLabel,
   parseBranchCallback,
   shouldNotifyCustomerOfStatus,
 } from '../server/utils/orderChatFlowPure'
@@ -46,5 +48,17 @@ describe('orderChatFlow callbacks', () => {
     expect(shouldNotifyCustomerOfStatus('new')).toBe(false)
     expect(shouldNotifyCustomerOfStatus('in_progress')).toBe(true)
     expect(shouldNotifyCustomerOfStatus('ready_for_pickup')).toBe(true)
+  })
+
+  it('marks current branch in picker keyboard', () => {
+    const branches = [
+      { id: 'branch-a', name: 'Центр', address: null, managerGroupChatId: null },
+      { id: 'branch-b', name: 'Север', address: null, managerGroupChatId: null },
+    ]
+    const picker = buildBranchPickerInlineKeyboard(branches, ORDER_ID, 'branch-b')
+    const labels = picker.inline_keyboard.flatMap((row) => row.map((b) => b.text))
+    expect(labels[0]).toBe('Центр')
+    expect(labels[1]).toBe(formatBranchPickerButtonLabel('Север', true))
+    expect(formatBranchPickerButtonLabel('Север', true)).toContain('(сейчас)')
   })
 })
