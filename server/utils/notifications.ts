@@ -8,6 +8,11 @@ import {
   loadActiveShopBranches,
 } from '~/server/utils/orderChatFlow'
 import { normalizeDashboardStatus } from '~/utils/dashboardOrderStatus'
+import {
+  loadOrderCustomerContact,
+  orderContactToKeyboardContext,
+} from '~/server/utils/orderManagerCustomerContact'
+import { formatManagerCustomerLine } from '~/server/utils/orderChatFlowPure'
 import { persistManagerTelegramPost } from '~/server/utils/orderManagerTelegram'
 import { processDueReviewPrompts, scheduleReviewPromptsAfterHanded } from '~/server/utils/reviewPromptFlow'
 
@@ -495,7 +500,34 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
   const branchName = String((branchRow as any)?.name || '—')
   const branchAddress = String((branchRow as any)?.address || 'Адрес не указан')
   const cityName = String((cityRow as any)?.name || '—')
-  const customerHandle = input.actorContext?.customerTelegramId ? `id:${input.actorContext.customerTelegramId}` : 'id:unknown'
+  let orderContact = await loadOrderCustomerContact(event, input.orderContext.orderId)
+  if (orderContact && input.actorContext) {
+    if (!orderContact.customerMaxUserId && input.actorContext.customerMaxUserId) {
+      orderContact = {
+        ...orderContact,
+        customerMaxUserId: String(input.actorContext.customerMaxUserId).trim() || null,
+      }
+    }
+    if (!orderContact.customerMaxConversationId && input.actorContext.customerMaxConversationId) {
+      orderContact = {
+        ...orderContact,
+        customerMaxConversationId: String(input.actorContext.customerMaxConversationId).trim() || null,
+      }
+    }
+    if (!orderContact.customerTelegramId && input.actorContext.customerTelegramId) {
+      orderContact = {
+        ...orderContact,
+        customerTelegramId: input.actorContext.customerTelegramId,
+      }
+    }
+  }
+  const customerHandle = orderContact
+    ? formatManagerCustomerLine(orderContactToKeyboardContext(orderContact))
+    : input.actorContext?.customerTelegramId
+      ? `Telegram id:${input.actorContext.customerTelegramId}`
+      : input.actorContext?.customerMaxUserId
+        ? `MAX id:${input.actorContext.customerMaxUserId}`
+        : 'контакт уточняется'
   const orderDetails = await loadOrderDetails(event, input)
   const managerText = buildManagerMessage({
     orderDetails,
@@ -571,18 +603,32 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
           input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
             ? await loadActiveShopBranches(event, input.tenantContext.shopId)
             : []
-        // tg://user?id= в inline-кнопке в группе часто ломает sendMessage целиком; у MAX-заказов id нет — там уведомления проходят.
-        const managerKeyboardCustomerId =
-          recipient.targetType === 'manager_group'
-            ? null
-            : (input.actorContext?.customerTelegramId ?? null)
+        const contactKeyboardCtx = orderContact
+          ? orderContactToKeyboardContext(orderContact, {
+              maxBotUrl,
+              allowTelegramUserLink: recipient.targetType === 'manager_user',
+            })
+          : {
+              orderId: input.orderContext.orderId,
+              customerTelegramId: input.actorContext?.customerTelegramId ?? null,
+              customerMaxUserId: input.actorContext?.customerMaxUserId ?? null,
+              customerPhone: null,
+              orderClientChannel: null,
+              maxBotUrl,
+              allowTelegramUserLink: recipient.targetType === 'manager_user',
+            }
         const finalManagerKeyboard =
           input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
             ? buildManagerOrderInlineKeyboard({
                 orderId: input.orderContext.orderId,
                 fulfillmentType: orderDetails.fulfillmentType,
                 orderStatus: orderDetails.status,
-                customerTelegramId: managerKeyboardCustomerId,
+                customerTelegramId: contactKeyboardCtx.customerTelegramId,
+                customerMaxUserId: contactKeyboardCtx.customerMaxUserId,
+                customerPhone: contactKeyboardCtx.customerPhone,
+                orderClientChannel: contactKeyboardCtx.orderClientChannel,
+                maxBotUrl: contactKeyboardCtx.maxBotUrl,
+                allowTelegramUserLink: contactKeyboardCtx.allowTelegramUserLink,
                 dashboardOrderUrl,
                 etaButtonsEnabled: flowConfig.etaButtonsEnabled,
                 etaPresets: flowConfig.etaPresets,

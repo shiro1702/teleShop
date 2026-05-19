@@ -5,6 +5,20 @@ import { isDeliveryFulfillment } from '~/utils/dashboardOrderStatus'
 export const BRANCH_MENU_CALLBACK_PREFIX = 'brmenu__'
 export const BRANCH_CANCEL_CALLBACK_PREFIX = 'brcancel__'
 export const BRANCH_PICK_CALLBACK_RE = /^br(\d+)__(.+)$/
+export const ORDER_CONTACT_CALLBACK_PREFIX = 'orderContact__'
+
+export type OrderClientChannel = 'telegram_mini' | 'max_mini' | 'web'
+
+export function buildOrderContactCallback(orderId: string): string {
+  return `${ORDER_CONTACT_CALLBACK_PREFIX}${orderId}`
+}
+
+export function parseOrderContactCallback(data: string): { orderId: string } | null {
+  const trimmed = data.trim()
+  if (!trimmed.startsWith(ORDER_CONTACT_CALLBACK_PREFIX)) return null
+  const orderId = trimmed.slice(ORDER_CONTACT_CALLBACK_PREFIX.length).trim()
+  return orderId ? { orderId } : null
+}
 
 export type ShopBranchRow = {
   id: string
@@ -63,11 +77,88 @@ export function shouldNotifyCustomerOfStatus(status: string): boolean {
   return CUSTOMER_VISIBLE_ORDER_STATUSES.has(normalized)
 }
 
+export type ManagerCustomerContactContext = {
+  orderId: string
+  customerTelegramId?: number | null
+  customerMaxUserId?: string | null
+  customerPhone?: string | null
+  orderClientChannel?: OrderClientChannel | null
+  maxBotUrl?: string | null
+  /** tg://user допустим только в личке менеджера, не в группе. */
+  allowTelegramUserLink?: boolean
+}
+
+export function formatManagerCustomerLine(ctx: ManagerCustomerContactContext): string {
+  const phone = typeof ctx.customerPhone === 'string' ? ctx.customerPhone.trim() : ''
+  const channel =
+    ctx.orderClientChannel === 'max_mini'
+      ? 'MAX'
+      : ctx.orderClientChannel === 'telegram_mini'
+        ? 'Telegram'
+        : ctx.orderClientChannel === 'web'
+          ? 'Сайт'
+          : null
+  const idPart = ctx.customerMaxUserId
+    ? `id:${ctx.customerMaxUserId}`
+    : ctx.customerTelegramId && ctx.customerTelegramId > 0
+      ? `id:${ctx.customerTelegramId}`
+      : null
+  if (phone && channel && idPart) return `${phone} • ${channel} ${idPart}`
+  if (phone && idPart) return `${phone} • ${idPart}`
+  if (phone) return phone
+  if (channel && idPart) return `${channel} ${idPart}`
+  if (idPart) return idPart
+  return 'контакт уточняется'
+}
+
+function buildMaxManagerContactUrl(maxBotUrl: string, orderId: string): string | null {
+  const base = maxBotUrl.trim()
+  if (!base) return null
+  const sep = base.includes('?') ? '&' : '?'
+  return `${base}${sep}start=${encodeURIComponent(`ordercontact_${orderId}`)}`
+}
+
+export function appendManagerContactButtons(
+  contactRow: Array<Record<string, string>>,
+  ctx: ManagerCustomerContactContext,
+): void {
+  const phone = typeof ctx.customerPhone === 'string' ? ctx.customerPhone.trim() : ''
+  const isMaxClient = ctx.orderClientChannel === 'max_mini' || Boolean(ctx.customerMaxUserId)
+  const contactLabel = phone
+    ? '📞 Позвонить'
+    : isMaxClient
+      ? '📞 Связаться (MAX)'
+      : '📞 Запросить номер'
+
+  contactRow.push({ text: contactLabel, callback_data: buildOrderContactCallback(ctx.orderId) })
+
+  if (isMaxClient && ctx.maxBotUrl) {
+    const maxUrl = buildMaxManagerContactUrl(ctx.maxBotUrl, ctx.orderId)
+    if (maxUrl) {
+      contactRow.push({ text: '💬 Открыть MAX', url: maxUrl })
+    }
+  }
+
+  if (
+    ctx.allowTelegramUserLink
+    && ctx.customerTelegramId
+    && Number.isFinite(ctx.customerTelegramId)
+    && ctx.customerTelegramId > 0
+  ) {
+    contactRow.push({ text: '✉️ Telegram', url: `tg://user?id=${ctx.customerTelegramId}` })
+  }
+}
+
 type ManagerKeyboardOptions = {
   orderId: string
   fulfillmentType: string
   orderStatus: string
   customerTelegramId?: number | null
+  customerMaxUserId?: string | null
+  customerPhone?: string | null
+  orderClientChannel?: OrderClientChannel | null
+  maxBotUrl?: string | null
+  allowTelegramUserLink?: boolean
   dashboardOrderUrl?: string
   etaButtonsEnabled?: boolean
   etaPresets?: number[]
@@ -82,6 +173,11 @@ export function buildManagerOrderInlineKeyboard(options: ManagerKeyboardOptions)
     fulfillmentType,
     orderStatus,
     customerTelegramId,
+    customerMaxUserId,
+    customerPhone,
+    orderClientChannel,
+    maxBotUrl,
+    allowTelegramUserLink = false,
     dashboardOrderUrl,
     etaButtonsEnabled,
     etaPresets = [],
@@ -92,9 +188,15 @@ export function buildManagerOrderInlineKeyboard(options: ManagerKeyboardOptions)
   const rows: Array<Array<Record<string, string>>> = []
 
   const contactRow: Array<Record<string, string>> = []
-  if (customerTelegramId && Number.isFinite(customerTelegramId) && customerTelegramId > 0) {
-    contactRow.push({ text: '✉️ Написать клиенту', url: `tg://user?id=${customerTelegramId}` })
-  }
+  appendManagerContactButtons(contactRow, {
+    orderId,
+    customerTelegramId,
+    customerMaxUserId,
+    customerPhone,
+    orderClientChannel,
+    maxBotUrl,
+    allowTelegramUserLink,
+  })
   if (dashboardOrderUrl) {
     contactRow.push({ text: '📋 Открыть заказ', url: dashboardOrderUrl })
   }

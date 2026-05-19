@@ -5,6 +5,7 @@ import {
   buildBranchPickCallback,
   buildBranchPickerInlineKeyboard,
   buildManagerOrderInlineKeyboard,
+  buildOrderContactCallback,
   buildOrderTransferredNoticeText,
   formatBranchPickerButtonLabel,
   parseBranchCallback,
@@ -43,6 +44,22 @@ describe('orderChatFlow callbacks', () => {
       branchPickerEnabled: false,
     })
     expect(pickup.inline_keyboard.some((row) => row.some((b) => b.callback_data === `pickup__${ORDER_ID}`))).toBe(true)
+  })
+
+  it('uses order contact callback instead of tg user link in manager group keyboard', () => {
+    const keyboard = buildManagerOrderInlineKeyboard({
+      orderId: ORDER_ID,
+      fulfillmentType: 'delivery',
+      orderStatus: 'new',
+      customerTelegramId: 12345,
+      orderClientChannel: 'max_mini',
+      customerMaxUserId: 'max-user-1',
+      maxBotUrl: 'https://max.ru/test_bot',
+    })
+    const flat = keyboard.inline_keyboard.flat()
+    expect(flat.some((b) => b.callback_data === buildOrderContactCallback(ORDER_ID))).toBe(true)
+    expect(flat.some((b) => b.url?.startsWith('tg://user'))).toBe(false)
+    expect(flat.some((b) => b.text === '💬 Открыть MAX')).toBe(true)
   })
 
   it('does not notify customer for internal new status', () => {

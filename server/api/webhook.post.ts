@@ -11,11 +11,16 @@ import {
   loadActiveShopBranches,
   mapChatCallbackToOrderStatus,
   parseBranchCallback,
+  parseOrderContactCallback,
   syncTelegramChatsAfterBranchTransfer,
 } from '~/server/utils/orderChatFlow'
 import type { ChatFlowOrderStatus } from '~/server/utils/orderChatFlowPure'
 import { isDeliveryFulfillment } from '~/utils/dashboardOrderStatus'
 import { getProfilePhone, normalizePhone, setProfilePhone } from '~/server/utils/accountPhoneLink'
+import {
+  enrichManagerKeyboardFromOrder,
+  handleTelegramOrderContactCallback,
+} from '~/server/utils/orderManagerCustomerContact'
 import { isShopFeatureEnabled } from '~/server/utils/features'
 import { applyReviewPromptTelegramCallback, processDueReviewPrompts } from '~/server/utils/reviewPromptFlow'
 import { parseReviewTokenCallback } from '~/server/utils/reviewPromptParse'
@@ -812,6 +817,23 @@ export default defineEventHandler(async (event) => {
     return { ok: true }
   }
 
+  const orderContactCb = parseOrderContactCallback(query.data)
+  if (orderContactCb) {
+    const managerChatId = String(query.message?.chat?.id || '')
+    const result = await handleTelegramOrderContactCallback(event, {
+      botToken,
+      orderId: orderContactCb.orderId,
+      managerChatId,
+      callbackQueryId: query.id,
+    })
+    await telegram(botToken, 'answerCallbackQuery', {
+      callback_query_id: query.id,
+      text: result.alertText,
+      show_alert: result.showAlert,
+    })
+    return { ok: true }
+  }
+
   const serviceCb = parseServiceCallbackData(query.data)
   const serviceContactCb = parseServiceContactCallbackData(query.data)
   if (serviceContactCb) {
@@ -1006,16 +1028,17 @@ export default defineEventHandler(async (event) => {
     }
 
     if (branchCb.kind === 'cancel') {
-      const keyboard = buildManagerOrderInlineKeyboard({
-        orderId: branchCb.orderId,
-        fulfillmentType: String((orderRow as any).fulfillment_type || 'delivery'),
-        orderStatus: String((orderRow as any).status || 'new'),
-        customerTelegramId: Number((orderRow as any).customer_telegram_id) || null,
-        dashboardOrderUrl: dashboardOrderUrlBranch,
-        etaButtonsEnabled: flowConfigBranch.etaButtonsEnabled,
-        etaPresets: flowConfigBranch.etaPresets,
-        branchPickerEnabled: shopBranches.length > 1,
-      })
+      const keyboard = buildManagerOrderInlineKeyboard(
+        await enrichManagerKeyboardFromOrder(event, {
+          orderId: branchCb.orderId,
+          fulfillmentType: String((orderRow as any).fulfillment_type || 'delivery'),
+          orderStatus: String((orderRow as any).status || 'new'),
+          dashboardOrderUrl: dashboardOrderUrlBranch,
+          etaButtonsEnabled: flowConfigBranch.etaButtonsEnabled,
+          etaPresets: flowConfigBranch.etaPresets,
+          branchPickerEnabled: shopBranches.length > 1,
+        }),
+      )
       await telegram(botToken, 'editMessageReplyMarkup', {
         chat_id: chatId,
         message_id: messageId,
@@ -1169,7 +1192,7 @@ export default defineEventHandler(async (event) => {
         `👤 Клиент: id:${query.from.id}`,
       ].join('\n'),
       reply_markup: {
-        inline_keyboard: [[{ text: '✉️ Написать клиенту', url: `tg://user?id=${query.from.id}` }]],
+        inline_keyboard: [[{ text: '📞 Связаться с клиентом', callback_data: `orderContact__${orderId}` }]],
       },
     })
 
@@ -1347,26 +1370,29 @@ export default defineEventHandler(async (event) => {
   const shopBranchesStatus = await loadActiveShopBranches(event, orderShopId)
   const nextDbStatus = unifiedFlowEnabled ? mapChatCallbackToOrderStatus(status) : String((orderDetails as any).status || 'new')
   const updatedText = withStatusLine(currentText, managerStatusLine(status, fulfillmentType))
+  const keyboardBase = {
+    orderId,
+    fulfillmentType,
+    dashboardOrderUrl: dashboardOrderUrlStatus,
+    etaButtonsEnabled: flowConfig.etaButtonsEnabled,
+    etaPresets: flowConfig.etaPresets,
+    branchPickerEnabled: shopBranchesStatus.length > 1,
+  }
   const keyboard =
     status === 'done'
-      ? buildManagerOrderInlineKeyboard({
-          orderId,
-          fulfillmentType,
-          orderStatus: 'handed_to_customer',
-          customerTelegramId,
-          dashboardOrderUrl: dashboardOrderUrlStatus,
-          branchPickerEnabled: false,
-        })
-      : buildManagerOrderInlineKeyboard({
-          orderId,
-          fulfillmentType,
-          orderStatus: nextDbStatus,
-          customerTelegramId,
-          dashboardOrderUrl: dashboardOrderUrlStatus,
-          etaButtonsEnabled: flowConfig.etaButtonsEnabled,
-          etaPresets: flowConfig.etaPresets,
-          branchPickerEnabled: shopBranchesStatus.length > 1,
-        })
+      ? buildManagerOrderInlineKeyboard(
+          await enrichManagerKeyboardFromOrder(event, {
+            ...keyboardBase,
+            orderStatus: 'handed_to_customer',
+            branchPickerEnabled: false,
+          }),
+        )
+      : buildManagerOrderInlineKeyboard(
+          await enrichManagerKeyboardFromOrder(event, {
+            ...keyboardBase,
+            orderStatus: nextDbStatus,
+          }),
+        )
   await telegram(botToken, 'editMessageText', {
     chat_id: chatId,
     message_id: messageId,

@@ -2,7 +2,11 @@ import { serverSupabaseServiceRole } from '#supabase/server'
 import type { H3Event } from 'h3'
 import { getUnifiedFlowConfig } from '~/server/utils/orderFlowActions'
 import { buildManagerOrderInlineKeyboard, loadActiveShopBranches, type ShopBranchRow } from '~/server/utils/orderChatFlow'
-import { buildOrderTransferredNoticeText } from '~/server/utils/orderChatFlowPure'
+import { buildOrderTransferredNoticeText, formatManagerCustomerLine } from '~/server/utils/orderChatFlowPure'
+import {
+  loadOrderCustomerContact,
+  orderContactToKeyboardContext,
+} from '~/server/utils/orderManagerCustomerContact'
 
 export type ManagerTelegramPost = {
   chatId: string
@@ -105,10 +109,9 @@ function buildManagerCardText(payload: {
   branchName: string
   branchAddress: string
   cityName: string
+  customerContactLine?: string
 }): string {
-  const customerHandle = payload.order.customerTelegramId
-    ? `id:${payload.order.customerTelegramId}`
-    : 'id:unknown'
+  const customerHandle = payload.customerContactLine || 'контакт уточняется'
   return [
     `🔔 Новый заказ ${formatOrderRef(payload.order.orderNumber, payload.orderId)}`,
     `🏪 ${payload.brandName} • ${payload.branchName}`,
@@ -183,6 +186,7 @@ export async function buildManagerOrderTelegramPayload(
   const client = await serverSupabaseServiceRole(event)
   const order = await loadManagerOrderDetails(event, args.orderId)
   if (!order) return null
+  const orderContact = await loadOrderCustomerContact(event, args.orderId)
 
   const { data: shopRow } = await client.from('shops').select('name').eq('id', args.shopId).maybeSingle()
   const { data: branchRow } = await client
@@ -195,12 +199,16 @@ export async function buildManagerOrderTelegramPayload(
     : { data: null as any }
 
   const config = useRuntimeConfig(event)
+  const maxBotUrl = String((config.public as any)?.maxBotUrl || '').trim()
   const appUrlBase = String((config as any).appUrl || '').replace(/\/$/, '')
   const dashboardOrderUrl = appUrlBase
     ? `${appUrlBase}/dashboard/orders/${encodeURIComponent(args.orderId)}`
     : ''
   const flowConfig = await getUnifiedFlowConfig(event, args.restaurantId)
   const shopBranches = await loadActiveShopBranches(event, args.shopId)
+  const contactKeyboardCtx = orderContact
+    ? orderContactToKeyboardContext(orderContact, { maxBotUrl, allowTelegramUserLink: false })
+    : null
 
   const text = buildManagerCardText({
     order,
@@ -209,12 +217,20 @@ export async function buildManagerOrderTelegramPayload(
     branchName: String((branchRow as any)?.name || '—'),
     branchAddress: String((branchRow as any)?.address || 'Адрес не указан'),
     cityName: String((cityRow as any)?.name || '—'),
+    customerContactLine: contactKeyboardCtx
+      ? formatManagerCustomerLine(contactKeyboardCtx)
+      : undefined,
   })
   const replyMarkup = buildManagerOrderInlineKeyboard({
     orderId: args.orderId,
     fulfillmentType: order.fulfillmentType,
     orderStatus: order.status,
-    customerTelegramId: order.customerTelegramId,
+    customerTelegramId: contactKeyboardCtx?.customerTelegramId ?? order.customerTelegramId,
+    customerMaxUserId: contactKeyboardCtx?.customerMaxUserId ?? null,
+    customerPhone: contactKeyboardCtx?.customerPhone ?? null,
+    orderClientChannel: contactKeyboardCtx?.orderClientChannel ?? null,
+    maxBotUrl,
+    allowTelegramUserLink: false,
     dashboardOrderUrl,
     etaButtonsEnabled: flowConfig.etaButtonsEnabled,
     etaPresets: flowConfig.etaPresets,
