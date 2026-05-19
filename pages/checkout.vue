@@ -3384,7 +3384,12 @@ async function placeOrder() {
   isPlacing.value = true
   try {
     if (state.fulfillmentType === 'delivery') {
-      await saveCurrentAddress()
+      await Promise.race([
+        saveCurrentAddress(),
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 8000)
+        }),
+      ])
     }
 
     const selectedAddressIdForOrder =
@@ -3491,19 +3496,15 @@ async function placeOrder() {
           shop_id: checkoutXShopId.value || undefined,
         },
       }
-      await navigateTo(ordersTarget)
-      // MAX mini app иногда не выполняет SPA-переход после mutate+clear.
-      // Делаем мягкий fallback на hard navigation, если маршрут не сменился.
-      if (isClient() && isMessengerMiniApp.value && messengerClientChannel() === 'max_mini') {
-        await nextTick()
-        const currentPath = window.location.pathname
-        if (currentPath.includes('/checkout') || currentPath.endsWith('/cart')) {
-          const search = new URLSearchParams()
-          if (res.orderId) search.set('orderId', res.orderId)
-          if (checkoutXShopId.value) search.set('shop_id', checkoutXShopId.value)
-          const nextUrl = `${tenantPath('/orders')}${search.toString() ? `?${search.toString()}` : ''}`
-          window.location.assign(nextUrl)
-        }
+      if (isClient() && isMessengerMiniApp.value) {
+        const search = new URLSearchParams()
+        if (res.orderId) search.set('orderId', res.orderId)
+        if (checkoutXShopId.value) search.set('shop_id', checkoutXShopId.value)
+        const nextUrl = `${tenantPath('/orders')}${search.toString() ? `?${search.toString()}` : ''}`
+        // На iOS TMA navigateTo после clear() часто зависает — сразу hard navigation.
+        window.location.assign(nextUrl)
+      } else {
+        await navigateTo(ordersTarget)
       }
     } else if (isClient()) {
       window.alert('Не удалось оформить заказ. Попробуйте ещё раз.')

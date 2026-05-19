@@ -5,7 +5,7 @@ import { useTelegram } from '~/composables/useTelegram'
 import { useMessengerStorage } from '~/composables/useMessengerStorage'
 import { useTenant } from '~/composables/useTenant'
 import type { DeliveryZoneFeature } from '~/utils/deliveryZones'
-import { resolveCartScopeKey } from '~/utils/cartScope'
+import { resolveCartScopeKey, resolveTenantSlugFromRoutePath } from '~/utils/cartScope'
 
 const ADDRESS_STORAGE_PREFIX = 'teleshop_addresses'
 const LEGACY_ADDRESS_STORAGE_KEY = 'teleshop_addresses'
@@ -99,15 +99,15 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
   const addressXShopId = computed(() => {
     const fromTenant = typeof tenant.value.shopId === 'string' ? tenant.value.shopId.trim() : ''
     if (fromTenant) return fromTenant
+    const fromPath = resolveTenantSlugFromRoutePath(route)
+    if (fromPath) return fromPath
     const qShop = route.query.shop_id ?? route.query.shopId
     const fromQuery = typeof qShop === 'string'
       ? qShop.trim()
       : Array.isArray(qShop) && typeof qShop[0] === 'string'
         ? qShop[0].trim()
         : ''
-    if (fromQuery) return fromQuery
-    const slug = typeof route.params.tenant_slug === 'string' ? route.params.tenant_slug.trim() : ''
-    return slug
+    return fromQuery
   })
 
   const addressBookContextKey = computed<string | null>(() => {
@@ -542,6 +542,19 @@ export function useCheckoutAddress(options?: UseCheckoutAddressOptions) {
     }
     void loadSavedAddresses()
   }, { immediate: true })
+
+  watch(
+    () => messengerInitData.value,
+    (next, prev) => {
+      if (!next || next === prev) return
+      void loadSavedAddresses({ force: true })
+    },
+  )
+
+  watch(addressXShopId, (next, prev) => {
+    if (!next || next === prev) return
+    void loadSavedAddresses({ force: true })
+  })
 
   function setDeliveryZones(zones: DeliveryZoneFeature[]) {
     setZones(zones)

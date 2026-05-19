@@ -6,6 +6,7 @@ import {
   validateWebAppInitDataAnyToken,
 } from '~/server/utils/messengerInitData'
 import { ensureMaxCustomerProfile } from '~/server/utils/ensureMaxCustomerProfile'
+import { ensureTelegramCustomerProfile } from '~/server/utils/ensureTelegramCustomerProfile'
 
 function maskToken(token: string | null | undefined): string {
   if (typeof token !== 'string') return 'missing'
@@ -67,7 +68,11 @@ export async function resolveCustomerProfileId(event: H3Event, botToken: string 
       .eq('telegram_id', tgUser.id)
       .maybeSingle()
     if (profile?.id) return String(profile.id)
-    console.info('[auth:customerProfile] telegram profile missing', {
+
+    const ensured = await ensureTelegramCustomerProfile(event, tgUser.id)
+    if (ensured) return ensured
+
+    console.info('[auth:customerProfile] telegram profile missing after ensure', {
       telegramId: tgUser.id,
       path: event.path,
     })

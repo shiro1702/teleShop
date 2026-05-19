@@ -475,7 +475,16 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
   const config = useRuntimeConfig(event)
   const client = await serverSupabaseServiceRole(event)
   const recipients = await resolveRecipients(event, input)
-  if (!recipients.length) return
+  if (!recipients.length) {
+    console.warn('[notifications] skipped: no recipients', {
+      eventType: input.eventType,
+      orderId: input.orderContext.orderId,
+      shopId: input.tenantContext.shopId,
+      restaurantId: input.tenantContext.restaurantId,
+      customerTelegramId: input.actorContext?.customerTelegramId ?? null,
+    })
+    return
+  }
 
   const { data: shopRow } = await client
     .from('shops')
@@ -571,13 +580,18 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
           input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
             ? await loadActiveShopBranches(event, input.tenantContext.shopId)
             : []
+        // tg://user?id= в inline-кнопке в группе часто ломает sendMessage целиком; у MAX-заказов id нет — там уведомления проходят.
+        const managerKeyboardCustomerId =
+          recipient.targetType === 'manager_group'
+            ? null
+            : (input.actorContext?.customerTelegramId ?? null)
         const finalManagerKeyboard =
           input.eventType === 'ORDER_CREATED' && recipient.targetType !== 'customer'
             ? buildManagerOrderInlineKeyboard({
                 orderId: input.orderContext.orderId,
                 fulfillmentType: orderDetails.fulfillmentType,
                 orderStatus: orderDetails.status,
-                customerTelegramId: input.actorContext?.customerTelegramId ?? null,
+                customerTelegramId: managerKeyboardCustomerId,
                 dashboardOrderUrl,
                 etaButtonsEnabled: flowConfig.etaButtonsEnabled,
                 etaPresets: flowConfig.etaPresets,
@@ -594,12 +608,23 @@ export async function dispatchNotificationEvent(event: H3Event, input: Notificat
           }
         }
         const customerKeyboard = customerKeyboardRows.length ? { inline_keyboard: customerKeyboardRows } : null
-        const sentMessageId = await sendTelegramMessage(
-          botToken,
-          recipient.targetId,
-          text,
-          { replyMarkup: finalManagerKeyboard || customerKeyboard || undefined },
-        )
+        const replyMarkup = finalManagerKeyboard || customerKeyboard || undefined
+        let sentMessageId: number | null = null
+        try {
+          sentMessageId = await sendTelegramMessage(
+            botToken,
+            recipient.targetId,
+            text,
+            { replyMarkup },
+          )
+        } catch (sendErr) {
+          if (replyMarkup && isManagerTarget) {
+            console.warn('[notifications] manager send with keyboard failed, retrying plain text:', sendErr)
+            sentMessageId = await sendTelegramMessage(botToken, recipient.targetId, text)
+          } else {
+            throw sendErr
+          }
+        }
         if (
           input.eventType === 'ORDER_CREATED'
           && isManagerTarget

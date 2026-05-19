@@ -29,6 +29,7 @@ import { enqueueQuickRestoOrderOutbox, getQuickRestoClient } from '~/server/util
 import { enqueueIikoOrderOutbox, getIikoClient } from '~/server/utils/iiko'
 import {
   getMaxBotTokenForShop,
+  getMessengerInitDataFromEvent,
   uniqueNonEmptyTokens,
   validateWebAppInitDataAnyToken,
   type WebAppInitUser,
@@ -498,7 +499,11 @@ export default defineEventHandler(async (event) => {
   /** Веб-заказ с профилем, привязанным только к MAX (для actorContext уведомлений). */
   let webMaxUserIdForActor: string | null = null
 
-  if (body.initData && typeof body.initData === 'string') {
+  const initDataRaw =
+    (typeof body.initData === 'string' && body.initData.trim())
+    || getMessengerInitDataFromEvent(event)
+
+  if (initDataRaw) {
     const requested: MiniChannel = body.orderClientChannel === 'max_mini' ? 'max_mini' : 'telegram_mini'
     miniChannel = requested
 
@@ -515,7 +520,7 @@ export default defineEventHandler(async (event) => {
       if (!maxTok || maxCandidateTokens.length === 0) {
         throw createError({ statusCode: 500, message: 'Server config: MAX bot token missing' })
       }
-      const parsed = validateWebAppInitDataAnyToken(body.initData, maxCandidateTokens)
+      const parsed = validateWebAppInitDataAnyToken(initDataRaw, maxCandidateTokens)
       if (!parsed) {
         throw createError({ statusCode: 401, message: 'Invalid initData' })
       }
@@ -540,7 +545,7 @@ export default defineEventHandler(async (event) => {
       customerTelegramIdForInsert = null
     } else {
       const telegramCandidateTokens = uniqueNonEmptyTokens([tenantBotToken, fallbackBotToken])
-      const parsed = validateWebAppInitDataAnyToken(body.initData, telegramCandidateTokens)
+      const parsed = validateWebAppInitDataAnyToken(initDataRaw, telegramCandidateTokens)
       if (!parsed) {
         throw createError({ statusCode: 401, message: 'Invalid initData' })
       }
@@ -604,7 +609,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const orderClientStored: 'web' | 'telegram_mini' | 'max_mini' =
-    body.initData && typeof body.initData === 'string'
+    initDataRaw
       ? miniChannel === 'max_mini'
         ? 'max_mini'
         : 'telegram_mini'
